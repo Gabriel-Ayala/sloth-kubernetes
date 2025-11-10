@@ -104,13 +104,25 @@ type DNSSpec struct {
 
 // WireGuardSpec VPN configuration
 type WireGuardSpec struct {
-	Enabled             bool   `yaml:"enabled" json:"enabled"`
-	ServerEndpoint      string `yaml:"serverEndpoint" json:"serverEndpoint"`
-	ServerPublicKey     string `yaml:"serverPublicKey" json:"serverPublicKey"`
-	ClientIPBase        string `yaml:"clientIPBase,omitempty" json:"clientIPBase,omitempty"`
-	Port                int    `yaml:"port,omitempty" json:"port,omitempty"`
-	MTU                 int    `yaml:"mtu,omitempty" json:"mtu,omitempty"`
-	PersistentKeepalive int    `yaml:"persistentKeepalive,omitempty" json:"persistentKeepalive,omitempty"`
+	// Creation settings
+	Create   bool   `yaml:"create,omitempty" json:"create,omitempty"`         // Auto-create WireGuard server
+	Provider string `yaml:"provider,omitempty" json:"provider,omitempty"`     // Provider for WG server
+	Region   string `yaml:"region,omitempty" json:"region,omitempty"`         // Region for WG server
+	Size     string `yaml:"size,omitempty" json:"size,omitempty"`             // Server size
+
+	// Connection settings
+	Enabled             bool     `yaml:"enabled" json:"enabled"`
+	ServerEndpoint      string   `yaml:"serverEndpoint,omitempty" json:"serverEndpoint,omitempty"`
+	ServerPublicKey     string   `yaml:"serverPublicKey,omitempty" json:"serverPublicKey,omitempty"`
+	ClientIPBase        string   `yaml:"clientIPBase,omitempty" json:"clientIPBase,omitempty"`
+	SubnetCIDR          string   `yaml:"subnetCidr,omitempty" json:"subnetCidr,omitempty"`
+	Port                int      `yaml:"port,omitempty" json:"port,omitempty"`
+	MTU                 int      `yaml:"mtu,omitempty" json:"mtu,omitempty"`
+	PersistentKeepalive int      `yaml:"persistentKeepalive,omitempty" json:"persistentKeepalive,omitempty"`
+	AutoConfig          bool     `yaml:"autoConfig,omitempty" json:"autoConfig,omitempty"`
+	MeshNetworking      bool     `yaml:"meshNetworking,omitempty" json:"meshNetworking,omitempty"`
+	AllowedIPs          []string `yaml:"allowedIps,omitempty" json:"allowedIps,omitempty"`
+	DNS                 []string `yaml:"dns,omitempty" json:"dns,omitempty"`
 }
 
 // KubernetesSpec defines Kubernetes configuration
@@ -275,13 +287,24 @@ func convertFromK8sStyle(k8s *KubernetesStyleConfig) *ClusterConfig {
 	}
 	if k8s.Spec.Network.WireGuard != nil {
 		cfg.Network.WireGuard = &WireGuardConfig{
+			// Creation settings
+			Create:              k8s.Spec.Network.WireGuard.Create,
+			Provider:            k8s.Spec.Network.WireGuard.Provider,
+			Region:              k8s.Spec.Network.WireGuard.Region,
+			Size:                k8s.Spec.Network.WireGuard.Size,
+			// Connection settings
 			Enabled:             k8s.Spec.Network.WireGuard.Enabled,
 			ServerEndpoint:      k8s.Spec.Network.WireGuard.ServerEndpoint,
 			ServerPublicKey:     k8s.Spec.Network.WireGuard.ServerPublicKey,
 			ClientIPBase:        k8s.Spec.Network.WireGuard.ClientIPBase,
+			SubnetCIDR:          k8s.Spec.Network.WireGuard.SubnetCIDR,
 			Port:                k8s.Spec.Network.WireGuard.Port,
+			AllowedIPs:          k8s.Spec.Network.WireGuard.AllowedIPs,
+			DNS:                 k8s.Spec.Network.WireGuard.DNS,
 			MTU:                 k8s.Spec.Network.WireGuard.MTU,
 			PersistentKeepalive: k8s.Spec.Network.WireGuard.PersistentKeepalive,
+			AutoConfig:          k8s.Spec.Network.WireGuard.AutoConfig,
+			MeshNetworking:      k8s.Spec.Network.WireGuard.MeshNetworking,
 		}
 	}
 

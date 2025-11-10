@@ -77,3 +77,4 @@ setup-env.sh
 # Large binary files
 kubernetes-create
 sloth-kubernetes
+sloth-kubernetes
