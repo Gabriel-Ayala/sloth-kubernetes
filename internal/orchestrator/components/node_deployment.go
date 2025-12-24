@@ -8,6 +8,8 @@ import (
 
 	"github.com/chalkan3/sloth-kubernetes/pkg/cloudinit"
 	"github.com/chalkan3/sloth-kubernetes/pkg/config"
+	"github.com/pulumi/pulumi-aws/sdk/v6/go/aws"
+	"github.com/pulumi/pulumi-aws/sdk/v6/go/aws/ec2"
 	azurecompute "github.com/pulumi/pulumi-azure-native-sdk/compute/v2"
 	azurenetwork "github.com/pulumi/pulumi-azure-native-sdk/network/v2"
 	azureresources "github.com/pulumi/pulumi-azure-native-sdk/resources/v2"
@@ -41,6 +43,28 @@ type RealNodeComponent struct {
 	InstanceID  pulumi.IntOutput    `pulumi:"instanceId"` // For Linode
 }
 
+// ProviderNodeCreator defines the function signature for creating nodes on different providers
+type ProviderNodeCreator func(ctx *pulumi.Context, name string, nodeConfig *config.NodeConfig, sshKeyOutput pulumi.StringOutput, bastionEnabled bool, saltMasterIP string, component *RealNodeComponent, extras map[string]interface{}) error
+
+// providerNodeCreators maps provider names to their node creation functions
+var providerNodeCreators = map[string]ProviderNodeCreator{
+	"digitalocean": createDigitalOceanNode,
+	"linode":       createLinodeNode,
+	"azure":        createAzureNode,
+	"aws":          createAWSNode,
+}
+
+// RegisterProviderCreator allows registering new provider creators dynamically
+func RegisterProviderCreator(provider string, creator ProviderNodeCreator) {
+	providerNodeCreators[provider] = creator
+}
+
+// GetProviderCreator returns the creator function for a provider
+func GetProviderCreator(provider string) (ProviderNodeCreator, bool) {
+	creator, ok := providerNodeCreators[provider]
+	return creator, ok
+}
+
 // NewRealNodeDeploymentComponent creates real cloud resources
 // Returns NodeDeploymentComponent and list of RealNodeComponents for WireGuard/RKE
 // bastionComponent is optional - if provided, SSH connections will use ProxyJump through the bastion
@@ -62,13 +86,34 @@ func NewRealNodeDeploymentComponent(ctx *pulumi.Context, name string, clusterCon
 		ctx.Log.Info("🌍 Bastion disabled - nodes have direct SSH access", nil)
 	}
 
-	// Create ONE shared SSH key for all DigitalOcean Droplets (DO doesn't allow duplicate keys)
-	sharedDOSshKey, err := digitalocean.NewSshKey(ctx, fmt.Sprintf("%s-shared-key", name), &digitalocean.SshKeyArgs{
-		Name:      pulumi.Sprintf("kubernetes-cluster-production-key"),
-		PublicKey: sshKeyOutput,
-	}, pulumi.Parent(component))
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to create shared DO SSH key: %w", err)
+	// Detect which providers are used
+	usesDigitalOcean := false
+	for _, node := range clusterConfig.Nodes {
+		if node.Provider == "digitalocean" {
+			usesDigitalOcean = true
+			break
+		}
+	}
+	if !usesDigitalOcean {
+		for _, pool := range clusterConfig.NodePools {
+			if pool.Provider == "digitalocean" {
+				usesDigitalOcean = true
+				break
+			}
+		}
+	}
+
+	// Create ONE shared SSH key for all DigitalOcean Droplets (only if DO is used)
+	var sharedDOSshKey *digitalocean.SshKey
+	if usesDigitalOcean {
+		var err error
+		sharedDOSshKey, err = digitalocean.NewSshKey(ctx, fmt.Sprintf("%s-shared-key", name), &digitalocean.SshKeyArgs{
+			Name:      pulumi.Sprintf("kubernetes-cluster-production-key"),
+			PublicKey: sshKeyOutput,
+		}, pulumi.Parent(component))
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to create shared DO SSH key: %w", err)
+		}
 	}
 
 	// NOTE: cloud-init installs prerequisites (WireGuard, packages) on all nodes
@@ -223,16 +268,22 @@ func newRealNodeComponent(ctx *pulumi.Context, name string, nodeConfig *config.N
 		saltMasterIP = "10.8.0.5"
 	}
 
-	// Create real cloud resource based on provider
-	if nodeConfig.Provider == "digitalocean" {
-		err = createDigitalOceanDroplet(ctx, name, nodeConfig, sharedDOSshKey, doToken, vpcComponent, bastionEnabled, saltMasterIP, component)
-	} else if nodeConfig.Provider == "linode" {
-		err = createLinodeInstance(ctx, name, nodeConfig, sshKeyOutput, sharedLinodeStackscript, linodeToken, bastionEnabled, saltMasterIP, component)
-	} else if nodeConfig.Provider == "azure" {
-		err = createAzureVM(ctx, name, nodeConfig, sshKeyOutput, bastionEnabled, saltMasterIP, component)
-	} else {
-		return nil, fmt.Errorf("unknown provider: %s", nodeConfig.Provider)
+	// Create real cloud resource based on provider using the provider map
+	creator, ok := GetProviderCreator(nodeConfig.Provider)
+	if !ok {
+		return nil, fmt.Errorf("unknown provider: %s (available: digitalocean, linode, azure, aws)", nodeConfig.Provider)
 	}
+
+	// Build extras map with provider-specific dependencies
+	extras := map[string]interface{}{
+		"sharedDOSshKey":          sharedDOSshKey,
+		"sharedLinodeStackscript": sharedLinodeStackscript,
+		"doToken":                 doToken,
+		"linodeToken":             linodeToken,
+		"vpcComponent":            vpcComponent,
+	}
+
+	err = creator(ctx, name, nodeConfig, sshKeyOutput, bastionEnabled, saltMasterIP, component, extras)
 
 	if err != nil {
 		return nil, err
@@ -635,4 +686,209 @@ func generateSecurePassword() string {
 	}
 
 	return string(password)
+}
+
+// ============================================================================
+// Provider Node Creator Wrappers (matching ProviderNodeCreator signature)
+// ============================================================================
+
+// createDigitalOceanNode wraps createDigitalOceanDroplet with the standard signature
+func createDigitalOceanNode(ctx *pulumi.Context, name string, nodeConfig *config.NodeConfig, sshKeyOutput pulumi.StringOutput, bastionEnabled bool, saltMasterIP string, component *RealNodeComponent, extras map[string]interface{}) error {
+	sharedDOSshKey, _ := extras["sharedDOSshKey"].(*digitalocean.SshKey)
+	doToken, _ := extras["doToken"].(pulumi.StringInput)
+	vpcComponent, _ := extras["vpcComponent"].(*VPCComponent)
+	return createDigitalOceanDroplet(ctx, name, nodeConfig, sharedDOSshKey, doToken, vpcComponent, bastionEnabled, saltMasterIP, component)
+}
+
+// createLinodeNode wraps createLinodeInstance with the standard signature
+func createLinodeNode(ctx *pulumi.Context, name string, nodeConfig *config.NodeConfig, sshKeyOutput pulumi.StringOutput, bastionEnabled bool, saltMasterIP string, component *RealNodeComponent, extras map[string]interface{}) error {
+	sharedLinodeStackscript, _ := extras["sharedLinodeStackscript"].(*linode.StackScript)
+	linodeToken, _ := extras["linodeToken"].(pulumi.StringInput)
+	return createLinodeInstance(ctx, name, nodeConfig, sshKeyOutput, sharedLinodeStackscript, linodeToken, bastionEnabled, saltMasterIP, component)
+}
+
+// createAzureNode wraps createAzureVM with the standard signature
+func createAzureNode(ctx *pulumi.Context, name string, nodeConfig *config.NodeConfig, sshKeyOutput pulumi.StringOutput, bastionEnabled bool, saltMasterIP string, component *RealNodeComponent, extras map[string]interface{}) error {
+	return createAzureVM(ctx, name, nodeConfig, sshKeyOutput, bastionEnabled, saltMasterIP, component)
+}
+
+// ============================================================================
+// AWS EC2 Instance Creation
+// ============================================================================
+
+// AWS shared resources (created once, reused by all instances)
+var (
+	awsProvider      *aws.Provider
+	awsSecurityGroup *ec2.SecurityGroup
+	awsKeyPair       *ec2.KeyPair
+)
+
+// createAWSNode creates an AWS EC2 instance
+func createAWSNode(ctx *pulumi.Context, name string, nodeConfig *config.NodeConfig, sshKeyOutput pulumi.StringOutput, bastionEnabled bool, saltMasterIP string, component *RealNodeComponent, extras map[string]interface{}) error {
+	region := nodeConfig.Region
+	if region == "" {
+		region = "us-east-1"
+	}
+
+	if bastionEnabled {
+		ctx.Log.Info(fmt.Sprintf("🔒 Creating AWS EC2 instance %s (SSH restricted to bastion only)", nodeConfig.Name), nil)
+	} else {
+		ctx.Log.Info(fmt.Sprintf("🌍 Creating PUBLIC AWS EC2 instance %s", nodeConfig.Name), nil)
+	}
+
+	// Create AWS provider with explicit region (only once for all instances)
+	if awsProvider == nil {
+		provider, err := aws.NewProvider(ctx, fmt.Sprintf("%s-aws-node-provider", ctx.Stack()), &aws.ProviderArgs{
+			Region: pulumi.String(region),
+		})
+		if err != nil {
+			return fmt.Errorf("failed to create AWS provider: %w", err)
+		}
+		awsProvider = provider
+	}
+
+	// Create shared AWS infrastructure (only once for all instances)
+	if awsSecurityGroup == nil {
+		sgName := fmt.Sprintf("%s-sg", ctx.Stack())
+		sg, err := ec2.NewSecurityGroup(ctx, sgName, &ec2.SecurityGroupArgs{
+			Description: pulumi.String("Security group for Kubernetes cluster nodes"),
+			Ingress: ec2.SecurityGroupIngressArray{
+				&ec2.SecurityGroupIngressArgs{
+					Description: pulumi.String("SSH"),
+					FromPort:    pulumi.Int(22),
+					ToPort:      pulumi.Int(22),
+					Protocol:    pulumi.String("tcp"),
+					CidrBlocks:  pulumi.StringArray{pulumi.String("0.0.0.0/0")},
+				},
+				&ec2.SecurityGroupIngressArgs{
+					Description: pulumi.String("Kubernetes API"),
+					FromPort:    pulumi.Int(6443),
+					ToPort:      pulumi.Int(6443),
+					Protocol:    pulumi.String("tcp"),
+					CidrBlocks:  pulumi.StringArray{pulumi.String("0.0.0.0/0")},
+				},
+				&ec2.SecurityGroupIngressArgs{
+					Description: pulumi.String("WireGuard VPN"),
+					FromPort:    pulumi.Int(51820),
+					ToPort:      pulumi.Int(51820),
+					Protocol:    pulumi.String("udp"),
+					CidrBlocks:  pulumi.StringArray{pulumi.String("0.0.0.0/0")},
+				},
+				&ec2.SecurityGroupIngressArgs{
+					Description: pulumi.String("HTTP"),
+					FromPort:    pulumi.Int(80),
+					ToPort:      pulumi.Int(80),
+					Protocol:    pulumi.String("tcp"),
+					CidrBlocks:  pulumi.StringArray{pulumi.String("0.0.0.0/0")},
+				},
+				&ec2.SecurityGroupIngressArgs{
+					Description: pulumi.String("HTTPS"),
+					FromPort:    pulumi.Int(443),
+					ToPort:      pulumi.Int(443),
+					Protocol:    pulumi.String("tcp"),
+					CidrBlocks:  pulumi.StringArray{pulumi.String("0.0.0.0/0")},
+				},
+				&ec2.SecurityGroupIngressArgs{
+					Description: pulumi.String("Internal cluster traffic"),
+					FromPort:    pulumi.Int(0),
+					ToPort:      pulumi.Int(0),
+					Protocol:    pulumi.String("-1"),
+					Self:        pulumi.Bool(true),
+				},
+			},
+			Egress: ec2.SecurityGroupEgressArray{
+				&ec2.SecurityGroupEgressArgs{
+					FromPort:   pulumi.Int(0),
+					ToPort:     pulumi.Int(0),
+					Protocol:   pulumi.String("-1"),
+					CidrBlocks: pulumi.StringArray{pulumi.String("0.0.0.0/0")},
+				},
+			},
+			Tags: pulumi.StringMap{
+				"Name": pulumi.String(sgName),
+			},
+		}, pulumi.Provider(awsProvider))
+		if err != nil {
+			return fmt.Errorf("failed to create AWS security group: %w", err)
+		}
+		awsSecurityGroup = sg
+
+		// Create shared key pair
+		keyPairName := fmt.Sprintf("%s-keypair", ctx.Stack())
+		kp, err := ec2.NewKeyPair(ctx, keyPairName, &ec2.KeyPairArgs{
+			KeyName:   pulumi.String(keyPairName),
+			PublicKey: sshKeyOutput,
+			Tags: pulumi.StringMap{
+				"Name": pulumi.String(keyPairName),
+			},
+		}, pulumi.Provider(awsProvider))
+		if err != nil {
+			return fmt.Errorf("failed to create AWS key pair: %w", err)
+		}
+		awsKeyPair = kp
+	}
+
+	// Get Ubuntu AMI for the region
+	ami, err := getUbuntuAMIForRegion(ctx, region)
+	if err != nil {
+		return fmt.Errorf("failed to get Ubuntu AMI: %w", err)
+	}
+
+	// Generate cloud-init user data
+	userData := cloudinit.GenerateUserDataWithHostnameAndSalt(nodeConfig.Name, saltMasterIP)
+
+	// Create EC2 instance
+	instance, err := ec2.NewInstance(ctx, name, &ec2.InstanceArgs{
+		Ami:                      pulumi.String(ami),
+		InstanceType:             pulumi.String(nodeConfig.Size),
+		KeyName:                  awsKeyPair.KeyName,
+		VpcSecurityGroupIds:      pulumi.StringArray{awsSecurityGroup.ID()},
+		AssociatePublicIpAddress: pulumi.Bool(true),
+		UserData:                 pulumi.String(userData),
+		Tags: pulumi.StringMap{
+			"Name":       pulumi.String(nodeConfig.Name),
+			"kubernetes": pulumi.String("true"),
+			"stack":      pulumi.String(ctx.Stack()),
+		},
+	}, pulumi.Parent(component), pulumi.Provider(awsProvider))
+	if err != nil {
+		return fmt.Errorf("failed to create EC2 instance: %w", err)
+	}
+
+	// Set component outputs
+	component.PublicIP = instance.PublicIp
+	component.PrivateIP = instance.PrivateIp
+	component.DropletID = instance.ID()
+
+	ctx.Log.Info(fmt.Sprintf("   ✅ AWS EC2 instance %s created successfully", nodeConfig.Name), nil)
+
+	return nil
+}
+
+// getUbuntuAMIForRegion returns the Ubuntu 22.04 LTS AMI ID for the given region
+func getUbuntuAMIForRegion(ctx *pulumi.Context, region string) (string, error) {
+	// Ubuntu 22.04 LTS AMIs by region (canonical owner: 099720109477)
+	ubuntuAMIs := map[string]string{
+		"us-east-1":      "ami-0c7217cdde317cfec", // Ubuntu 22.04 LTS
+		"us-east-2":      "ami-05fb0b8c1424f266b",
+		"us-west-1":      "ami-0ce2cb35386fc22e9",
+		"us-west-2":      "ami-008fe2fc65df48dac",
+		"eu-west-1":      "ami-0905a3c97561e0b69",
+		"eu-west-2":      "ami-0e5f882be1900e43b",
+		"eu-west-3":      "ami-01d21b7be69801c2f",
+		"eu-central-1":   "ami-0faab6bdbac9486fb",
+		"ap-southeast-1": "ami-078c1149d8ad719a7",
+		"ap-southeast-2": "ami-04f5097681773b989",
+		"ap-northeast-1": "ami-07c589821f2b353aa",
+		"sa-east-1":      "ami-0fb4cf3a99aa89f72",
+	}
+
+	ami, ok := ubuntuAMIs[region]
+	if !ok {
+		// Fallback: use us-east-1 AMI and let AWS handle region compatibility
+		ctx.Log.Warn(fmt.Sprintf("No pre-configured AMI for region %s, using us-east-1 default", region), nil)
+		return ubuntuAMIs["us-east-1"], nil
+	}
+
+	return ami, nil
 }

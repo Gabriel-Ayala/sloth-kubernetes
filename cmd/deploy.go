@@ -379,20 +379,20 @@ func loadConfiguration() (*config.ClusterConfig, error) {
 	// Try to load from config file first
 	if cfgFile != "" {
 		fmt.Printf("🔍 DEBUG [cmd/deploy.go]: Loading config from file: %s\n", cfgFile)
-		cfg, err = config.LoadFromYAML(cfgFile)
+		cfg, err = config.LoadFromLisp(cfgFile)
 		if err != nil {
 			return nil, fmt.Errorf("failed to load config file: %w", err)
 		}
 
 		// DEBUG: Log pools immediately after loading
-		fmt.Printf("🔍 DEBUG [cmd/deploy.go]: Loaded %d node pools from YAML\n", len(cfg.NodePools))
+		fmt.Printf("🔍 DEBUG [cmd/deploy.go]: Loaded %d node pools from Lisp\n", len(cfg.NodePools))
 		for poolName, pool := range cfg.NodePools {
 			fmt.Printf("🔍 DEBUG [cmd/deploy.go]: Pool '%s' - provider=%s, count=%d\n", poolName, pool.Provider, pool.Count)
 		}
 
 		// DEBUG: Check bastion configuration
 		if cfg.Security.Bastion == nil {
-			fmt.Printf("🔍 DEBUG [cmd/deploy.go]: cfg.Security.Bastion is NIL after LoadFromYAML\n")
+			fmt.Printf("🔍 DEBUG [cmd/deploy.go]: cfg.Security.Bastion is NIL after LoadFromLisp\n")
 		} else {
 			fmt.Printf("🔍 DEBUG [cmd/deploy.go]: cfg.Security.Bastion.Enabled = %v\n", cfg.Security.Bastion.Enabled)
 		}
@@ -509,11 +509,35 @@ func loadConfiguration() (*config.ClusterConfig, error) {
 
 func setStackConfig(ctx context.Context, stack auto.Stack, cfg *config.ClusterConfig) error {
 	// Set configuration values for Pulumi
-	configs := map[string]auto.ConfigValue{
-		"digitaloceanToken":        {Value: cfg.Providers.DigitalOcean.Token, Secret: true},
-		"linodeToken":              {Value: cfg.Providers.Linode.Token, Secret: true},
-		"wireguardServerEndpoint":  {Value: cfg.Network.WireGuard.ServerEndpoint},
-		"wireguardServerPublicKey": {Value: cfg.Network.WireGuard.ServerPublicKey},
+	configs := map[string]auto.ConfigValue{}
+
+	// DigitalOcean token
+	if cfg.Providers.DigitalOcean != nil && cfg.Providers.DigitalOcean.Token != "" {
+		configs["digitaloceanToken"] = auto.ConfigValue{Value: cfg.Providers.DigitalOcean.Token, Secret: true}
+	}
+
+	// Linode token
+	if cfg.Providers.Linode != nil && cfg.Providers.Linode.Token != "" {
+		configs["linodeToken"] = auto.ConfigValue{Value: cfg.Providers.Linode.Token, Secret: true}
+	}
+
+	// AWS region (credentials come from environment)
+	if cfg.Providers.AWS != nil && cfg.Providers.AWS.Region != "" {
+		configs["awsRegion"] = auto.ConfigValue{Value: cfg.Providers.AWS.Region}
+	}
+
+	// WireGuard configuration
+	if cfg.Network.WireGuard != nil {
+		if cfg.Network.WireGuard.ServerEndpoint != "" {
+			configs["wireguardServerEndpoint"] = auto.ConfigValue{Value: cfg.Network.WireGuard.ServerEndpoint}
+		}
+		if cfg.Network.WireGuard.ServerPublicKey != "" {
+			configs["wireguardServerPublicKey"] = auto.ConfigValue{Value: cfg.Network.WireGuard.ServerPublicKey}
+		}
+	}
+
+	if len(configs) == 0 {
+		return nil
 	}
 
 	return stack.SetAllConfig(ctx, configs)

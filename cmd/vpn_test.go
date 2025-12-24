@@ -170,9 +170,11 @@ func TestVPNStatusCmd_LongDescription(t *testing.T) {
 
 func TestVPNPeersCmd_LongDescription(t *testing.T) {
 	long := vpnPeersCmd.Long
-	assert.Contains(t, long, "peers")
+	// The Long description is: "Display all nodes in the VPN mesh with their public keys and endpoints"
+	assert.Contains(t, long, "nodes")
 	assert.Contains(t, long, "VPN")
 	assert.Contains(t, long, "mesh")
+	assert.Contains(t, long, "public keys")
 }
 
 func TestVPNConfigCmd_LongDescription(t *testing.T) {

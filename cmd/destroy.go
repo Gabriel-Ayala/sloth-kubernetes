@@ -16,17 +16,17 @@ import (
 var force bool
 
 var destroyCmd = &cobra.Command{
-	Use:   "destroy",
+	Use:   "destroy [stack-name]",
 	Short: "Destroy an existing Kubernetes cluster",
 	Long: `Destroy an existing Kubernetes cluster and all associated resources.
 This will delete all VMs, DNS records, and configurations.
 
 WARNING: This action cannot be undone!`,
-	Example: `  # Destroy with confirmation
-  kubernetes-create destroy
+	Example: `  # Destroy cluster with confirmation
+  sloth-kubernetes destroy aws-cluster
 
   # Force destroy without confirmation
-  kubernetes-create destroy --yes --force`,
+  sloth-kubernetes destroy aws-cluster --yes --force`,
 	RunE: runDestroy,
 }
 

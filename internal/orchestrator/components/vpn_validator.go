@@ -184,10 +184,10 @@ fi
 			DialErrorLimit: pulumi.Int(30),
 			Proxy: func() *remote.ProxyConnectionArgs {
 				if bastionComponent != nil {
-					// Bastion is on Linode in this config, so it uses "root"
+					// Use the correct SSH user for the bastion based on its provider
 					return &remote.ProxyConnectionArgs{
 						Host:       bastionComponent.PublicIP,
-						User:       pulumi.String("root"),
+						User:       getSSHUserForProvider(bastionComponent.Provider),
 						PrivateKey: sshPrivateKey,
 					}
 				}

@@ -235,23 +235,25 @@ type BastionConfig struct {
 
 // NodeConfig represents individual node configuration
 type NodeConfig struct {
-	Name        string                 `yaml:"name" json:"name"`
-	Provider    string                 `yaml:"provider" json:"provider"`
-	Pool        string                 `yaml:"pool" json:"pool"`
-	Roles       []string               `yaml:"roles" json:"roles"`
-	Size        string                 `yaml:"size" json:"size"`
-	Image       string                 `yaml:"image" json:"image"`
-	Region      string                 `yaml:"region" json:"region"`
-	Zone        string                 `yaml:"zone" json:"zone"`
-	PrivateIP   string                 `yaml:"privateIp" json:"privateIp"`
-	PublicIP    string                 `yaml:"publicIp" json:"publicIp"`
-	WireGuardIP string                 `yaml:"wireguardIp" json:"wireguardIp"`
-	Labels      map[string]string      `yaml:"labels" json:"labels"`
-	Taints      []TaintConfig          `yaml:"taints" json:"taints"`
-	UserData    string                 `yaml:"userData" json:"userData"`
-	SSHKey      string                 `yaml:"sshKey" json:"sshKey"`
-	Monitoring  bool                   `yaml:"monitoring" json:"monitoring"`
-	Custom      map[string]interface{} `yaml:"custom" json:"custom"`
+	Name         string                 `yaml:"name" json:"name"`
+	Provider     string                 `yaml:"provider" json:"provider"`
+	Pool         string                 `yaml:"pool" json:"pool"`
+	Roles        []string               `yaml:"roles" json:"roles"`
+	Size         string                 `yaml:"size" json:"size"`
+	Image        string                 `yaml:"image" json:"image"`
+	Region       string                 `yaml:"region" json:"region"`
+	Zone         string                 `yaml:"zone" json:"zone"`
+	PrivateIP    string                 `yaml:"privateIp" json:"privateIp"`
+	PublicIP     string                 `yaml:"publicIp" json:"publicIp"`
+	WireGuardIP  string                 `yaml:"wireguardIp" json:"wireguardIp"`
+	Labels       map[string]string      `yaml:"labels" json:"labels"`
+	Taints       []TaintConfig          `yaml:"taints" json:"taints"`
+	UserData     string                 `yaml:"userData" json:"userData"`
+	SSHKey       string                 `yaml:"sshKey" json:"sshKey"`
+	Monitoring   bool                   `yaml:"monitoring" json:"monitoring"`
+	SpotInstance bool                   `yaml:"spotInstance" json:"spotInstance"`
+	SpotMaxPrice string                 `yaml:"spotMaxPrice" json:"spotMaxPrice"`
+	Custom       map[string]interface{} `yaml:"custom" json:"custom"`
 }
 
 // NodePool defines a pool of similar nodes

@@ -4,6 +4,8 @@ import (
 	"fmt"
 
 	"github.com/chalkan3/sloth-kubernetes/pkg/config"
+	"github.com/pulumi/pulumi-aws/sdk/v6/go/aws"
+	"github.com/pulumi/pulumi-aws/sdk/v6/go/aws/ec2"
 	azurecompute "github.com/pulumi/pulumi-azure-native-sdk/compute/v2"
 	azurenetwork "github.com/pulumi/pulumi-azure-native-sdk/network/v2"
 	azureresources "github.com/pulumi/pulumi-azure-native-sdk/resources/v2"
@@ -76,10 +78,12 @@ func NewBastionComponent(
 		err = createDigitalOceanBastion(ctx, name, bastionConfig, sshKeyOutput, doToken, component)
 	case "linode":
 		err = createLinodeBastion(ctx, name, bastionConfig, sshKeyOutput, linodeToken, component)
+	case "aws":
+		err = createAWSBastion(ctx, name, bastionConfig, sshKeyOutput, component)
 	case "azure":
 		err = createAzureBastion(ctx, name, bastionConfig, sshKeyOutput, component)
 	default:
-		return nil, fmt.Errorf("unsupported bastion provider: %s (only digitalocean, linode, and azure are supported)", bastionConfig.Provider)
+		return nil, fmt.Errorf("unsupported bastion provider: %s (supported: digitalocean, linode, aws, azure)", bastionConfig.Provider)
 	}
 
 	if err != nil {
@@ -197,6 +201,164 @@ func createLinodeBastion(
 	component.PrivateIP = instance.PrivateIpAddress
 
 	return nil
+}
+
+// createAWSBastion creates an AWS EC2 bastion instance
+func createAWSBastion(
+	ctx *pulumi.Context,
+	name string,
+	bastionConfig *config.BastionConfig,
+	sshKeyOutput pulumi.StringOutput,
+	component *BastionComponent,
+) error {
+	region := bastionConfig.Region
+	if region == "" {
+		region = "us-east-1"
+	}
+
+	// Create explicit AWS provider with region
+	awsProvider, err := aws.NewProvider(ctx, fmt.Sprintf("%s-aws-provider", name), &aws.ProviderArgs{
+		Region: pulumi.String(region),
+	}, pulumi.Parent(component))
+	if err != nil {
+		return fmt.Errorf("failed to create AWS provider: %w", err)
+	}
+
+	// Get the default VPC
+	defaultVpc, err := ec2.LookupVpc(ctx, &ec2.LookupVpcArgs{
+		Default: pulumi.BoolRef(true),
+	}, pulumi.Provider(awsProvider))
+	if err != nil {
+		return fmt.Errorf("failed to get default VPC: %w", err)
+	}
+
+	// Get a subnet from the default VPC
+	subnets, err := ec2.GetSubnets(ctx, &ec2.GetSubnetsArgs{
+		Filters: []ec2.GetSubnetsFilter{
+			{
+				Name:   "vpc-id",
+				Values: []string{defaultVpc.Id},
+			},
+		},
+	}, pulumi.Provider(awsProvider))
+	if err != nil {
+		return fmt.Errorf("failed to get subnets: %w", err)
+	}
+
+	subnetId := ""
+	if len(subnets.Ids) > 0 {
+		subnetId = subnets.Ids[0]
+	}
+
+	// Create Security Group for bastion
+	sg, err := ec2.NewSecurityGroup(ctx, fmt.Sprintf("%s-bastion-sg", name), &ec2.SecurityGroupArgs{
+		Name:        pulumi.Sprintf("%s-bastion-sg", name),
+		Description: pulumi.String("Security group for bastion host"),
+		VpcId:       pulumi.String(defaultVpc.Id),
+		Ingress: ec2.SecurityGroupIngressArray{
+			// SSH
+			&ec2.SecurityGroupIngressArgs{
+				Protocol:   pulumi.String("tcp"),
+				FromPort:   pulumi.Int(bastionConfig.SSHPort),
+				ToPort:     pulumi.Int(bastionConfig.SSHPort),
+				CidrBlocks: pulumi.StringArray{pulumi.String("0.0.0.0/0")},
+			},
+			// WireGuard
+			&ec2.SecurityGroupIngressArgs{
+				Protocol:   pulumi.String("udp"),
+				FromPort:   pulumi.Int(51820),
+				ToPort:     pulumi.Int(51820),
+				CidrBlocks: pulumi.StringArray{pulumi.String("0.0.0.0/0")},
+			},
+		},
+		Egress: ec2.SecurityGroupEgressArray{
+			&ec2.SecurityGroupEgressArgs{
+				Protocol:   pulumi.String("-1"),
+				FromPort:   pulumi.Int(0),
+				ToPort:     pulumi.Int(0),
+				CidrBlocks: pulumi.StringArray{pulumi.String("0.0.0.0/0")},
+			},
+		},
+		Tags: pulumi.StringMap{
+			"Name": pulumi.Sprintf("%s-bastion-sg", name),
+		},
+	}, pulumi.Parent(component), pulumi.Provider(awsProvider))
+	if err != nil {
+		return fmt.Errorf("failed to create security group: %w", err)
+	}
+
+	// Create Key Pair
+	keyPair, err := ec2.NewKeyPair(ctx, fmt.Sprintf("%s-bastion-key", name), &ec2.KeyPairArgs{
+		KeyName:   pulumi.Sprintf("%s-bastion-key", name),
+		PublicKey: sshKeyOutput,
+		Tags: pulumi.StringMap{
+			"Name": pulumi.Sprintf("%s-bastion-key", name),
+		},
+	}, pulumi.Parent(component), pulumi.Provider(awsProvider))
+	if err != nil {
+		return fmt.Errorf("failed to create key pair: %w", err)
+	}
+
+	// Get Ubuntu AMI
+	ami := getUbuntuAMI(region)
+
+	// Determine instance type
+	instanceType := bastionConfig.Size
+	if instanceType == "" {
+		instanceType = "t3.micro"
+	}
+
+	// Create EC2 Instance
+	instanceArgs := &ec2.InstanceArgs{
+		Ami:                      pulumi.String(ami),
+		InstanceType:             pulumi.String(instanceType),
+		KeyName:                  keyPair.KeyName,
+		VpcSecurityGroupIds:      pulumi.StringArray{sg.ID()},
+		AssociatePublicIpAddress: pulumi.Bool(true),
+		Tags: pulumi.StringMap{
+			"Name": pulumi.String(bastionConfig.Name),
+			"Role": pulumi.String("bastion"),
+		},
+		MetadataOptions: &ec2.InstanceMetadataOptionsArgs{
+			HttpTokens:   pulumi.String("optional"),
+			HttpEndpoint: pulumi.String("enabled"),
+		},
+	}
+
+	if subnetId != "" {
+		instanceArgs.SubnetId = pulumi.String(subnetId)
+	}
+
+	instance, err := ec2.NewInstance(ctx, name, instanceArgs, pulumi.Parent(component), pulumi.Provider(awsProvider))
+	if err != nil {
+		return fmt.Errorf("failed to create bastion instance: %w", err)
+	}
+
+	component.PublicIP = instance.PublicIp
+	component.PrivateIP = instance.PrivateIp
+
+	return nil
+}
+
+// getUbuntuAMI returns the Ubuntu 22.04 LTS AMI for the given region
+func getUbuntuAMI(region string) string {
+	amiMap := map[string]string{
+		"us-east-1":      "ami-0c7217cdde317cfec",
+		"us-east-2":      "ami-0e83be366243f524a",
+		"us-west-1":      "ami-0ce2cb35386fc22e9",
+		"us-west-2":      "ami-008fe2fc65df48dac",
+		"eu-west-1":      "ami-0905a3c97561e0b69",
+		"eu-west-2":      "ami-0e5f882be1900e43b",
+		"eu-central-1":   "ami-0faab6bdbac9486fb",
+		"ap-southeast-1": "ami-078c1149d8ad719a7",
+		"ap-northeast-1": "ami-07c589821f2b353aa",
+		"sa-east-1":      "ami-0fb4cf3a99aa89f72",
+	}
+
+	if ami, ok := amiMap[region]; ok {
+		return ami
+	}
+	return amiMap["us-east-1"]
 }
 
 func createAzureBastion(
@@ -448,10 +610,15 @@ func NewBastionProvisioningComponent(
 	// Determine SSH user based on provider
 	sshUser := "root"
 	sudoPrefix := ""
-	if bastionConfig.Provider == "azure" {
+	switch bastionConfig.Provider {
+	case "azure":
 		sshUser = "azureuser"
 		sudoPrefix = "sudo "
 		ctx.Log.Info("🔧 Using Azure-specific configuration (user: azureuser, sudo required)", nil)
+	case "aws":
+		sshUser = "ubuntu"
+		sudoPrefix = "sudo "
+		ctx.Log.Info("🔧 Using AWS-specific configuration (user: ubuntu, sudo required)", nil)
 	}
 
 	// Build provisioning script with security hardening
@@ -561,7 +728,8 @@ echo "=========================================="
 
 // buildBastionProvisionScript creates the provisioning script for bastion security hardening
 func buildBastionProvisionScript(cfg *config.BastionConfig, sudoPrefix string) string {
-	// If sudoPrefix is needed, wrap the entire script with sudo bash -c
+	// For AWS/Azure, we write the script to a temp file and execute with sudo
+	// This avoids quoting issues with sudo bash -c '...'
 	scriptHeader := `#!/bin/bash
 set -e
 
@@ -572,11 +740,15 @@ echo "Time: $(date)"
 echo ""
 `
 
-	// If using Azure (sudoPrefix), we need to run the entire provisioning script as root
+	// If using sudo (AWS/Azure), use a temp file approach instead of sudo bash -c
 	if sudoPrefix != "" {
+		// Write base script to temp file and execute with sudo
+		// This avoids shell quoting issues
 		scriptHeader = `#!/bin/bash
-# This script runs the provisioning as root via sudo
-sudo bash -c '
+# Create temp script file to avoid quoting issues with sudo bash -c
+TEMP_SCRIPT=$(mktemp /tmp/bastion-provision.XXXXXX.sh)
+cat > "$TEMP_SCRIPT" << 'SCRIPT_END'
+#!/bin/bash
 set -e
 
 echo "=========================================="
@@ -664,6 +836,12 @@ echo "[$(date +%H:%M:%S)] =========================================="
 echo "[$(date +%H:%M:%S)] STEP 2: Updating system packages"
 echo "[$(date +%H:%M:%S)] =========================================="
 export DEBIAN_FRONTEND=noninteractive
+
+# Enable universe repository (required for fail2ban, wireguard-tools on some AMIs)
+echo "[$(date +%H:%M:%S)] Enabling universe repository..."
+add-apt-repository -y universe || apt-add-repository -y universe || true
+sed -i '/^#.*universe/s/^#//' /etc/apt/sources.list || true
+
 apt_get_with_retry apt-get update
 # OPTIMIZATION: Skip apt-get upgrade to speed up provisioning (Ubuntu 24.04 is already recent)
 # apt_get_with_retry apt-get upgrade -y -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold"
@@ -765,18 +943,60 @@ AcceptEnv LANG LC_*
 
 	script += `EOF
 
-# Enable SSH agent forwarding for ProxyJump
-sed -i 's/#AllowAgentForwarding yes/AllowAgentForwarding yes/' /etc/ssh/sshd_config
+# Enable SSH agent forwarding and TCP forwarding for ProxyJump
+# These settings are CRITICAL for bastion ProxyJump functionality
+echo "[$(date +%H:%M:%S)] Configuring TCP forwarding for ProxyJump..."
 
-echo "[$(date +%H:%M:%S)] 🔄 Reloading SSH configuration (not restarting to avoid breaking Pulumi connection)..."
-# Use 'reload' instead of 'restart' to apply config changes without dropping connections
-systemctl reload sshd || {
-    echo "[$(date +%H:%M:%S)] ⚠️  Reload failed, SSH will restart on next connection"
-}
+# First, comment out ALL existing AllowTcpForwarding lines to prevent conflicts
+# This handles all variations: yes, no, Yes, No, commented, uncommented
+sed -i 's/^AllowTcpForwarding/#DISABLED_AllowTcpForwarding/' /etc/ssh/sshd_config
+sed -i 's/^#AllowTcpForwarding/#DISABLED_AllowTcpForwarding/' /etc/ssh/sshd_config
 
-echo "[$(date +%H:%M:%S)] ✅ SSH configuration reloaded"
-echo "[$(date +%H:%M:%S)] ℹ️  Note: SSH is NOT restarted to avoid breaking Pulumi connection"
-echo "[$(date +%H:%M:%S)] ℹ️  Changes are active for NEW connections"
+# Comment out all AllowAgentForwarding lines too
+sed -i 's/^AllowAgentForwarding/#DISABLED_AllowAgentForwarding/' /etc/ssh/sshd_config
+sed -i 's/^#AllowAgentForwarding/#DISABLED_AllowAgentForwarding/' /etc/ssh/sshd_config
+
+# Remove any Match blocks that might restrict these settings (Ubuntu cloud-init sometimes adds these)
+# This is a simple approach - just comment them out
+sed -i 's/^Match /#DISABLED_Match /' /etc/ssh/sshd_config
+
+# Now add our settings at the VERY END of the file (SSH uses last-wins semantics)
+echo "" >> /etc/ssh/sshd_config
+echo "# ==============================================" >> /etc/ssh/sshd_config
+echo "# ProxyJump/Bastion Settings (added by sloth-kubernetes)" >> /etc/ssh/sshd_config
+echo "# These MUST be at the end of the file to override any Match blocks" >> /etc/ssh/sshd_config
+echo "# ==============================================" >> /etc/ssh/sshd_config
+echo "AllowTcpForwarding yes" >> /etc/ssh/sshd_config
+echo "AllowAgentForwarding yes" >> /etc/ssh/sshd_config
+echo "PermitTunnel yes" >> /etc/ssh/sshd_config
+echo "GatewayPorts no" >> /etc/ssh/sshd_config
+
+# Verify the configuration is valid before restarting
+echo "[$(date +%H:%M:%S)] Validating sshd configuration..."
+if sshd -t; then
+    echo "[$(date +%H:%M:%S)] ✅ sshd configuration is valid"
+else
+    echo "[$(date +%H:%M:%S)] ❌ sshd configuration is INVALID! Check /etc/ssh/sshd_config"
+    cat /etc/ssh/sshd_config | tail -30
+fi
+
+# Show what we configured
+echo "[$(date +%H:%M:%S)] 📋 TCP forwarding settings applied:"
+grep -i "AllowTcpForwarding\|AllowAgentForwarding\|PermitTunnel" /etc/ssh/sshd_config | tail -10
+
+echo "[$(date +%H:%M:%S)] 🔄 Restarting SSH daemon to apply TCP forwarding settings..."
+# RESTART is required for AllowTcpForwarding to take effect (reload is not enough)
+# Modern SSH doesn't kill existing connections on restart - they continue running
+systemctl restart sshd
+sleep 3
+
+# Verify the daemon is running and config is loaded
+if systemctl is-active --quiet sshd; then
+    echo "[$(date +%H:%M:%S)] ✅ SSH daemon restarted successfully"
+else
+    echo "[$(date +%H:%M:%S)] ❌ SSH daemon failed to restart!"
+    systemctl status sshd
+fi
 
 echo "[$(date +%H:%M:%S)] ✅ SSH hardening complete"
 
@@ -929,9 +1149,18 @@ echo "[$(date +%H:%M:%S)] Finished at: $(date)"
 echo ""
 `
 
-	// Close the sudo bash -c if we're using Azure
+	// Close the temp file heredoc and execute with sudo if needed (AWS/Azure)
 	if sudoPrefix != "" {
-		script += `'  # End of sudo bash -c
+		script += `
+SCRIPT_END
+
+# Make script executable and run with sudo
+chmod +x "$TEMP_SCRIPT"
+echo "Executing provisioning script with sudo..."
+sudo bash "$TEMP_SCRIPT"
+RESULT=$?
+rm -f "$TEMP_SCRIPT"
+exit $RESULT
 `
 	}
 

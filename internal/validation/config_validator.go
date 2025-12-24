@@ -61,9 +61,12 @@ func ValidateWireGuardConfig(cfg *config.ClusterConfig) error {
 func ValidateProviders(cfg *config.ClusterConfig) error {
 	doEnabled := cfg.Providers.DigitalOcean != nil && cfg.Providers.DigitalOcean.Enabled
 	linodeEnabled := cfg.Providers.Linode != nil && cfg.Providers.Linode.Enabled
+	awsEnabled := cfg.Providers.AWS != nil && cfg.Providers.AWS.Enabled
+	azureEnabled := cfg.Providers.Azure != nil && cfg.Providers.Azure.Enabled
+	gcpEnabled := cfg.Providers.GCP != nil && cfg.Providers.GCP.Enabled
 
 	// Verify at least one provider is enabled
-	if !doEnabled && !linodeEnabled {
+	if !doEnabled && !linodeEnabled && !awsEnabled && !azureEnabled && !gcpEnabled {
 		return fmt.Errorf("at least one cloud provider must be enabled")
 	}
 
@@ -75,6 +78,16 @@ func ValidateProviders(cfg *config.ClusterConfig) error {
 	// Verify Linode token if enabled
 	if linodeEnabled && cfg.Providers.Linode.Token == "" {
 		return fmt.Errorf("Linode API token is required")
+	}
+
+	// AWS credentials are validated via environment variables or config
+	if awsEnabled && cfg.Providers.AWS.Region == "" {
+		return fmt.Errorf("AWS region is required")
+	}
+
+	// Azure credentials are validated via environment variables or config
+	if azureEnabled && cfg.Providers.Azure.Location == "" {
+		return fmt.Errorf("Azure location is required")
 	}
 
 	return nil

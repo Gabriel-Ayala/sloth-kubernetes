@@ -60,14 +60,24 @@ func NewSimpleRealOrchestratorComponent(ctx *pulumi.Context, name string, cfg *c
 		ctx.Log.Info("⚠️  IMPORTANT: Nodes will ONLY be created AFTER bastion is 100% validated", nil)
 		ctx.Log.Info("", nil)
 
+		// Safely get provider tokens (empty if provider is not configured)
+		doToken := ""
+		if cfg.Providers.DigitalOcean != nil {
+			doToken = cfg.Providers.DigitalOcean.Token
+		}
+		linodeToken := ""
+		if cfg.Providers.Linode != nil {
+			linodeToken = cfg.Providers.Linode.Token
+		}
+
 		bastionComponent, err = components.NewBastionComponent(
 			ctx,
 			fmt.Sprintf("%s-bastion", name),
 			cfg.Security.Bastion,
 			sshKeyComponent.PublicKey,
 			sshKeyComponent.PrivateKey,
-			pulumi.String(cfg.Providers.DigitalOcean.Token),
-			pulumi.String(cfg.Providers.Linode.Token),
+			pulumi.String(doToken),
+			pulumi.String(linodeToken),
 			pulumi.Parent(component),
 			pulumi.DependsOn([]pulumi.Resource{sshKeyComponent}),
 		)
@@ -123,14 +133,24 @@ func NewSimpleRealOrchestratorComponent(ctx *pulumi.Context, name string, cfg *c
 	ctx.Log.Info("════════════════════════════════════════════════════════════", nil)
 	ctx.Log.Info("", nil)
 
+	// Safely get provider tokens (empty if provider is not configured)
+	doTokenForNodes := ""
+	if cfg.Providers.DigitalOcean != nil {
+		doTokenForNodes = cfg.Providers.DigitalOcean.Token
+	}
+	linodeTokenForNodes := ""
+	if cfg.Providers.Linode != nil {
+		linodeTokenForNodes = cfg.Providers.Linode.Token
+	}
+
 	nodeComponent, realNodes, err := components.NewRealNodeDeploymentComponent(
 		ctx,
 		fmt.Sprintf("%s-nodes", name),
 		cfg,
 		sshKeyComponent.PublicKey,
 		sshKeyComponent.PrivateKey,
-		pulumi.String(cfg.Providers.DigitalOcean.Token),
-		pulumi.String(cfg.Providers.Linode.Token),
+		pulumi.String(doTokenForNodes),
+		pulumi.String(linodeTokenForNodes),
 		vpcComponent,     // Pass VPC component (nil if bastion disabled)
 		bastionComponent, // Pass bastion for ProxyJump SSH connections
 		pulumi.Parent(component),

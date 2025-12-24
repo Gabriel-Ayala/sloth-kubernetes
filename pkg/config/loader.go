@@ -1,16 +1,12 @@
 package config
 
 import (
-	"encoding/json"
 	"fmt"
-	"io/ioutil"
 	"os"
-	"path/filepath"
 	"strings"
 
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 	pulumiconfig "github.com/pulumi/pulumi/sdk/v3/go/pulumi/config"
-	yaml "gopkg.in/yaml.v3"
 )
 
 // Loader handles configuration loading and validation
@@ -35,34 +31,17 @@ func NewLoader(configPath string) *Loader {
 	}
 }
 
-// Load loads the configuration from file
+// Load loads the configuration from a Lisp file
 func (l *Loader) Load() (*ClusterConfig, error) {
 	// Check if config file exists
 	if _, err := os.Stat(l.configPath); os.IsNotExist(err) {
 		return nil, fmt.Errorf("configuration file not found: %s", l.configPath)
 	}
 
-	// Read file content
-	data, err := ioutil.ReadFile(l.configPath)
+	// Load from Lisp
+	config, err := LoadFromLisp(l.configPath)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read configuration file: %w", err)
-	}
-
-	// Determine file format and parse
-	config := &ClusterConfig{}
-	ext := strings.ToLower(filepath.Ext(l.configPath))
-
-	switch ext {
-	case ".yaml", ".yml":
-		if err := yaml.Unmarshal(data, config); err != nil {
-			return nil, fmt.Errorf("failed to parse YAML configuration: %w", err)
-		}
-	case ".json":
-		if err := json.Unmarshal(data, config); err != nil {
-			return nil, fmt.Errorf("failed to parse JSON configuration: %w", err)
-		}
-	default:
-		return nil, fmt.Errorf("unsupported configuration format: %s", ext)
+		return nil, fmt.Errorf("failed to parse Lisp configuration: %w", err)
 	}
 
 	// Apply environment variable overrides
@@ -73,11 +52,6 @@ func (l *Loader) Load() (*ClusterConfig, error) {
 	// Apply explicit overrides
 	if err := l.applyOverrides(config); err != nil {
 		return nil, fmt.Errorf("failed to apply overrides: %w", err)
-	}
-
-	// Set defaults
-	if err := l.setDefaults(config); err != nil {
-		return nil, fmt.Errorf("failed to set defaults: %w", err)
 	}
 
 	// Validate configuration
@@ -104,8 +78,10 @@ func (l *Loader) LoadFromPulumiConfig(ctx *pulumi.Context) (*ClusterConfig, erro
 		l.config = baseConfig
 	} else {
 		// Initialize with empty config
-		l.config = &ClusterConfig{}
-		l.setDefaults(l.config)
+		l.config = &ClusterConfig{
+			NodePools: make(map[string]NodePool),
+		}
+		applyDefaults(l.config)
 	}
 
 	// Override with Pulumi config values
@@ -132,38 +108,6 @@ func (l *Loader) AddValidator(v Validator) {
 // GetConfig returns the loaded configuration
 func (l *Loader) GetConfig() *ClusterConfig {
 	return l.config
-}
-
-// SaveConfig saves the configuration to a file
-func (l *Loader) SaveConfig(path string) error {
-	if l.config == nil {
-		return fmt.Errorf("no configuration loaded")
-	}
-
-	// Marshal based on file extension
-	ext := strings.ToLower(filepath.Ext(path))
-	var data []byte
-	var err error
-
-	switch ext {
-	case ".yaml", ".yml":
-		data, err = yaml.Marshal(l.config)
-	case ".json":
-		data, err = json.MarshalIndent(l.config, "", "  ")
-	default:
-		return fmt.Errorf("unsupported format: %s", ext)
-	}
-
-	if err != nil {
-		return fmt.Errorf("failed to marshal configuration: %w", err)
-	}
-
-	// Write to file
-	if err := ioutil.WriteFile(path, data, 0644); err != nil {
-		return fmt.Errorf("failed to write configuration: %w", err)
-	}
-
-	return nil
 }
 
 // applyEnvironmentOverrides applies environment variable overrides
@@ -239,8 +183,6 @@ func (l *Loader) applyPulumiOverrides(ctx *pulumi.Context, clusterCfg *ClusterCo
 
 // setConfigValue sets a value in the config using dot notation path
 func (l *Loader) setConfigValue(config *ClusterConfig, path string, value interface{}) error {
-	// This is a simplified implementation
-	// In production, you would use reflection to navigate the struct
 	parts := strings.Split(path, ".")
 
 	switch parts[0] {
@@ -267,79 +209,6 @@ func (l *Loader) setConfigValue(config *ClusterConfig, path string, value interf
 			case "highavailability":
 				config.Cluster.HighAvailability = value.(bool)
 			}
-		}
-	}
-
-	return nil
-}
-
-// setDefaults sets default values for the configuration
-func (l *Loader) setDefaults(config *ClusterConfig) error {
-	// Set metadata defaults
-	if config.Metadata.Name == "" {
-		config.Metadata.Name = "kubernetes-cluster"
-	}
-	if config.Metadata.Environment == "" {
-		config.Metadata.Environment = "development"
-	}
-	if config.Metadata.Version == "" {
-		config.Metadata.Version = "1.0.0"
-	}
-
-	// Set cluster defaults
-	if config.Cluster.Type == "" {
-		config.Cluster.Type = "rke"
-	}
-	if config.Cluster.Version == "" {
-		config.Cluster.Version = "v1.28.7-rancher1-1"
-	}
-
-	// Set network defaults
-	if config.Network.Mode == "" {
-		config.Network.Mode = "vpc"
-	}
-	if config.Network.CIDR == "" {
-		config.Network.CIDR = "10.0.0.0/16"
-	}
-
-	// Set Kubernetes defaults
-	if config.Kubernetes.NetworkPlugin == "" {
-		config.Kubernetes.NetworkPlugin = "canal"
-	}
-	if config.Kubernetes.PodCIDR == "" {
-		config.Kubernetes.PodCIDR = "10.42.0.0/16"
-	}
-	if config.Kubernetes.ServiceCIDR == "" {
-		config.Kubernetes.ServiceCIDR = "10.43.0.0/16"
-	}
-	if config.Kubernetes.ClusterDNS == "" {
-		config.Kubernetes.ClusterDNS = "10.43.0.10"
-	}
-	if config.Kubernetes.ClusterDomain == "" {
-		config.Kubernetes.ClusterDomain = "cluster.local"
-	}
-
-	// Set security defaults
-	if config.Security.SSHConfig.Port == 0 {
-		config.Security.SSHConfig.Port = 22
-	}
-
-	// Set WireGuard defaults if enabled
-	if config.Network.WireGuard != nil && config.Network.WireGuard.Enabled {
-		if config.Network.WireGuard.Port == 0 {
-			config.Network.WireGuard.Port = 51820
-		}
-		if config.Network.WireGuard.PersistentKeepalive == 0 {
-			config.Network.WireGuard.PersistentKeepalive = 25
-		}
-		if config.Network.WireGuard.MTU == 0 {
-			config.Network.WireGuard.MTU = 1420
-		}
-		if len(config.Network.WireGuard.DNS) == 0 {
-			config.Network.WireGuard.DNS = []string{"1.1.1.1", "8.8.8.8"}
-		}
-		if len(config.Network.WireGuard.AllowedIPs) == 0 {
-			config.Network.WireGuard.AllowedIPs = []string{"10.0.0.0/8", "172.16.0.0/12"}
 		}
 	}
 
@@ -434,9 +303,6 @@ func MergeConfigs(configs ...*ClusterConfig) (*ClusterConfig, error) {
 
 // mergeConfig merges source into target
 func mergeConfig(target, source *ClusterConfig) error {
-	// This is a simplified merge implementation
-	// In production, you would use a library like mergo for deep merging
-
 	// Merge metadata
 	if source.Metadata.Name != "" {
 		target.Metadata.Name = source.Metadata.Name
@@ -454,4 +320,107 @@ func mergeConfig(target, source *ClusterConfig) error {
 	}
 
 	return nil
+}
+
+// applyDefaults sets default values for the configuration
+func applyDefaults(config *ClusterConfig) {
+	// Set metadata defaults
+	if config.Metadata.Name == "" {
+		config.Metadata.Name = "kubernetes-cluster"
+	}
+	if config.Metadata.Environment == "" {
+		config.Metadata.Environment = "development"
+	}
+	if config.Metadata.Version == "" {
+		config.Metadata.Version = "1.0.0"
+	}
+
+	// Set cluster defaults
+	if config.Cluster.Type == "" {
+		config.Cluster.Type = "rke2"
+	}
+	if config.Cluster.Distribution == "" {
+		config.Cluster.Distribution = "rke2"
+	}
+
+	// Set network defaults
+	if config.Network.Mode == "" {
+		config.Network.Mode = "wireguard"
+	}
+	if config.Network.PodCIDR == "" {
+		config.Network.PodCIDR = "10.42.0.0/16"
+	}
+	if config.Network.ServiceCIDR == "" {
+		config.Network.ServiceCIDR = "10.43.0.0/16"
+	}
+
+	// Set Kubernetes defaults
+	if config.Kubernetes.Distribution == "" {
+		config.Kubernetes.Distribution = "rke2"
+	}
+	if config.Kubernetes.Version == "" {
+		config.Kubernetes.Version = "v1.28.5+rke2r1"
+	}
+	if config.Kubernetes.NetworkPlugin == "" {
+		config.Kubernetes.NetworkPlugin = "canal"
+	}
+	if config.Kubernetes.PodCIDR == "" {
+		config.Kubernetes.PodCIDR = "10.42.0.0/16"
+	}
+	if config.Kubernetes.ServiceCIDR == "" {
+		config.Kubernetes.ServiceCIDR = "10.43.0.0/16"
+	}
+	if config.Kubernetes.ClusterDNS == "" {
+		config.Kubernetes.ClusterDNS = "10.43.0.10"
+	}
+	if config.Kubernetes.ClusterDomain == "" {
+		config.Kubernetes.ClusterDomain = "cluster.local"
+	}
+
+	// Set security defaults
+	if config.Security.SSHConfig.Port == 0 {
+		config.Security.SSHConfig.Port = 22
+	}
+
+	// Set WireGuard defaults if enabled
+	if config.Network.WireGuard != nil && config.Network.WireGuard.Enabled {
+		if config.Network.WireGuard.Port == 0 {
+			config.Network.WireGuard.Port = 51820
+		}
+		if config.Network.WireGuard.PersistentKeepalive == 0 {
+			config.Network.WireGuard.PersistentKeepalive = 25
+		}
+		if config.Network.WireGuard.MTU == 0 {
+			config.Network.WireGuard.MTU = 1420
+		}
+		if len(config.Network.WireGuard.DNS) == 0 {
+			config.Network.WireGuard.DNS = []string{"1.1.1.1", "8.8.8.8"}
+		}
+		if len(config.Network.WireGuard.AllowedIPs) == 0 {
+			config.Network.WireGuard.AllowedIPs = []string{"10.0.0.0/8", "172.16.0.0/12"}
+		}
+		if config.Network.WireGuard.SubnetCIDR == "" {
+			config.Network.WireGuard.SubnetCIDR = "10.8.0.0/24"
+		}
+	}
+
+	// Initialize NodePools map if nil
+	if config.NodePools == nil {
+		config.NodePools = make(map[string]NodePool)
+	}
+
+	// Merge RKE2 config if distribution is rke2
+	if config.Kubernetes.Distribution == "rke2" {
+		if config.Kubernetes.RKE2 == nil {
+			config.Kubernetes.RKE2 = GetRKE2Defaults()
+		} else {
+			config.Kubernetes.RKE2 = MergeRKE2Config(config.Kubernetes.RKE2, config.Kubernetes.Version)
+		}
+	}
+}
+
+// ValidateConfig validates the cluster configuration
+func ValidateConfig(cfg *ClusterConfig) error {
+	loader := &Loader{}
+	return loader.validate(cfg)
 }

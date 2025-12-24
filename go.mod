@@ -7,6 +7,7 @@ require (
 	github.com/digitalocean/godo v1.167.0
 	github.com/fatih/color v1.18.0
 	github.com/linode/linodego v1.60.0
+	github.com/pulumi/pulumi-aws/sdk/v6 v6.83.2
 	github.com/pulumi/pulumi-azure-native-sdk/compute/v2 v2.90.0
 	github.com/pulumi/pulumi-azure-native-sdk/network/v2 v2.90.0
 	github.com/pulumi/pulumi-azure-native-sdk/resources/v2 v2.90.0

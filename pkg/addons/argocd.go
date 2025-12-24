@@ -204,3 +204,205 @@ func runSSHCommandWithOutput(host string, privateKey string, command string) (st
 
 	return string(output), nil
 }
+
+// AppOfAppsConfig defines configuration for App of Apps pattern
+type AppOfAppsConfig struct {
+	Name       string
+	Namespace  string
+	RepoURL    string
+	Branch     string
+	Path       string
+	SyncPolicy string // manual, automated
+}
+
+// SetupAppOfApps creates an App of Apps Application resource
+func SetupAppOfApps(masterNodeIP string, sshPrivateKey string, cfg *AppOfAppsConfig) error {
+	syncPolicy := ""
+	if cfg.SyncPolicy == "automated" {
+		syncPolicy = `
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+    - CreateNamespace=true`
+	}
+
+	appOfAppsManifest := fmt.Sprintf(`
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: %s
+  namespace: %s
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: %s
+    targetRevision: %s
+    path: %s
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: %s%s
+`, cfg.Name, cfg.Namespace, cfg.RepoURL, cfg.Branch, cfg.Path, cfg.Namespace, syncPolicy)
+
+	applyScript := fmt.Sprintf(`
+set -e
+cat <<'EOF' | kubectl apply -f -
+%s
+EOF
+echo "App of Apps created successfully"
+`, appOfAppsManifest)
+
+	return runSSHCommand(masterNodeIP, sshPrivateKey, applyScript)
+}
+
+// ArgoCDStatus represents the status of ArgoCD installation
+type ArgoCDStatus struct {
+	Healthy       bool
+	Pods          []PodStatus
+	AppsTotal     int
+	AppsSynced    int
+	AppsOutOfSync int
+}
+
+// PodStatus represents a pod's status
+type PodStatus struct {
+	Name   string
+	Status string
+	Ready  string
+}
+
+// GetArgoCDStatus retrieves the status of ArgoCD installation
+func GetArgoCDStatus(masterNodeIP string, sshPrivateKey string, namespace string) (*ArgoCDStatus, error) {
+	statusScript := fmt.Sprintf(`
+set -e
+kubectl get pods -n %s -o json 2>/dev/null || echo '{"items":[]}'
+`, namespace)
+
+	output, err := runSSHCommandWithOutput(masterNodeIP, sshPrivateKey, statusScript)
+	if err != nil {
+		return nil, err
+	}
+
+	status := &ArgoCDStatus{
+		Healthy: true,
+		Pods:    []PodStatus{},
+	}
+
+	// Parse pod status from output (simplified parsing)
+	lines := strings.Split(output, "\n")
+	for _, line := range lines {
+		if strings.Contains(line, "argocd-") && strings.Contains(line, "Running") {
+			parts := strings.Fields(line)
+			if len(parts) >= 3 {
+				status.Pods = append(status.Pods, PodStatus{
+					Name:   parts[0],
+					Status: parts[2],
+					Ready:  parts[1],
+				})
+			}
+		}
+		if strings.Contains(line, "argocd-") && !strings.Contains(line, "Running") && !strings.Contains(line, "NAME") {
+			status.Healthy = false
+		}
+	}
+
+	// Get simple pod list
+	podListScript := fmt.Sprintf(`kubectl get pods -n %s --no-headers 2>/dev/null || true`, namespace)
+	podOutput, _ := runSSHCommandWithOutput(masterNodeIP, sshPrivateKey, podListScript)
+
+	status.Pods = []PodStatus{}
+	for _, line := range strings.Split(podOutput, "\n") {
+		parts := strings.Fields(line)
+		if len(parts) >= 3 && strings.HasPrefix(parts[0], "argocd-") {
+			status.Pods = append(status.Pods, PodStatus{
+				Name:   parts[0],
+				Ready:  parts[1],
+				Status: parts[2],
+			})
+			if parts[2] != "Running" {
+				status.Healthy = false
+			}
+		}
+	}
+
+	// Get application count
+	appCountScript := fmt.Sprintf(`kubectl get applications -n %s --no-headers 2>/dev/null | wc -l || echo "0"`, namespace)
+	countOutput, _ := runSSHCommandWithOutput(masterNodeIP, sshPrivateKey, appCountScript)
+	fmt.Sscanf(strings.TrimSpace(countOutput), "%d", &status.AppsTotal)
+
+	return status, nil
+}
+
+// GetArgoCDPassword retrieves the ArgoCD admin password
+func GetArgoCDPassword(masterNodeIP string, sshPrivateKey string, namespace string) (string, error) {
+	return getArgoCDAdminPassword(masterNodeIP, sshPrivateKey, namespace)
+}
+
+// ArgoCDApp represents an ArgoCD application
+type ArgoCDApp struct {
+	Name       string
+	Namespace  string
+	SyncStatus string
+	Health     string
+	RepoURL    string
+	Path       string
+}
+
+// ListArgoCDApps lists all ArgoCD applications
+func ListArgoCDApps(masterNodeIP string, sshPrivateKey string, namespace string) ([]ArgoCDApp, error) {
+	listScript := fmt.Sprintf(`
+kubectl get applications -n %s -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.status.sync.status}{"\t"}{.status.health.status}{"\t"}{.spec.source.repoURL}{"\t"}{.spec.source.path}{"\n"}{end}' 2>/dev/null || true
+`, namespace)
+
+	output, err := runSSHCommandWithOutput(masterNodeIP, sshPrivateKey, listScript)
+	if err != nil {
+		return nil, err
+	}
+
+	var apps []ArgoCDApp
+	for _, line := range strings.Split(output, "\n") {
+		parts := strings.Split(line, "\t")
+		if len(parts) >= 4 && parts[0] != "" {
+			app := ArgoCDApp{
+				Name:       parts[0],
+				SyncStatus: parts[1],
+				Health:     parts[2],
+				RepoURL:    parts[3],
+			}
+			if len(parts) >= 5 {
+				app.Path = parts[4]
+			}
+			apps = append(apps, app)
+		}
+	}
+
+	return apps, nil
+}
+
+// SyncAllApps triggers sync for all ArgoCD applications
+func SyncAllApps(masterNodeIP string, sshPrivateKey string, namespace string) error {
+	syncScript := fmt.Sprintf(`
+set -e
+for app in $(kubectl get applications -n %s -o jsonpath='{.items[*].metadata.name}'); do
+    echo "Syncing $app..."
+    kubectl patch application $app -n %s --type merge -p '{"operation":{"initiatedBy":{"username":"admin"},"sync":{"revision":"HEAD"}}}'
+done
+echo "All applications sync triggered"
+`, namespace, namespace)
+
+	return runSSHCommand(masterNodeIP, sshPrivateKey, syncScript)
+}
+
+// SyncApp triggers sync for a specific ArgoCD application
+func SyncApp(masterNodeIP string, sshPrivateKey string, namespace string, appName string) error {
+	syncScript := fmt.Sprintf(`
+set -e
+kubectl patch application %s -n %s --type merge -p '{"operation":{"initiatedBy":{"username":"admin"},"sync":{"revision":"HEAD"}}}'
+echo "Application sync triggered"
+`, appName, namespace)
+
+	return runSSHCommand(masterNodeIP, sshPrivateKey, syncScript)
+}

@@ -1,0 +1,812 @@
+package cmd
+
+import (
+	"encoding/json"
+	"fmt"
+	"os"
+	"strings"
+	"time"
+
+	"github.com/fatih/color"
+	"github.com/spf13/cobra"
+
+	"github.com/chalkan3/sloth-kubernetes/pkg/backup"
+)
+
+var (
+	backupKubeconfig      string
+	backupNamespaces      []string
+	backupExcludeNS       []string
+	backupResources       []string
+	backupExcludeRes      []string
+	backupTTL             string
+	backupStorageLocation string
+	backupLabels          []string
+	backupSnapshotVolumes bool
+	backupWait            bool
+	backupTimeout         time.Duration
+	backupOutputJSON      bool
+	backupVeleroNS        string
+
+	// Restore flags
+	restoreFromBackup     string
+	restorePVs            bool
+	restorePreserveNP     bool
+
+	// Schedule flags
+	scheduleExpression    string
+
+	// Install flags
+	installProvider       string
+	installBucket         string
+	installRegion         string
+	installSecretFile     string
+)
+
+var backupCmd = &cobra.Command{
+	Use:   "backup",
+	Short: "Manage cluster backups with Velero",
+	Long: `Manage Kubernetes cluster backups using Velero.
+
+This command provides comprehensive backup and restore capabilities:
+  - Create full cluster backups
+  - Create namespace-specific backups
+  - Restore from backups
+  - Schedule automated backups
+  - Manage backup storage locations
+
+Velero must be installed in your cluster for backup operations to work.`,
+	Example: `  # Create a full cluster backup
+  sloth-kubernetes backup create my-backup
+
+  # Create a namespace-specific backup
+  sloth-kubernetes backup create my-backup --namespaces default,app
+
+  # List all backups
+  sloth-kubernetes backup list
+
+  # Restore from a backup
+  sloth-kubernetes backup restore --from-backup my-backup
+
+  # Create a scheduled backup (daily at midnight)
+  sloth-kubernetes backup schedule create daily-backup --schedule "0 0 * * *"`,
+}
+
+var backupCreateCmd = &cobra.Command{
+	Use:   "create [name]",
+	Short: "Create a new backup",
+	Long:  `Create a new Velero backup of the cluster or specific namespaces.`,
+	Args:  cobra.MaximumNArgs(1),
+	RunE:  runBackupCreate,
+}
+
+var backupListCmd = &cobra.Command{
+	Use:   "list",
+	Short: "List all backups",
+	Long:  `List all Velero backups in the cluster.`,
+	RunE:  runBackupList,
+}
+
+var backupDescribeCmd = &cobra.Command{
+	Use:   "describe [name]",
+	Short: "Describe a backup",
+	Long:  `Show detailed information about a specific backup.`,
+	Args:  cobra.ExactArgs(1),
+	RunE:  runBackupDescribe,
+}
+
+var backupDeleteCmd = &cobra.Command{
+	Use:   "delete [name]",
+	Short: "Delete a backup",
+	Long:  `Delete a Velero backup.`,
+	Args:  cobra.ExactArgs(1),
+	RunE:  runBackupDelete,
+}
+
+var backupRestoreCmd = &cobra.Command{
+	Use:   "restore [name]",
+	Short: "Restore from a backup",
+	Long:  `Create a restore from an existing backup.`,
+	Args:  cobra.MaximumNArgs(1),
+	RunE:  runBackupRestore,
+}
+
+var backupRestoreListCmd = &cobra.Command{
+	Use:   "restore-list",
+	Short: "List all restores",
+	Long:  `List all Velero restores in the cluster.`,
+	RunE:  runRestoreList,
+}
+
+var backupScheduleCmd = &cobra.Command{
+	Use:   "schedule",
+	Short: "Manage backup schedules",
+	Long:  `Manage Velero backup schedules for automated backups.`,
+}
+
+var backupScheduleCreateCmd = &cobra.Command{
+	Use:   "create [name]",
+	Short: "Create a backup schedule",
+	Long: `Create a new backup schedule using cron expressions.
+
+Cron expression format: "minute hour day-of-month month day-of-week"
+Examples:
+  "0 0 * * *"     - Daily at midnight
+  "0 */6 * * *"   - Every 6 hours
+  "0 0 * * 0"     - Weekly on Sunday at midnight
+  "0 0 1 * *"     - Monthly on the 1st at midnight`,
+	Args: cobra.ExactArgs(1),
+	RunE: runScheduleCreate,
+}
+
+var backupScheduleListCmd = &cobra.Command{
+	Use:   "list",
+	Short: "List backup schedules",
+	Long:  `List all Velero backup schedules.`,
+	RunE:  runScheduleList,
+}
+
+var backupScheduleDeleteCmd = &cobra.Command{
+	Use:   "delete [name]",
+	Short: "Delete a backup schedule",
+	Long:  `Delete a Velero backup schedule.`,
+	Args:  cobra.ExactArgs(1),
+	RunE:  runScheduleDelete,
+}
+
+var backupSchedulePauseCmd = &cobra.Command{
+	Use:   "pause [name]",
+	Short: "Pause a backup schedule",
+	Long:  `Pause a Velero backup schedule.`,
+	Args:  cobra.ExactArgs(1),
+	RunE:  runSchedulePause,
+}
+
+var backupScheduleUnpauseCmd = &cobra.Command{
+	Use:   "unpause [name]",
+	Short: "Unpause a backup schedule",
+	Long:  `Unpause a paused Velero backup schedule.`,
+	Args:  cobra.ExactArgs(1),
+	RunE:  runScheduleUnpause,
+}
+
+var backupLocationsCmd = &cobra.Command{
+	Use:   "locations",
+	Short: "List backup storage locations",
+	Long:  `List all configured backup storage locations.`,
+	RunE:  runBackupLocations,
+}
+
+var backupInstallCmd = &cobra.Command{
+	Use:   "install",
+	Short: "Install Velero",
+	Long: `Install Velero in the cluster with the specified storage provider.
+
+Supported providers:
+  - aws       Amazon S3
+  - gcp       Google Cloud Storage
+  - azure     Azure Blob Storage
+  - minio     MinIO (S3-compatible)`,
+	RunE: runBackupInstall,
+}
+
+var backupStatusCmd = &cobra.Command{
+	Use:   "status",
+	Short: "Show Velero status",
+	Long:  `Check if Velero is installed and show its status.`,
+	RunE:  runBackupStatus,
+}
+
+func init() {
+	rootCmd.AddCommand(backupCmd)
+
+	// Subcommands
+	backupCmd.AddCommand(backupCreateCmd)
+	backupCmd.AddCommand(backupListCmd)
+	backupCmd.AddCommand(backupDescribeCmd)
+	backupCmd.AddCommand(backupDeleteCmd)
+	backupCmd.AddCommand(backupRestoreCmd)
+	backupCmd.AddCommand(backupRestoreListCmd)
+	backupCmd.AddCommand(backupScheduleCmd)
+	backupCmd.AddCommand(backupLocationsCmd)
+	backupCmd.AddCommand(backupInstallCmd)
+	backupCmd.AddCommand(backupStatusCmd)
+
+	// Schedule subcommands
+	backupScheduleCmd.AddCommand(backupScheduleCreateCmd)
+	backupScheduleCmd.AddCommand(backupScheduleListCmd)
+	backupScheduleCmd.AddCommand(backupScheduleDeleteCmd)
+	backupScheduleCmd.AddCommand(backupSchedulePauseCmd)
+	backupScheduleCmd.AddCommand(backupScheduleUnpauseCmd)
+
+	// Global backup flags
+	backupCmd.PersistentFlags().StringVar(&backupKubeconfig, "kubeconfig", "", "Path to kubeconfig file")
+	backupCmd.PersistentFlags().StringVar(&backupVeleroNS, "velero-namespace", "velero", "Velero namespace")
+	backupCmd.PersistentFlags().BoolVar(&backupOutputJSON, "json", false, "Output in JSON format")
+
+	// Create flags
+	backupCreateCmd.Flags().StringSliceVar(&backupNamespaces, "namespaces", nil, "Namespaces to include in backup")
+	backupCreateCmd.Flags().StringSliceVar(&backupExcludeNS, "exclude-namespaces", nil, "Namespaces to exclude from backup")
+	backupCreateCmd.Flags().StringSliceVar(&backupResources, "resources", nil, "Resources to include in backup")
+	backupCreateCmd.Flags().StringSliceVar(&backupExcludeRes, "exclude-resources", nil, "Resources to exclude from backup")
+	backupCreateCmd.Flags().StringVar(&backupTTL, "ttl", "720h", "Backup retention period (default 30 days)")
+	backupCreateCmd.Flags().StringVar(&backupStorageLocation, "storage-location", "", "Backup storage location name")
+	backupCreateCmd.Flags().StringSliceVar(&backupLabels, "labels", nil, "Labels to apply to backup (key=value)")
+	backupCreateCmd.Flags().BoolVar(&backupSnapshotVolumes, "snapshot-volumes", true, "Take snapshots of PVs")
+	backupCreateCmd.Flags().BoolVar(&backupWait, "wait", false, "Wait for backup to complete")
+	backupCreateCmd.Flags().DurationVar(&backupTimeout, "timeout", 30*time.Minute, "Timeout when using --wait")
+
+	// Restore flags
+	backupRestoreCmd.Flags().StringVar(&restoreFromBackup, "from-backup", "", "Backup name to restore from (required)")
+	backupRestoreCmd.Flags().StringSliceVar(&backupNamespaces, "namespaces", nil, "Namespaces to restore")
+	backupRestoreCmd.Flags().StringSliceVar(&backupExcludeNS, "exclude-namespaces", nil, "Namespaces to exclude from restore")
+	backupRestoreCmd.Flags().StringSliceVar(&backupResources, "resources", nil, "Resources to restore")
+	backupRestoreCmd.Flags().StringSliceVar(&backupExcludeRes, "exclude-resources", nil, "Resources to exclude from restore")
+	backupRestoreCmd.Flags().BoolVar(&restorePVs, "restore-volumes", true, "Restore persistent volumes")
+	backupRestoreCmd.Flags().BoolVar(&restorePreserveNP, "preserve-nodeports", false, "Preserve original NodePort values")
+	backupRestoreCmd.Flags().BoolVar(&backupWait, "wait", false, "Wait for restore to complete")
+	backupRestoreCmd.Flags().DurationVar(&backupTimeout, "timeout", 30*time.Minute, "Timeout when using --wait")
+
+	// Schedule create flags
+	backupScheduleCreateCmd.Flags().StringVar(&scheduleExpression, "schedule", "", "Cron expression for schedule (required)")
+	backupScheduleCreateCmd.Flags().StringSliceVar(&backupNamespaces, "namespaces", nil, "Namespaces to include")
+	backupScheduleCreateCmd.Flags().StringSliceVar(&backupExcludeNS, "exclude-namespaces", nil, "Namespaces to exclude")
+	backupScheduleCreateCmd.Flags().StringVar(&backupTTL, "ttl", "720h", "Backup retention period")
+	backupScheduleCreateCmd.Flags().BoolVar(&backupSnapshotVolumes, "snapshot-volumes", true, "Take snapshots of PVs")
+	backupScheduleCreateCmd.MarkFlagRequired("schedule")
+
+	// Install flags
+	backupInstallCmd.Flags().StringVar(&installProvider, "provider", "", "Storage provider (aws, gcp, azure, minio)")
+	backupInstallCmd.Flags().StringVar(&installBucket, "bucket", "", "Storage bucket name")
+	backupInstallCmd.Flags().StringVar(&installRegion, "region", "", "Storage region")
+	backupInstallCmd.Flags().StringVar(&installSecretFile, "secret-file", "", "Path to credentials file")
+	backupInstallCmd.MarkFlagRequired("provider")
+	backupInstallCmd.MarkFlagRequired("bucket")
+	backupInstallCmd.MarkFlagRequired("secret-file")
+}
+
+func createBackupManager() *backup.Manager {
+	kubeconfig := backupKubeconfig
+	if kubeconfig == "" {
+		kubeconfig = os.ExpandEnv("$HOME/.kube/config")
+	}
+
+	manager := backup.NewManager(kubeconfig)
+	manager.SetNamespace(backupVeleroNS)
+	return manager
+}
+
+func runBackupCreate(cmd *cobra.Command, args []string) error {
+	printHeader("Create Backup")
+
+	manager := createBackupManager()
+
+	// Check Velero is installed
+	installed, err := manager.CheckVeleroInstalled()
+	if err != nil || !installed {
+		return fmt.Errorf("velero is not installed. Run 'sloth-kubernetes backup install' first")
+	}
+
+	config := backup.BackupConfig{
+		IncludedNamespaces: backupNamespaces,
+		ExcludedNamespaces: backupExcludeNS,
+		IncludedResources:  backupResources,
+		ExcludedResources:  backupExcludeRes,
+		TTL:                backupTTL,
+		StorageLocation:    backupStorageLocation,
+		SnapshotVolumes:    backupSnapshotVolumes,
+		Wait:               backupWait,
+		Timeout:            backupTimeout,
+	}
+
+	if len(args) > 0 {
+		config.Name = args[0]
+	}
+
+	// Parse labels
+	if len(backupLabels) > 0 {
+		config.Labels = make(map[string]string)
+		for _, label := range backupLabels {
+			parts := strings.SplitN(label, "=", 2)
+			if len(parts) == 2 {
+				config.Labels[parts[0]] = parts[1]
+			}
+		}
+	}
+
+	fmt.Println()
+	color.Cyan("Creating backup...")
+
+	result, err := manager.CreateBackup(config)
+	if err != nil {
+		return err
+	}
+
+	if backupWait {
+		color.Cyan("Waiting for backup to complete...")
+		result, err = manager.WaitForBackup(result.Name, backupTimeout)
+		if err != nil {
+			return err
+		}
+	}
+
+	if backupOutputJSON {
+		return outputBackupJSON(result)
+	}
+
+	fmt.Println()
+	printBackupDetails(result)
+
+	return nil
+}
+
+func runBackupList(cmd *cobra.Command, args []string) error {
+	manager := createBackupManager()
+
+	backups, err := manager.ListBackups()
+	if err != nil {
+		return err
+	}
+
+	if backupOutputJSON {
+		return outputBackupJSON(backups)
+	}
+
+	printHeader("Backups")
+	fmt.Println()
+
+	if len(backups) == 0 {
+		color.Yellow("No backups found")
+		return nil
+	}
+
+	fmt.Printf("%-30s %-15s %-10s %-10s %-20s\n", "NAME", "STATUS", "ERRORS", "WARNINGS", "CREATED")
+	fmt.Println(strings.Repeat("-", 90))
+
+	for _, b := range backups {
+		statusColor := getBackupStatusColor(string(b.Status))
+		created := b.StartTimestamp.Format("2006-01-02 15:04:05")
+		if b.StartTimestamp.IsZero() {
+			created = "-"
+		}
+		fmt.Printf("%-30s ", b.Name)
+		statusColor.Printf("%-15s ", b.Status)
+		fmt.Printf("%-10d %-10d %-20s\n", b.Errors, b.Warnings, created)
+	}
+
+	fmt.Printf("\nTotal: %d backups\n", len(backups))
+	return nil
+}
+
+func runBackupDescribe(cmd *cobra.Command, args []string) error {
+	manager := createBackupManager()
+
+	b, err := manager.GetBackup(args[0])
+	if err != nil {
+		return err
+	}
+
+	if backupOutputJSON {
+		return outputBackupJSON(b)
+	}
+
+	printHeader("Backup Details")
+	printBackupDetails(b)
+
+	return nil
+}
+
+func runBackupDelete(cmd *cobra.Command, args []string) error {
+	manager := createBackupManager()
+
+	color.Yellow("Deleting backup %s...", args[0])
+
+	if err := manager.DeleteBackup(args[0]); err != nil {
+		return err
+	}
+
+	color.Green("Backup %s deleted successfully", args[0])
+	return nil
+}
+
+func runBackupRestore(cmd *cobra.Command, args []string) error {
+	printHeader("Restore from Backup")
+
+	if restoreFromBackup == "" && len(args) == 0 {
+		return fmt.Errorf("--from-backup flag is required")
+	}
+
+	backupName := restoreFromBackup
+	if backupName == "" && len(args) > 0 {
+		backupName = args[0]
+	}
+
+	manager := createBackupManager()
+
+	// Check Velero is installed
+	installed, err := manager.CheckVeleroInstalled()
+	if err != nil || !installed {
+		return fmt.Errorf("velero is not installed")
+	}
+
+	config := backup.RestoreConfig{
+		BackupName:         backupName,
+		IncludedNamespaces: backupNamespaces,
+		ExcludedNamespaces: backupExcludeNS,
+		IncludedResources:  backupResources,
+		ExcludedResources:  backupExcludeRes,
+		RestorePVs:         restorePVs,
+		PreserveNodePorts:  restorePreserveNP,
+		Wait:               backupWait,
+		Timeout:            backupTimeout,
+	}
+
+	if len(args) > 0 && restoreFromBackup != "" {
+		config.Name = args[0]
+	}
+
+	fmt.Println()
+	color.Cyan("Creating restore from backup %s...", backupName)
+
+	result, err := manager.CreateRestore(config)
+	if err != nil {
+		return err
+	}
+
+	if backupWait {
+		color.Cyan("Waiting for restore to complete...")
+		result, err = manager.WaitForRestore(result.Name, backupTimeout)
+		if err != nil {
+			return err
+		}
+	}
+
+	if backupOutputJSON {
+		return outputBackupJSON(result)
+	}
+
+	fmt.Println()
+	printRestoreDetails(result)
+
+	return nil
+}
+
+func runRestoreList(cmd *cobra.Command, args []string) error {
+	manager := createBackupManager()
+
+	restores, err := manager.ListRestores()
+	if err != nil {
+		return err
+	}
+
+	if backupOutputJSON {
+		return outputBackupJSON(restores)
+	}
+
+	printHeader("Restores")
+	fmt.Println()
+
+	if len(restores) == 0 {
+		color.Yellow("No restores found")
+		return nil
+	}
+
+	fmt.Printf("%-30s %-25s %-15s %-10s %-10s\n", "NAME", "BACKUP", "STATUS", "ERRORS", "WARNINGS")
+	fmt.Println(strings.Repeat("-", 95))
+
+	for _, r := range restores {
+		statusColor := getBackupStatusColor(string(r.Status))
+		fmt.Printf("%-30s %-25s ", r.Name, r.BackupName)
+		statusColor.Printf("%-15s ", r.Status)
+		fmt.Printf("%-10d %-10d\n", r.Errors, r.Warnings)
+	}
+
+	fmt.Printf("\nTotal: %d restores\n", len(restores))
+	return nil
+}
+
+func runScheduleCreate(cmd *cobra.Command, args []string) error {
+	printHeader("Create Backup Schedule")
+
+	manager := createBackupManager()
+
+	// Check Velero is installed
+	installed, err := manager.CheckVeleroInstalled()
+	if err != nil || !installed {
+		return fmt.Errorf("velero is not installed")
+	}
+
+	config := backup.ScheduleConfig{
+		Name:               args[0],
+		Schedule:           scheduleExpression,
+		IncludedNamespaces: backupNamespaces,
+		ExcludedNamespaces: backupExcludeNS,
+		TTL:                backupTTL,
+		SnapshotVolumes:    backupSnapshotVolumes,
+	}
+
+	fmt.Println()
+	color.Cyan("Creating backup schedule...")
+
+	result, err := manager.CreateSchedule(config)
+	if err != nil {
+		return err
+	}
+
+	if backupOutputJSON {
+		return outputBackupJSON(result)
+	}
+
+	fmt.Println()
+	color.Green("Schedule created successfully!")
+	fmt.Printf("\n  Name:     %s\n", result.Name)
+	fmt.Printf("  Schedule: %s\n", result.Schedule)
+
+	return nil
+}
+
+func runScheduleList(cmd *cobra.Command, args []string) error {
+	manager := createBackupManager()
+
+	schedules, err := manager.ListSchedules()
+	if err != nil {
+		return err
+	}
+
+	if backupOutputJSON {
+		return outputBackupJSON(schedules)
+	}
+
+	printHeader("Backup Schedules")
+	fmt.Println()
+
+	if len(schedules) == 0 {
+		color.Yellow("No schedules found")
+		return nil
+	}
+
+	fmt.Printf("%-25s %-20s %-10s %-25s\n", "NAME", "SCHEDULE", "PAUSED", "LAST BACKUP")
+	fmt.Println(strings.Repeat("-", 85))
+
+	for _, s := range schedules {
+		paused := "No"
+		if s.Paused {
+			paused = "Yes"
+		}
+		lastBackup := s.LastBackup.Format("2006-01-02 15:04:05")
+		if s.LastBackup.IsZero() {
+			lastBackup = "-"
+		}
+		fmt.Printf("%-25s %-20s %-10s %-25s\n", s.Name, s.Schedule, paused, lastBackup)
+	}
+
+	fmt.Printf("\nTotal: %d schedules\n", len(schedules))
+	return nil
+}
+
+func runScheduleDelete(cmd *cobra.Command, args []string) error {
+	manager := createBackupManager()
+
+	color.Yellow("Deleting schedule %s...", args[0])
+
+	if err := manager.DeleteSchedule(args[0]); err != nil {
+		return err
+	}
+
+	color.Green("Schedule %s deleted successfully", args[0])
+	return nil
+}
+
+func runSchedulePause(cmd *cobra.Command, args []string) error {
+	manager := createBackupManager()
+
+	if err := manager.PauseSchedule(args[0]); err != nil {
+		return err
+	}
+
+	color.Green("Schedule %s paused", args[0])
+	return nil
+}
+
+func runScheduleUnpause(cmd *cobra.Command, args []string) error {
+	manager := createBackupManager()
+
+	if err := manager.UnpauseSchedule(args[0]); err != nil {
+		return err
+	}
+
+	color.Green("Schedule %s unpaused", args[0])
+	return nil
+}
+
+func runBackupLocations(cmd *cobra.Command, args []string) error {
+	manager := createBackupManager()
+
+	locations, err := manager.GetBackupLocations()
+	if err != nil {
+		return err
+	}
+
+	if backupOutputJSON {
+		return outputBackupJSON(locations)
+	}
+
+	printHeader("Backup Storage Locations")
+	fmt.Println()
+
+	if len(locations) == 0 {
+		color.Yellow("No backup storage locations found")
+		return nil
+	}
+
+	fmt.Printf("%-20s %-15s %-25s %-15s %-10s\n", "NAME", "PROVIDER", "BUCKET", "REGION", "DEFAULT")
+	fmt.Println(strings.Repeat("-", 90))
+
+	for _, l := range locations {
+		isDefault := "No"
+		if l.Default {
+			isDefault = "Yes"
+		}
+		fmt.Printf("%-20s %-15s %-25s %-15s %-10s\n", l.Name, l.Provider, l.Bucket, l.Region, isDefault)
+	}
+
+	return nil
+}
+
+func runBackupInstall(cmd *cobra.Command, args []string) error {
+	printHeader("Install Velero")
+
+	manager := createBackupManager()
+
+	// Check if already installed
+	installed, _ := manager.CheckVeleroInstalled()
+	if installed {
+		return fmt.Errorf("velero is already installed")
+	}
+
+	fmt.Println()
+	color.Cyan("Installing Velero with %s provider...", installProvider)
+	fmt.Printf("  Bucket: %s\n", installBucket)
+	fmt.Printf("  Region: %s\n", installRegion)
+	fmt.Println()
+
+	if err := manager.InstallVelero(installProvider, installBucket, installRegion, installSecretFile); err != nil {
+		return err
+	}
+
+	color.Green("Velero installed successfully!")
+	fmt.Println()
+	fmt.Println("Next steps:")
+	fmt.Println("  1. Create a backup: sloth-kubernetes backup create my-backup")
+	fmt.Println("  2. Create a schedule: sloth-kubernetes backup schedule create daily --schedule '0 0 * * *'")
+
+	return nil
+}
+
+func runBackupStatus(cmd *cobra.Command, args []string) error {
+	printHeader("Velero Status")
+
+	manager := createBackupManager()
+
+	installed, err := manager.CheckVeleroInstalled()
+	if err != nil {
+		return fmt.Errorf("failed to check Velero status: %w", err)
+	}
+
+	fmt.Println()
+	if installed {
+		color.Green("[OK] Velero is installed")
+
+		// Get backup locations
+		locations, err := manager.GetBackupLocations()
+		if err == nil && len(locations) > 0 {
+			fmt.Printf("\nBackup Locations: %d configured\n", len(locations))
+			for _, l := range locations {
+				fmt.Printf("  - %s (%s)\n", l.Name, l.Provider)
+			}
+		}
+
+		// Get backup count
+		backups, err := manager.ListBackups()
+		if err == nil {
+			fmt.Printf("\nBackups: %d total\n", len(backups))
+		}
+
+		// Get schedule count
+		schedules, err := manager.ListSchedules()
+		if err == nil {
+			fmt.Printf("Schedules: %d configured\n", len(schedules))
+		}
+	} else {
+		color.Red("[NOT INSTALLED] Velero is not installed")
+		fmt.Println()
+		fmt.Println("To install Velero, run:")
+		fmt.Println("  sloth-kubernetes backup install --provider <provider> --bucket <bucket> --region <region> --secret-file <file>")
+	}
+
+	return nil
+}
+
+// Helper functions
+
+func printBackupDetails(b *backup.Backup) {
+	statusColor := getBackupStatusColor(string(b.Status))
+
+	fmt.Printf("  Name:       %s\n", b.Name)
+	fmt.Printf("  Status:     ")
+	statusColor.Printf("%s\n", b.Status)
+	fmt.Printf("  Phase:      %s\n", b.Phase)
+
+	if len(b.IncludedNamespaces) > 0 {
+		fmt.Printf("  Namespaces: %s\n", strings.Join(b.IncludedNamespaces, ", "))
+	} else {
+		fmt.Printf("  Namespaces: All\n")
+	}
+
+	if !b.StartTimestamp.IsZero() {
+		fmt.Printf("  Started:    %s\n", b.StartTimestamp.Format("2006-01-02 15:04:05"))
+	}
+	if !b.CompletionTimestamp.IsZero() {
+		fmt.Printf("  Completed:  %s\n", b.CompletionTimestamp.Format("2006-01-02 15:04:05"))
+		duration := b.CompletionTimestamp.Sub(b.StartTimestamp)
+		fmt.Printf("  Duration:   %s\n", duration.Round(time.Second))
+	}
+	if !b.Expiration.IsZero() {
+		fmt.Printf("  Expires:    %s\n", b.Expiration.Format("2006-01-02 15:04:05"))
+	}
+
+	fmt.Printf("  Errors:     %d\n", b.Errors)
+	fmt.Printf("  Warnings:   %d\n", b.Warnings)
+
+	if b.StorageLocation != "" {
+		fmt.Printf("  Location:   %s\n", b.StorageLocation)
+	}
+}
+
+func printRestoreDetails(r *backup.Restore) {
+	statusColor := getBackupStatusColor(string(r.Status))
+
+	fmt.Printf("  Name:       %s\n", r.Name)
+	fmt.Printf("  Backup:     %s\n", r.BackupName)
+	fmt.Printf("  Status:     ")
+	statusColor.Printf("%s\n", r.Status)
+	fmt.Printf("  Phase:      %s\n", r.Phase)
+
+	if len(r.IncludedNamespaces) > 0 {
+		fmt.Printf("  Namespaces: %s\n", strings.Join(r.IncludedNamespaces, ", "))
+	}
+
+	if !r.StartTimestamp.IsZero() {
+		fmt.Printf("  Started:    %s\n", r.StartTimestamp.Format("2006-01-02 15:04:05"))
+	}
+	if !r.CompletionTimestamp.IsZero() {
+		fmt.Printf("  Completed:  %s\n", r.CompletionTimestamp.Format("2006-01-02 15:04:05"))
+	}
+
+	fmt.Printf("  Errors:     %d\n", r.Errors)
+	fmt.Printf("  Warnings:   %d\n", r.Warnings)
+}
+
+func getBackupStatusColor(status string) *color.Color {
+	switch status {
+	case "Completed":
+		return color.New(color.FgGreen)
+	case "InProgress", "New":
+		return color.New(color.FgCyan)
+	case "Failed":
+		return color.New(color.FgRed)
+	case "PartiallyFailed":
+		return color.New(color.FgYellow)
+	default:
+		return color.New(color.FgWhite)
+	}
+}
+
+func outputBackupJSON(data interface{}) error {
+	output, err := json.MarshalIndent(data, "", "  ")
+	if err != nil {
+		return err
+	}
+	fmt.Println(string(output))
+	return nil
+}

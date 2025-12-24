@@ -19,18 +19,18 @@ var (
 )
 
 var kubeconfigCmd = &cobra.Command{
-	Use:   "kubeconfig",
+	Use:   "kubeconfig [stack-name]",
 	Short: "Get kubeconfig for kubectl access",
 	Long: `Retrieve the kubeconfig file for accessing the Kubernetes cluster.
 The kubeconfig can be printed to stdout or saved to a file.`,
 	Example: `  # Print to stdout
-  kubernetes-create kubeconfig
+  sloth-kubernetes kubeconfig aws-cluster
 
   # Save to file
-  kubernetes-create kubeconfig -o ~/.kube/config
+  sloth-kubernetes kubeconfig aws-cluster -o ~/.kube/config
 
-  # Save to default location
-  kubernetes-create kubeconfig -o ~/.kube/config`,
+  # Using --stack flag (alternative)
+  sloth-kubernetes kubeconfig --stack aws-cluster -o ~/.kube/config`,
 	RunE: runKubeconfig,
 }
 
@@ -43,8 +43,14 @@ func init() {
 func runKubeconfig(cmd *cobra.Command, args []string) error {
 	ctx := context.Background()
 
+	// Get stack name from argument or flag
+	targetStack := stackName
+	if len(args) > 0 {
+		targetStack = args[0]
+	}
+
 	s := spinner.New(spinner.CharSets[14], 100*time.Millisecond)
-	s.Suffix = " Retrieving kubeconfig..."
+	s.Suffix = fmt.Sprintf(" Retrieving kubeconfig for %s...", targetStack)
 	s.Start()
 
 	// Create workspace with S3 support
@@ -55,7 +61,7 @@ func runKubeconfig(cmd *cobra.Command, args []string) error {
 	}
 
 	// Use fully qualified stack name for S3 backend
-	fullyQualifiedStackName := fmt.Sprintf("organization/sloth-kubernetes/%s", stackName)
+	fullyQualifiedStackName := fmt.Sprintf("organization/sloth-kubernetes/%s", targetStack)
 	stack, err := auto.SelectStack(ctx, fullyQualifiedStackName, workspace)
 	if err != nil {
 		s.Stop()

@@ -91,10 +91,10 @@ func NewK3sRealComponent(ctx *pulumi.Context, name string, nodes []*RealNodeComp
 		DialErrorLimit: pulumi.Int(30),
 	}
 	if bastionComponent != nil {
-		// Bastion is on Linode in this config, so it uses "root"
+		// Use the correct SSH user for the bastion based on its provider
 		firstMasterConnArgs.Proxy = &remote.ProxyConnectionArgs{
 			Host:       bastionComponent.PublicIP,
-			User:       pulumi.String("root"),
+			User:       getSSHUserForProvider(bastionComponent.Provider),
 			PrivateKey: sshPrivateKey,
 		}
 	}
@@ -158,8 +158,8 @@ echo "✅ K3s service is running!"
 # Fix kubeconfig to use VPN IP instead of 127.0.0.1 or 0.0.0.0
 echo "🔧 Fixing kubeconfig to use VPN IP..."
 if [ -f /etc/rancher/k3s/k3s.yaml ]; then
-  sed -i "s|https://127.0.0.1:6443|https://%s:6443|g" /etc/rancher/k3s/k3s.yaml
-  sed -i "s|https://0.0.0.0:6443|https://%s:6443|g" /etc/rancher/k3s/k3s.yaml
+  sudo sed -i "s|https://127.0.0.1:6443|https://%s:6443|g" /etc/rancher/k3s/k3s.yaml
+  sudo sed -i "s|https://0.0.0.0:6443|https://%s:6443|g" /etc/rancher/k3s/k3s.yaml
   echo "✅ Kubeconfig updated to use VPN IP %s"
 fi
 
@@ -239,10 +239,10 @@ cat /etc/rancher/k3s/k3s.yaml
 		DialErrorLimit: pulumi.Int(30),
 	}
 	if bastionComponent != nil {
-		// Bastion is on Linode in this config, so it uses "root"
+		// Use the correct SSH user for the bastion based on its provider
 		tokenFetchConnArgs.Proxy = &remote.ProxyConnectionArgs{
 			Host:       bastionComponent.PublicIP,
-			User:       pulumi.String("root"),
+			User:       getSSHUserForProvider(bastionComponent.Provider),
 			PrivateKey: sshPrivateKey,
 		}
 	}
@@ -252,12 +252,12 @@ cat /etc/rancher/k3s/k3s.yaml
 		Create: pulumi.String(`#!/bin/bash
 set -e
 
-# Wait for token file to exist
+# Wait for token file to exist (using sudo for root-owned files)
 timeout=120
 elapsed=0
 while [ $elapsed -lt $timeout ]; do
-  if [ -f /var/lib/rancher/k3s/server/node-token ]; then
-    cat /var/lib/rancher/k3s/server/node-token
+  if sudo test -f /var/lib/rancher/k3s/server/node-token; then
+    sudo cat /var/lib/rancher/k3s/server/node-token
     exit 0
   fi
   sleep 3
@@ -300,10 +300,10 @@ exit 1
 			DialErrorLimit: pulumi.Int(30),
 		}
 		if bastionComponent != nil {
-			// Bastion is on Linode in this config, so it uses "root"
+			// Use the correct SSH user for the bastion based on its provider
 			masterConnArgs.Proxy = &remote.ProxyConnectionArgs{
 				Host:       bastionComponent.PublicIP,
-				User:       pulumi.String("root"),
+				User:       getSSHUserForProvider(bastionComponent.Provider),
 				PrivateKey: sshPrivateKey,
 			}
 		}
@@ -438,10 +438,10 @@ echo "✅ K3s master %d joined cluster"
 			DialErrorLimit: pulumi.Int(30),
 		}
 		if bastionComponent != nil {
-			// Bastion is on Linode in this config, so it uses "root"
+			// Use the correct SSH user for the bastion based on its provider
 			workerConnArgs.Proxy = &remote.ProxyConnectionArgs{
 				Host:       bastionComponent.PublicIP,
-				User:       pulumi.String("root"),
+				User:       getSSHUserForProvider(bastionComponent.Provider),
 				PrivateKey: sshPrivateKey,
 			}
 		}

@@ -110,6 +110,8 @@ func TestRunKustomize_Exists(t *testing.T) {
 
 func TestKustomizeCmd_Purposes(t *testing.T) {
 	long := kustomizeCmd.Long
-	assert.Contains(t, long, "multiple purposes", "Should mention multiple purposes")
+	// Note: "multiple" and "purposes" are on separate lines in the Long description
+	assert.Contains(t, long, "multiple", "Should mention multiple")
+	assert.Contains(t, long, "purposes", "Should mention purposes")
 	assert.Contains(t, long, "customize", "Should mention customization")
 }

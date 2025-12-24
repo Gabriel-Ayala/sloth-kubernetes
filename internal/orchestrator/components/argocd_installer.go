@@ -73,18 +73,20 @@ func NewArgoCDInstallerComponent(
 		appsPath = "argocd/apps"
 	}
 
-	// Setup connection args
+	// Setup connection args - use correct SSH user based on provider
+	masterUser := getSSHUserForProvider(firstMaster.Provider)
 	connArgs := &remote.ConnectionArgs{
 		Host:           firstMaster.WireGuardIP, // Use VPN IP for private network
-		User:           pulumi.String("root"),
+		User:           masterUser,
 		PrivateKey:     sshPrivateKey,
 		DialErrorLimit: pulumi.Int(30),
 	}
 
 	if bastionComponent != nil {
+		bastionUser := getSSHUserForProvider(bastionComponent.Provider)
 		connArgs.Proxy = &remote.ProxyConnectionArgs{
 			Host:       bastionComponent.PublicIP,
-			User:       pulumi.String("root"),
+			User:       bastionUser,
 			PrivateKey: sshPrivateKey,
 		}
 	}

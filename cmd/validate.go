@@ -65,17 +65,17 @@ func runValidate(cmd *cobra.Command, args []string) error {
 	fmt.Println()
 
 	// Load configuration
-	cfg, err := config.LoadFromYAML(configPath)
+	cfg, err := config.LoadFromLisp(configPath)
 	if err != nil {
-		color.Red("❌ Failed to parse YAML configuration")
+		color.Red("❌ Failed to parse Lisp configuration")
 		fmt.Println()
 		color.Yellow("Error details:")
 		fmt.Printf("  %v\n", err)
 		fmt.Println()
 		color.Yellow("💡 Common issues:")
-		fmt.Println("  • Check YAML syntax (indentation, colons, dashes)")
+		fmt.Println("  • Check S-expression syntax (matching parentheses)")
 		fmt.Println("  • Ensure all required fields are present")
-		fmt.Println("  • Verify quotes around strings with special characters")
+		fmt.Println("  • Verify quotes around strings")
 		fmt.Println()
 		return fmt.Errorf("failed to parse configuration: %w", err)
 	}

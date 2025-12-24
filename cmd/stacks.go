@@ -11,6 +11,8 @@ import (
 
 	"github.com/fatih/color"
 	"github.com/pulumi/pulumi/sdk/v3/go/auto"
+	"github.com/pulumi/pulumi/sdk/v3/go/auto/optdestroy"
+	"github.com/pulumi/pulumi/sdk/v3/go/auto/optremove"
 	"github.com/pulumi/pulumi/sdk/v3/go/common/tokens"
 	"github.com/pulumi/pulumi/sdk/v3/go/common/workspace"
 	"github.com/spf13/cobra"
@@ -169,8 +171,8 @@ var (
 )
 
 func init() {
-	// MOVED TO pulumi.go - stacks is now under 'pulumi stack' subcommand
-	// rootCmd.AddCommand(stacksCmd)
+	// Add stacks command to root for direct access
+	rootCmd.AddCommand(stacksCmd)
 
 	// Add subcommands
 	stacksCmd.AddCommand(listStacksCmd)
@@ -191,6 +193,7 @@ func init() {
 
 	// Delete flags
 	deleteStackCmd.Flags().BoolVar(&destroyStack, "destroy", false, "Destroy all resources before deleting stack")
+	deleteStackCmd.Flags().BoolVar(&forceDelete, "force", false, "Force delete stack even if it has resources")
 
 	// Output flags
 	outputCmd.Flags().StringVar(&outputKey, "key", "", "Show specific output key")
@@ -326,23 +329,74 @@ func runStackInfo(cmd *cobra.Command, args []string) error {
 }
 
 func runDeleteStack(cmd *cobra.Command, args []string) error {
+	ctx := context.Background()
+
 	if len(args) < 1 {
 		return fmt.Errorf("usage: sloth-kubernetes stacks delete <stack-name>")
 	}
 
-	stackName := args[0]
+	targetStackName := args[0]
 
-	printHeader(fmt.Sprintf("🗑️  Deleting Stack: %s", stackName))
+	printHeader(fmt.Sprintf("🗑️  Deleting Stack: %s", targetStackName))
 
 	if destroyStack {
 		color.Red("⚠️  This will DESTROY all resources in the stack!")
-		color.Yellow("⚠️  Stack destruction will be implemented in next phase")
+		color.Yellow("Resources will be destroyed before stack removal.")
+	} else if forceDelete {
+		color.Red("⚠️  Using --force: Stack will be removed even if it still has resources!")
+		color.Yellow("This may leave orphaned cloud resources that need manual cleanup.")
 	} else {
 		color.Yellow("Stack will be deleted but resources will remain (use --destroy to remove resources)")
+		color.Yellow("Use --force to remove stacks with orphaned resources")
+	}
+
+	// Confirm unless --yes is passed
+	if !autoApprove {
+		fmt.Println()
+		if !confirm(fmt.Sprintf("Are you sure you want to delete stack '%s'?", targetStackName)) {
+			color.Yellow("Deletion cancelled")
+			return nil
+		}
 	}
 
 	fmt.Println()
-	color.Cyan(fmt.Sprintf("Stack: %s", stackName))
+
+	// Create workspace with S3 support
+	workspace, err := createWorkspaceWithS3Support(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to create workspace: %w", err)
+	}
+
+	// If --destroy flag is set, destroy resources first
+	if destroyStack {
+		fullyQualifiedStackName := fmt.Sprintf("organization/sloth-kubernetes/%s", targetStackName)
+		stack, err := auto.SelectStack(ctx, fullyQualifiedStackName, workspace)
+		if err != nil {
+			return fmt.Errorf("failed to select stack for destroy: %w", err)
+		}
+
+		fmt.Println("Destroying resources...")
+		_, err = stack.Destroy(ctx, optdestroy.ProgressStreams(os.Stdout))
+		if err != nil {
+			return fmt.Errorf("failed to destroy resources: %w", err)
+		}
+		printSuccess("Resources destroyed")
+	}
+
+	// Remove the stack
+	fmt.Printf("Removing stack '%s'...\n", targetStackName)
+	if forceDelete {
+		color.Yellow("Using --force: Stack will be removed even if it has resources")
+		err = workspace.RemoveStack(ctx, targetStackName, optremove.Force())
+	} else {
+		err = workspace.RemoveStack(ctx, targetStackName)
+	}
+	if err != nil {
+		return fmt.Errorf("failed to remove stack: %w", err)
+	}
+
+	fmt.Println()
+	printSuccess(fmt.Sprintf("Stack '%s' deleted successfully", targetStackName))
 
 	return nil
 }

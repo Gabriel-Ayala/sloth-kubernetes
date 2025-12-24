@@ -169,9 +169,17 @@ func ValidateNodePools(cfg *config.ClusterConfig) error {
 			if cfg.Providers.Linode == nil || !cfg.Providers.Linode.Enabled {
 				errors = append(errors, fmt.Sprintf("pool '%s' uses Linode but provider is not enabled", poolName))
 			}
+		case "aws":
+			if cfg.Providers.AWS == nil || !cfg.Providers.AWS.Enabled {
+				errors = append(errors, fmt.Sprintf("pool '%s' uses AWS but provider is not enabled", poolName))
+			}
 		case "azure":
 			if cfg.Providers.Azure == nil || !cfg.Providers.Azure.Enabled {
 				errors = append(errors, fmt.Sprintf("pool '%s' uses Azure but provider is not enabled", poolName))
+			}
+		case "gcp":
+			if cfg.Providers.GCP == nil || !cfg.Providers.GCP.Enabled {
+				errors = append(errors, fmt.Sprintf("pool '%s' uses GCP but provider is not enabled", poolName))
 			}
 		default:
 			errors = append(errors, fmt.Sprintf("pool '%s' has invalid provider: %s", poolName, pool.Provider))
@@ -223,9 +231,17 @@ func ValidateNodePools(cfg *config.ClusterConfig) error {
 			if cfg.Providers.Linode == nil || !cfg.Providers.Linode.Enabled {
 				errors = append(errors, fmt.Sprintf("node %d uses Linode but provider is not enabled", i))
 			}
+		case "aws":
+			if cfg.Providers.AWS == nil || !cfg.Providers.AWS.Enabled {
+				errors = append(errors, fmt.Sprintf("node %d uses AWS but provider is not enabled", i))
+			}
 		case "azure":
 			if cfg.Providers.Azure == nil || !cfg.Providers.Azure.Enabled {
 				errors = append(errors, fmt.Sprintf("node %d uses Azure but provider is not enabled", i))
+			}
+		case "gcp":
+			if cfg.Providers.GCP == nil || !cfg.Providers.GCP.Enabled {
+				errors = append(errors, fmt.Sprintf("node %d uses GCP but provider is not enabled", i))
 			}
 		default:
 			errors = append(errors, fmt.Sprintf("node %d has invalid provider: %s", i, node.Provider))

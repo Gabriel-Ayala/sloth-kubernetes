@@ -79,21 +79,38 @@ func NewWireGuardMeshComponent(ctx *pulumi.Context, name string, nodes []*RealNo
 	// Generate keys for bastion if present
 	if bastionComponent != nil {
 		bastionWgIP := "10.8.0.5"
-		keyCmd, err := remote.NewCommand(ctx, fmt.Sprintf("%s-keygen-bastion", name), &remote.CommandArgs{
-			Connection: remote.ConnectionArgs{
-				Host:           bastionComponent.PublicIP,
-				User:           pulumi.String("root"),
-				PrivateKey:     sshPrivateKey,
-				DialErrorLimit: pulumi.Int(30),
-			},
-			Create: pulumi.String(`#!/bin/bash
+		// Use the correct SSH user based on the bastion's provider
+		bastionUser := getSSHUserForProvider(bastionComponent.Provider)
+		// Get sudo prefix for bastion (needed for non-root users like ubuntu on AWS)
+		bastionSudoPrefix := getSudoPrefixForUser(bastionComponent.Provider)
+		// Build keygen script with sudo if needed
+		// For non-root users, we run the entire script in a sudo bash shell
+		bastionKeygenScript := bastionSudoPrefix.ApplyT(func(sudo string) string {
+			if sudo == "" {
+				// Root user - run directly
+				return `#!/bin/bash
 set -e
 umask 077
 mkdir -p /etc/wireguard
 cd /etc/wireguard
 wg genkey | tee privatekey | wg pubkey > publickey
 cat publickey
-`),
+`
+			}
+			// Non-root user - run in sudo bash
+			return `#!/bin/bash
+set -e
+sudo bash -c 'umask 077 && mkdir -p /etc/wireguard && cd /etc/wireguard && wg genkey | tee privatekey | wg pubkey > publickey && cat publickey'
+`
+		}).(pulumi.StringOutput)
+		keyCmd, err := remote.NewCommand(ctx, fmt.Sprintf("%s-keygen-bastion", name), &remote.CommandArgs{
+			Connection: remote.ConnectionArgs{
+				Host:           bastionComponent.PublicIP,
+				User:           bastionUser,
+				PrivateKey:     sshPrivateKey,
+				DialErrorLimit: pulumi.Int(30),
+			},
+			Create: bastionKeygenScript,
 		}, pulumi.Parent(component), pulumi.Timeouts(&pulumi.CustomTimeouts{
 			Create: "10m",
 		}))
@@ -149,7 +166,7 @@ cat publickey
 		if bastionComponent != nil {
 			connectionArgs.Proxy = &remote.ProxyConnectionArgs{
 				Host:       bastionComponent.PublicIP,
-				User:       pulumi.String("root"),
+				User:       getSSHUserForProvider(bastionComponent.Provider),
 				PrivateKey: sshPrivateKey,
 			}
 		}
@@ -265,15 +282,18 @@ PostDown = iptables -D FORWARD -i wg0 -j ACCEPT; iptables -t nat -D POSTROUTING 
 			return interfaceSection + peerSection
 		}).(pulumi.StringOutput)
 
-		// Deploy configuration to bastion
-		deployScript := fullConfig.ApplyT(func(config string) string {
+		// Deploy configuration to bastion - get sudo prefix for non-root users
+		bastionSudoForDeploy := getSudoPrefixForUser(bastionComponent.Provider)
+		deployScript := pulumi.All(fullConfig, bastionSudoForDeploy).ApplyT(func(args []interface{}) string {
+			config := args[0].(string)
+			sudo := args[1].(string)
 			return fmt.Sprintf(`#!/bin/bash
 set -e
 
 # Install WireGuard if not present
 if ! command -v wg &> /dev/null; then
-    apt-get update
-    apt-get install -y wireguard-tools
+    %sapt-get update
+    %sapt-get install -y wireguard-tools
 fi
 
 # Write WireGuard configuration
@@ -282,34 +302,35 @@ cat > /tmp/wg0.conf.template << 'WGEOF'
 WGEOF
 
 # Expand the privatekey variable
-export PRIVKEY=$(cat /etc/wireguard/privatekey)
-sed "s|\$(cat /etc/wireguard/privatekey)|$PRIVKEY|g" /tmp/wg0.conf.template > /etc/wireguard/wg0.conf
-chmod 600 /etc/wireguard/wg0.conf
+export PRIVKEY=$(%scat /etc/wireguard/privatekey)
+sed "s|\$(cat /etc/wireguard/privatekey)|$PRIVKEY|g" /tmp/wg0.conf.template | %stee /etc/wireguard/wg0.conf > /dev/null
+%schmod 600 /etc/wireguard/wg0.conf
 
 # Enable IP forwarding permanently
-echo "net.ipv4.ip_forward=1" >> /etc/sysctl.conf
-sysctl -w net.ipv4.ip_forward=1
+echo "net.ipv4.ip_forward=1" | %stee -a /etc/sysctl.conf > /dev/null
+%ssysctl -w net.ipv4.ip_forward=1
 
 # Stop any existing WireGuard interface
-wg-quick down wg0 2>/dev/null || true
+%swg-quick down wg0 2>/dev/null || true
 sleep 2
 
 # Start WireGuard
-wg-quick up wg0
+%swg-quick up wg0
 
 # Enable on boot
-systemctl enable wg-quick@wg0 2>/dev/null || true
+%ssystemctl enable wg-quick@wg0 2>/dev/null || true
 
 echo "✅ WireGuard mesh configured on bastion"
-wg show
-`, config)
+%swg show
+`, sudo, sudo, config, sudo, sudo, sudo, sudo, sudo, sudo, sudo, sudo, sudo)
 		}).(pulumi.StringOutput)
 
-		// Execute deployment on bastion
+		// Execute deployment on bastion - reuse bastionUser from keygen
+		bastionDeployUser := getSSHUserForProvider(bastionComponent.Provider)
 		_, err := remote.NewCommand(ctx, fmt.Sprintf("%s-deploy-bastion", name), &remote.CommandArgs{
 			Connection: remote.ConnectionArgs{
 				Host:           bastionComponent.PublicIP,
-				User:           pulumi.String("root"),
+				User:           bastionDeployUser,
 				PrivateKey:     sshPrivateKey,
 				DialErrorLimit: pulumi.Int(30),
 			},
@@ -458,7 +479,7 @@ fi
 		if bastionComponent != nil {
 			deployConnectionArgs.Proxy = &remote.ProxyConnectionArgs{
 				Host:       bastionComponent.PublicIP,
-				User:       pulumi.String("root"),
+				User:       getSSHUserForProvider(bastionComponent.Provider),
 				PrivateKey: sshPrivateKey,
 			}
 		}
