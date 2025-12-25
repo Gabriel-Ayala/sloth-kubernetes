@@ -8,6 +8,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/chalkan3/sloth-kubernetes/pkg/retry"
 )
 
 // CheckNodes verifies all cluster nodes are ready
@@ -487,30 +489,87 @@ func (c *Checker) CheckDiskPressure() CheckResult {
 
 // Helper functions
 
-// runKubectl executes a kubectl command with a timeout
+// runKubectl executes a kubectl command with a timeout and retry
 func (c *Checker) runKubectl(args string) (string, error) {
 	if c.masterIP != "" && c.sshKey != "" {
-		// Run via SSH
-		return c.runSSH("kubectl " + args)
+		// Run via SSH with retry
+		return c.runSSHWithRetry("kubectl " + args)
 	}
 
-	// Run locally - parse args properly to handle quoted strings
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
+	// Configure retry with exponential backoff
+	retryConfig := retry.Config{
+		MaxRetries:   3,
+		InitialDelay: 1 * time.Second,
+		MaxDelay:     10 * time.Second,
+		Multiplier:   2.0,
+		Jitter:       true,
+		JitterFactor: 0.2,
+		OnRetry: func(attempt int, err error, delay time.Duration) {
+			if c.verbose {
+				fmt.Printf("    Retry %d: kubectl %s (waiting %v)\n", attempt, args, delay)
+			}
+		},
+	}
 
-	cmd := exec.CommandContext(ctx, "kubectl", strings.Fields(args)...)
-	// Inherit current environment
-	cmd.Env = os.Environ()
-	if c.kubeconfig != "" {
-		cmd.Env = append(cmd.Env, "KUBECONFIG="+c.kubeconfig)
+	r := retry.New(retryConfig)
+
+	var result string
+	err := r.Do(func() error {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+
+		cmd := exec.CommandContext(ctx, "kubectl", strings.Fields(args)...)
+		cmd.Env = os.Environ()
+		if c.kubeconfig != "" {
+			cmd.Env = append(cmd.Env, "KUBECONFIG="+c.kubeconfig)
+		}
+		cmd.Stdin = nil
+
+		output, err := cmd.CombinedOutput()
+		if ctx.Err() == context.DeadlineExceeded {
+			return retry.NewRetryableError(fmt.Errorf("kubectl command timed out after 30s"))
+		}
+		if err != nil {
+			// Check for transient errors that should be retried
+			outputStr := string(output)
+			if isTransientKubectlError(outputStr) {
+				return retry.NewRetryableError(fmt.Errorf("%w: %s", err, outputStr))
+			}
+			return fmt.Errorf("%w: %s", err, outputStr)
+		}
+		result = string(output)
+		return nil
+	})
+
+	return result, err
+}
+
+// isTransientKubectlError checks if the error is transient and should be retried
+func isTransientKubectlError(output string) bool {
+	transientErrors := []string{
+		"connection refused",
+		"connection reset",
+		"timeout",
+		"i/o timeout",
+		"TLS handshake timeout",
+		"no such host",
+		"network is unreachable",
+		"connection timed out",
+		"Unable to connect to the server",
+		"EOF",
+		"unexpected EOF",
+		"server is currently unable to handle the request",
+		"etcdserver: leader changed",
+		"etcdserver: request timed out",
 	}
-	// Prevent kubectl from reading from stdin
-	cmd.Stdin = nil
-	output, err := cmd.CombinedOutput()
-	if ctx.Err() == context.DeadlineExceeded {
-		return "", fmt.Errorf("kubectl command timed out after 30s")
+
+	lowerOutput := strings.ToLower(output)
+	for _, transient := range transientErrors {
+		if strings.Contains(lowerOutput, strings.ToLower(transient)) {
+			return true
+		}
 	}
-	return string(output), err
+	return false
 }
 
 // runSSH executes a command via SSH
@@ -533,6 +592,63 @@ func (c *Checker) runSSH(command string) (string, error) {
 	cmd := exec.Command("bash", "-c", sshCmd)
 	output, err := cmd.CombinedOutput()
 	return string(output), err
+}
+
+// runSSHWithRetry executes a command via SSH with retry logic
+func (c *Checker) runSSHWithRetry(command string) (string, error) {
+	retryConfig := retry.Config{
+		MaxRetries:   3,
+		InitialDelay: 2 * time.Second,
+		MaxDelay:     15 * time.Second,
+		Multiplier:   2.0,
+		Jitter:       true,
+		JitterFactor: 0.2,
+		OnRetry: func(attempt int, err error, delay time.Duration) {
+			if c.verbose {
+				fmt.Printf("    SSH Retry %d: %s (waiting %v)\n", attempt, command, delay)
+			}
+		},
+	}
+
+	r := retry.New(retryConfig)
+
+	var result string
+	err := r.Do(func() error {
+		output, err := c.runSSH(command)
+		if err != nil {
+			if isTransientSSHError(output) || isTransientSSHError(err.Error()) {
+				return retry.NewRetryableError(fmt.Errorf("%w: %s", err, output))
+			}
+			return fmt.Errorf("%w: %s", err, output)
+		}
+		result = output
+		return nil
+	})
+
+	return result, err
+}
+
+// isTransientSSHError checks if the SSH error is transient
+func isTransientSSHError(output string) bool {
+	transientErrors := []string{
+		"connection refused",
+		"connection reset",
+		"connection timed out",
+		"no route to host",
+		"network is unreachable",
+		"temporary failure",
+		"resource temporarily unavailable",
+		"broken pipe",
+		"ssh_exchange_identification",
+	}
+
+	lowerOutput := strings.ToLower(output)
+	for _, transient := range transientErrors {
+		if strings.Contains(lowerOutput, transient) {
+			return true
+		}
+	}
+	return false
 }
 
 // parseCount parses a count from kubectl output

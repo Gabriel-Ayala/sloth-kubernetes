@@ -9,6 +9,8 @@ import (
 	"os/exec"
 	"strings"
 	"time"
+
+	"github.com/chalkan3/sloth-kubernetes/pkg/retry"
 )
 
 // BackupStatus represents the status of a backup
@@ -674,29 +676,138 @@ func (m *Manager) runVelero(args ...string) (string, error) {
 	}
 	args = append(args, "-n", m.namespace)
 
-	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
-	defer cancel()
+	retryConfig := retry.Config{
+		MaxRetries:   3,
+		InitialDelay: 2 * time.Second,
+		MaxDelay:     15 * time.Second,
+		Multiplier:   2.0,
+		Jitter:       true,
+		JitterFactor: 0.2,
+		OnRetry: func(attempt int, err error, delay time.Duration) {
+			if m.verbose {
+				fmt.Printf("    Velero retry %d (waiting %v)\n", attempt, delay)
+			}
+		},
+	}
 
-	cmd := exec.CommandContext(ctx, "velero", args...)
-	cmd.Env = os.Environ()
-	output, err := cmd.CombinedOutput()
-	return string(output), err
+	r := retry.New(retryConfig)
+
+	var result string
+	err := r.Do(func() error {
+		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+		defer cancel()
+
+		cmd := exec.CommandContext(ctx, "velero", args...)
+		cmd.Env = os.Environ()
+		output, err := cmd.CombinedOutput()
+
+		if ctx.Err() == context.DeadlineExceeded {
+			return retry.NewRetryableError(fmt.Errorf("velero command timed out"))
+		}
+		if err != nil {
+			outputStr := string(output)
+			if isTransientVeleroError(outputStr) {
+				return retry.NewRetryableError(fmt.Errorf("%w: %s", err, outputStr))
+			}
+			return fmt.Errorf("%w: %s", err, outputStr)
+		}
+		result = string(output)
+		return nil
+	})
+
+	return result, err
 }
 
 func (m *Manager) runKubectl(args string) (string, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-
-	cmdArgs := strings.Fields(args)
-	if m.kubeconfig != "" {
-		cmdArgs = append([]string{"--kubeconfig", m.kubeconfig}, cmdArgs...)
+	retryConfig := retry.Config{
+		MaxRetries:   3,
+		InitialDelay: 1 * time.Second,
+		MaxDelay:     10 * time.Second,
+		Multiplier:   2.0,
+		Jitter:       true,
+		JitterFactor: 0.2,
+		OnRetry: func(attempt int, err error, delay time.Duration) {
+			if m.verbose {
+				fmt.Printf("    Kubectl retry %d (waiting %v)\n", attempt, delay)
+			}
+		},
 	}
 
-	cmd := exec.CommandContext(ctx, "kubectl", cmdArgs...)
-	cmd.Env = os.Environ()
-	cmd.Stdin = nil
-	output, err := cmd.CombinedOutput()
-	return string(output), err
+	r := retry.New(retryConfig)
+
+	var result string
+	err := r.Do(func() error {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+
+		cmdArgs := strings.Fields(args)
+		if m.kubeconfig != "" {
+			cmdArgs = append([]string{"--kubeconfig", m.kubeconfig}, cmdArgs...)
+		}
+
+		cmd := exec.CommandContext(ctx, "kubectl", cmdArgs...)
+		cmd.Env = os.Environ()
+		cmd.Stdin = nil
+		output, err := cmd.CombinedOutput()
+
+		if ctx.Err() == context.DeadlineExceeded {
+			return retry.NewRetryableError(fmt.Errorf("kubectl command timed out"))
+		}
+		if err != nil {
+			outputStr := string(output)
+			if isTransientKubectlError(outputStr) {
+				return retry.NewRetryableError(fmt.Errorf("%w: %s", err, outputStr))
+			}
+			return fmt.Errorf("%w: %s", err, outputStr)
+		}
+		result = string(output)
+		return nil
+	})
+
+	return result, err
+}
+
+// isTransientVeleroError checks if the error is transient
+func isTransientVeleroError(output string) bool {
+	transientErrors := []string{
+		"connection refused",
+		"connection reset",
+		"timeout",
+		"i/o timeout",
+		"temporary failure",
+		"server is currently unable",
+		"etcdserver: leader changed",
+	}
+
+	lowerOutput := strings.ToLower(output)
+	for _, transient := range transientErrors {
+		if strings.Contains(lowerOutput, transient) {
+			return true
+		}
+	}
+	return false
+}
+
+// isTransientKubectlError checks if the kubectl error is transient
+func isTransientKubectlError(output string) bool {
+	transientErrors := []string{
+		"connection refused",
+		"connection reset",
+		"timeout",
+		"i/o timeout",
+		"TLS handshake timeout",
+		"Unable to connect to the server",
+		"EOF",
+		"server is currently unable",
+	}
+
+	lowerOutput := strings.ToLower(output)
+	for _, transient := range transientErrors {
+		if strings.Contains(lowerOutput, strings.ToLower(transient)) {
+			return true
+		}
+	}
+	return false
 }
 
 func (m *Manager) parseBackupFromDescribe(name, output string) Backup {
