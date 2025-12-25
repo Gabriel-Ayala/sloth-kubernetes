@@ -27,6 +27,7 @@ var (
 	backupTimeout         time.Duration
 	backupOutputJSON      bool
 	backupVeleroNS        string
+	backupDryRun          bool
 
 	// Restore flags
 	restoreFromBackup     string
@@ -235,6 +236,10 @@ func init() {
 	backupCreateCmd.Flags().BoolVar(&backupSnapshotVolumes, "snapshot-volumes", true, "Take snapshots of PVs")
 	backupCreateCmd.Flags().BoolVar(&backupWait, "wait", false, "Wait for backup to complete")
 	backupCreateCmd.Flags().DurationVar(&backupTimeout, "timeout", 30*time.Minute, "Timeout when using --wait")
+	backupCreateCmd.Flags().BoolVar(&backupDryRun, "dry-run", false, "Show what would be backed up without creating backup")
+
+	// Delete flags
+	backupDeleteCmd.Flags().BoolVar(&backupDryRun, "dry-run", false, "Show what would be deleted without deleting")
 
 	// Restore flags
 	backupRestoreCmd.Flags().StringVar(&restoreFromBackup, "from-backup", "", "Backup name to restore from (required)")
@@ -246,6 +251,7 @@ func init() {
 	backupRestoreCmd.Flags().BoolVar(&restorePreserveNP, "preserve-nodeports", false, "Preserve original NodePort values")
 	backupRestoreCmd.Flags().BoolVar(&backupWait, "wait", false, "Wait for restore to complete")
 	backupRestoreCmd.Flags().DurationVar(&backupTimeout, "timeout", 30*time.Minute, "Timeout when using --wait")
+	backupRestoreCmd.Flags().BoolVar(&backupDryRun, "dry-run", false, "Show what would be restored without restoring")
 
 	// Schedule create flags
 	backupScheduleCreateCmd.Flags().StringVar(&scheduleExpression, "schedule", "", "Cron expression for schedule (required)")
@@ -253,7 +259,11 @@ func init() {
 	backupScheduleCreateCmd.Flags().StringSliceVar(&backupExcludeNS, "exclude-namespaces", nil, "Namespaces to exclude")
 	backupScheduleCreateCmd.Flags().StringVar(&backupTTL, "ttl", "720h", "Backup retention period")
 	backupScheduleCreateCmd.Flags().BoolVar(&backupSnapshotVolumes, "snapshot-volumes", true, "Take snapshots of PVs")
+	backupScheduleCreateCmd.Flags().BoolVar(&backupDryRun, "dry-run", false, "Show what schedule would be created without creating")
 	backupScheduleCreateCmd.MarkFlagRequired("schedule")
+
+	// Schedule delete flags
+	backupScheduleDeleteCmd.Flags().BoolVar(&backupDryRun, "dry-run", false, "Show what would be deleted without deleting")
 
 	// Install flags
 	backupInstallCmd.Flags().StringVar(&installProvider, "provider", "", "Storage provider (aws, gcp, azure, minio)")
@@ -312,6 +322,39 @@ func runBackupCreate(cmd *cobra.Command, args []string) error {
 				config.Labels[parts[0]] = parts[1]
 			}
 		}
+	}
+
+	// Dry-run mode: show what would be backed up without creating
+	if backupDryRun {
+		fmt.Println()
+		color.Yellow("[DRY-RUN] Would create backup with the following configuration:")
+		fmt.Println()
+		fmt.Printf("  Name:              %s\n", config.Name)
+		if len(config.IncludedNamespaces) > 0 {
+			fmt.Printf("  Namespaces:        %s\n", strings.Join(config.IncludedNamespaces, ", "))
+		} else {
+			fmt.Printf("  Namespaces:        All\n")
+		}
+		if len(config.ExcludedNamespaces) > 0 {
+			fmt.Printf("  Excluded NS:       %s\n", strings.Join(config.ExcludedNamespaces, ", "))
+		}
+		if len(config.IncludedResources) > 0 {
+			fmt.Printf("  Resources:         %s\n", strings.Join(config.IncludedResources, ", "))
+		}
+		if len(config.ExcludedResources) > 0 {
+			fmt.Printf("  Excluded Resources: %s\n", strings.Join(config.ExcludedResources, ", "))
+		}
+		fmt.Printf("  TTL:               %s\n", config.TTL)
+		fmt.Printf("  Snapshot Volumes:  %v\n", config.SnapshotVolumes)
+		if config.StorageLocation != "" {
+			fmt.Printf("  Storage Location:  %s\n", config.StorageLocation)
+		}
+		if len(config.Labels) > 0 {
+			fmt.Printf("  Labels:            %v\n", config.Labels)
+		}
+		fmt.Println()
+		color.Cyan("No backup was created (dry-run mode)")
+		return nil
 	}
 
 	fmt.Println()
@@ -399,6 +442,30 @@ func runBackupDescribe(cmd *cobra.Command, args []string) error {
 func runBackupDelete(cmd *cobra.Command, args []string) error {
 	manager := createBackupManager()
 
+	// Dry-run mode: show what would be deleted without deleting
+	if backupDryRun {
+		// Try to get backup details to show
+		b, err := manager.GetBackup(args[0])
+		if err != nil {
+			return fmt.Errorf("backup %s not found: %w", args[0], err)
+		}
+
+		fmt.Println()
+		color.Yellow("[DRY-RUN] Would delete the following backup:")
+		fmt.Println()
+		fmt.Printf("  Name:       %s\n", b.Name)
+		fmt.Printf("  Status:     %s\n", b.Status)
+		if !b.StartTimestamp.IsZero() {
+			fmt.Printf("  Created:    %s\n", b.StartTimestamp.Format("2006-01-02 15:04:05"))
+		}
+		if len(b.IncludedNamespaces) > 0 {
+			fmt.Printf("  Namespaces: %s\n", strings.Join(b.IncludedNamespaces, ", "))
+		}
+		fmt.Println()
+		color.Cyan("No backup was deleted (dry-run mode)")
+		return nil
+	}
+
 	color.Yellow("Deleting backup %s...", args[0])
 
 	if err := manager.DeleteBackup(args[0]); err != nil {
@@ -443,6 +510,45 @@ func runBackupRestore(cmd *cobra.Command, args []string) error {
 
 	if len(args) > 0 && restoreFromBackup != "" {
 		config.Name = args[0]
+	}
+
+	// Dry-run mode: show what would be restored without restoring
+	if backupDryRun {
+		// Get backup details to show what would be restored
+		b, err := manager.GetBackup(backupName)
+		if err != nil {
+			return fmt.Errorf("backup %s not found: %w", backupName, err)
+		}
+
+		fmt.Println()
+		color.Yellow("[DRY-RUN] Would restore from backup with the following configuration:")
+		fmt.Println()
+		fmt.Printf("  Backup:            %s\n", backupName)
+		fmt.Printf("  Backup Status:     %s\n", b.Status)
+		if !b.StartTimestamp.IsZero() {
+			fmt.Printf("  Backup Created:    %s\n", b.StartTimestamp.Format("2006-01-02 15:04:05"))
+		}
+		if len(config.IncludedNamespaces) > 0 {
+			fmt.Printf("  Namespaces:        %s\n", strings.Join(config.IncludedNamespaces, ", "))
+		} else if len(b.IncludedNamespaces) > 0 {
+			fmt.Printf("  Namespaces:        %s (from backup)\n", strings.Join(b.IncludedNamespaces, ", "))
+		} else {
+			fmt.Printf("  Namespaces:        All\n")
+		}
+		if len(config.ExcludedNamespaces) > 0 {
+			fmt.Printf("  Excluded NS:       %s\n", strings.Join(config.ExcludedNamespaces, ", "))
+		}
+		if len(config.IncludedResources) > 0 {
+			fmt.Printf("  Resources:         %s\n", strings.Join(config.IncludedResources, ", "))
+		}
+		if len(config.ExcludedResources) > 0 {
+			fmt.Printf("  Excluded Resources: %s\n", strings.Join(config.ExcludedResources, ", "))
+		}
+		fmt.Printf("  Restore PVs:       %v\n", config.RestorePVs)
+		fmt.Printf("  Preserve NodePorts: %v\n", config.PreserveNodePorts)
+		fmt.Println()
+		color.Cyan("No restore was created (dry-run mode)")
+		return nil
 	}
 
 	fmt.Println()
@@ -525,6 +631,28 @@ func runScheduleCreate(cmd *cobra.Command, args []string) error {
 		SnapshotVolumes:    backupSnapshotVolumes,
 	}
 
+	// Dry-run mode: show what schedule would be created without creating
+	if backupDryRun {
+		fmt.Println()
+		color.Yellow("[DRY-RUN] Would create backup schedule with the following configuration:")
+		fmt.Println()
+		fmt.Printf("  Name:              %s\n", config.Name)
+		fmt.Printf("  Schedule:          %s\n", config.Schedule)
+		if len(config.IncludedNamespaces) > 0 {
+			fmt.Printf("  Namespaces:        %s\n", strings.Join(config.IncludedNamespaces, ", "))
+		} else {
+			fmt.Printf("  Namespaces:        All\n")
+		}
+		if len(config.ExcludedNamespaces) > 0 {
+			fmt.Printf("  Excluded NS:       %s\n", strings.Join(config.ExcludedNamespaces, ", "))
+		}
+		fmt.Printf("  TTL:               %s\n", config.TTL)
+		fmt.Printf("  Snapshot Volumes:  %v\n", config.SnapshotVolumes)
+		fmt.Println()
+		color.Cyan("No schedule was created (dry-run mode)")
+		return nil
+	}
+
 	fmt.Println()
 	color.Cyan("Creating backup schedule...")
 
@@ -586,6 +714,40 @@ func runScheduleList(cmd *cobra.Command, args []string) error {
 
 func runScheduleDelete(cmd *cobra.Command, args []string) error {
 	manager := createBackupManager()
+
+	// Dry-run mode: show what would be deleted without deleting
+	if backupDryRun {
+		// Try to get schedule details
+		schedules, err := manager.ListSchedules()
+		if err != nil {
+			return fmt.Errorf("failed to get schedules: %w", err)
+		}
+
+		var found *backup.Schedule
+		for i, s := range schedules {
+			if s.Name == args[0] {
+				found = &schedules[i]
+				break
+			}
+		}
+
+		if found == nil {
+			return fmt.Errorf("schedule %s not found", args[0])
+		}
+
+		fmt.Println()
+		color.Yellow("[DRY-RUN] Would delete the following schedule:")
+		fmt.Println()
+		fmt.Printf("  Name:       %s\n", found.Name)
+		fmt.Printf("  Schedule:   %s\n", found.Schedule)
+		fmt.Printf("  Paused:     %v\n", found.Paused)
+		if !found.LastBackup.IsZero() {
+			fmt.Printf("  Last Backup: %s\n", found.LastBackup.Format("2006-01-02 15:04:05"))
+		}
+		fmt.Println()
+		color.Cyan("No schedule was deleted (dry-run mode)")
+		return nil
+	}
 
 	color.Yellow("Deleting schedule %s...", args[0])
 
