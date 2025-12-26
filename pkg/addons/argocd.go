@@ -193,8 +193,8 @@ func runSSHCommandWithOutput(host string, privateKey string, command string) (st
 	}
 	defer exec.Command("rm", "-f", tmpKeyFile).Run()
 
-	// Execute SSH command
-	sshCmd := fmt.Sprintf(`ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i %s root@%s '%s'`, tmpKeyFile, host, strings.ReplaceAll(command, "'", "'\\''"))
+	// Execute SSH command with connection timeout
+	sshCmd := fmt.Sprintf(`ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=5 -i %s root@%s '%s'`, tmpKeyFile, host, strings.ReplaceAll(command, "'", "'\\''"))
 
 	cmd := exec.Command("bash", "-c", sshCmd)
 	output, err := cmd.CombinedOutput()
