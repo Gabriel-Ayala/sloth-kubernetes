@@ -4,7 +4,7 @@
 
 ### Multi-Cloud Kubernetes Deployment Made Simple
 
-**Deploy production-ready Kubernetes clusters across DigitalOcean and Linode**
+**Deploy production-ready Kubernetes clusters across DigitalOcean, Linode, AWS, and Azure**
 *with embedded Pulumi + Salt + kubectl - zero external dependencies required*
 
 [![Go Version](https://img.shields.io/badge/Go-1.23+-00ADD8?style=for-the-badge&logo=go)](https://go.dev/)
@@ -178,21 +178,36 @@ Sloth K8s:    1 binary       + 1 YAML file    + env vars        = 😌 Simplicit
 │  │  │  • VPCs          │  │  • VPCs         │  │  • client-go     │ │    │
 │  │  │  • Firewalls     │  │  • Firewalls    │  │  • kubectl pkg   │ │    │
 │  │  └──────────────────┘  └─────────────────┘  └──────────────────┘ │    │
+│  │  ┌──────────────────┐  ┌─────────────────┐                       │    │
+│  │  │       AWS        │  │      Azure      │                       │    │
+│  │  │  • EC2 Instances │  │  • VMs          │                       │    │
+│  │  │  • VPCs          │  │  • VNets        │                       │    │
+│  │  │  • Security Grps │  │  • NSGs         │                       │    │
+│  │  └──────────────────┘  └─────────────────┘                       │    │
 │  └────────────────────────────────────────────────────────────────────┘    │
 └─────────────────────────────────────────────────────────────────────────────┘
                                       ↓
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │                         Cloud Infrastructure                                 │
 │                                                                              │
-│  ┌──────────────────────┐         ┌──────────────────────┐                 │
-│  │   DigitalOcean       │         │      Linode          │                 │
-│  │                      │◄───VPN──►│                      │                 │
-│  │  • VPCs              │         │  • VPCs              │                 │
-│  │  • Droplets          │         │  • Instances         │                 │
-│  │  • Load Balancers    │         │  • NodeBalancers     │                 │
-│  │  • RKE2 Kubernetes   │         │  • RKE2 Kubernetes   │                 │
-│  │  • Salt Minions      │         │  • Salt Minions      │                 │
-│  └──────────────────────┘         └──────────────────────┘                 │
+│  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐             │
+│  │  DigitalOcean   │  │     Linode      │  │       AWS       │             │
+│  │  • Droplets     │  │  • Instances    │  │  • EC2          │             │
+│  │  • VPCs         │  │  • VPCs         │  │  • VPCs         │             │
+│  │  • LBs          │  │  • NodeBals     │  │  • NLB/ALB      │             │
+│  └────────┬────────┘  └────────┬────────┘  └────────┬────────┘             │
+│           │                    │                    │                       │
+│           └────────────────────┼────────────────────┘                       │
+│                                │                                            │
+│                    ┌───────────┴───────────┐                               │
+│                    │   WireGuard VPN Mesh   │                               │
+│                    │      (10.8.0.0/24)     │                               │
+│                    └───────────┬───────────┘                               │
+│                                │                                            │
+│                    ┌───────────┴───────────┐                               │
+│                    │        Azure          │                               │
+│                    │  • VMs • VNets • NSGs │                               │
+│                    └───────────────────────┘                               │
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -276,21 +291,32 @@ Sloth Kubernetes embeds **three complete CLI tools** into a single binary:
 Deploy a single Kubernetes cluster with nodes across multiple providers:
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                    Your Kubernetes Cluster                       │
-│                                                                  │
-│  ┌──────────────────────┐         ┌──────────────────────┐     │
-│  │   DigitalOcean       │         │      Linode          │     │
-│  │   Region: NYC3       │ ◄─────► │   Region: US-East    │     │
-│  ├──────────────────────┤   VPN   ├──────────────────────┤     │
-│  │ • 1 Master Node      │         │ • 2 Master Nodes     │     │
-│  │ • 2 Worker Nodes     │         │ • 1 Worker Node      │     │
-│  │ • VPC: 10.10.0.0/16  │         │ • VPC: 10.11.0.0/16  │     │
-│  └──────────────────────┘         └──────────────────────┘     │
-│           ↑                                    ↑                 │
-│           └─────── WireGuard Mesh ────────────┘                │
-│                  (10.8.0.0/24)                                   │
-└─────────────────────────────────────────────────────────────────┘
+┌───────────────────────────────────────────────────────────────────────────┐
+│                         Your Kubernetes Cluster                            │
+│                                                                            │
+│  ┌────────────────┐  ┌────────────────┐  ┌────────────────┐              │
+│  │  DigitalOcean  │  │     Linode     │  │      AWS       │              │
+│  │  Region: NYC3  │  │  Region: US-E  │  │  Region: us-e1 │              │
+│  ├────────────────┤  ├────────────────┤  ├────────────────┤              │
+│  │ • 1 Master     │  │ • 1 Master     │  │ • 1 Master     │              │
+│  │ • 2 Workers    │  │ • 2 Workers    │  │ • 2 Workers    │              │
+│  │ • VPC: 10.10.x │  │ • VPC: 10.11.x │  │ • VPC: 10.12.x │              │
+│  └───────┬────────┘  └───────┬────────┘  └───────┬────────┘              │
+│          │                   │                   │                        │
+│          └───────────────────┼───────────────────┘                        │
+│                              │                                            │
+│                    ┌─────────┴─────────┐                                  │
+│                    │  WireGuard Mesh   │                                  │
+│                    │   (10.8.0.0/24)   │                                  │
+│                    └─────────┬─────────┘                                  │
+│                              │                                            │
+│                    ┌─────────┴─────────┐                                  │
+│                    │       Azure       │                                  │
+│                    │  Region: eastus   │                                  │
+│                    │  • 2 Workers      │                                  │
+│                    │  • VNet: 10.13.x  │                                  │
+│                    └───────────────────┘                                  │
+└───────────────────────────────────────────────────────────────────────────┘
 ```
 
 **Why Multi-Cloud?**
@@ -308,6 +334,8 @@ Phase 1: VPC Creation
 ┌─────────────────────────────────────────────────────────┐
 │  ✓ Create DigitalOcean VPC (10.10.0.0/16)             │
 │  ✓ Create Linode VPC (10.11.0.0/16)                   │
+│  ✓ Create AWS VPC (10.12.0.0/16)                      │
+│  ✓ Create Azure VNet (10.13.0.0/16)                   │
 │  ✓ Configure subnets and gateways                      │
 └─────────────────────────────────────────────────────────┘
                          ↓
@@ -845,6 +873,30 @@ sloth-kubernetes
 ├── status          Show cluster status and health
 ├── kubeconfig      Get kubeconfig for kubectl access
 │
+├── backup          🆕 Cluster backup management (Velero)
+│   ├── create      Create a new backup
+│   ├── restore     Restore from a backup
+│   ├── list        List all backups
+│   ├── schedule    Manage backup schedules
+│   └── install     Install Velero
+│
+├── upgrade         🆕 Cluster upgrade management
+│   ├── plan        Create an upgrade plan
+│   ├── apply       Execute cluster upgrade
+│   ├── rollback    Rollback to previous version
+│   └── versions    List available versions
+│
+├── health          🆕 Cluster health checks
+│   ├── nodes       Check node health
+│   ├── pods        Check system pods health
+│   ├── certs       Check certificate expiration
+│   └── summary     Quick health summary
+│
+├── benchmark       🆕 Cluster performance testing
+│   ├── run         Execute benchmarks
+│   ├── quick       Quick benchmark summary
+│   └── compare     Compare benchmark reports
+│
 ├── nodes           Node management
 │   ├── list        List all cluster nodes
 │   ├── add         Add nodes to existing pool
@@ -1171,6 +1223,237 @@ sloth-kubernetes kubeconfig > ~/.kube/config
 # Verify cluster access
 kubectl get nodes
 kubectl get pods --all-namespaces
+```
+
+---
+
+### 💾 backup
+
+Manage Kubernetes cluster backups using Velero. Create, restore, and schedule backups of your cluster resources.
+
+**Usage:**
+```bash
+sloth-kubernetes backup [command]
+```
+
+**Subcommands:**
+| Command | Description |
+|---------|-------------|
+| `create` | Create a new backup |
+| `restore` | Restore from a backup |
+| `list` | List all backups |
+| `delete` | Delete a backup |
+| `schedule` | Manage backup schedules |
+| `install` | Install Velero |
+
+**Examples:**
+
+```bash
+# Install Velero with S3 backend
+sloth-kubernetes backup install --provider aws --bucket my-backups
+
+# Create a full cluster backup
+sloth-kubernetes backup create my-backup
+
+# Create a namespace-specific backup
+sloth-kubernetes backup create app-backup --namespaces default,production
+
+# List all backups
+sloth-kubernetes backup list
+
+# Restore from a backup
+sloth-kubernetes backup restore --from-backup my-backup
+
+# Create a scheduled backup (daily at midnight)
+sloth-kubernetes backup schedule create daily-backup --schedule "0 0 * * *"
+
+# Dry-run to see what would be backed up
+sloth-kubernetes backup create test-backup --dry-run
+```
+
+---
+
+### ⬆️ upgrade
+
+Upgrade your Kubernetes cluster to a new version with multiple strategies.
+
+**Usage:**
+```bash
+sloth-kubernetes upgrade [command]
+```
+
+**Subcommands:**
+| Command | Description |
+|---------|-------------|
+| `plan` | Create an upgrade plan |
+| `apply` | Execute cluster upgrade |
+| `rollback` | Rollback to previous version |
+| `versions` | List available versions |
+| `status` | Show upgrade status |
+
+**Upgrade Strategies:**
+| Strategy | Description |
+|----------|-------------|
+| `rolling` | Upgrade one node at a time (safest, default) |
+| `blue-green` | Create new nodes, migrate workloads, remove old |
+| `canary` | Upgrade a subset first, then proceed |
+| `in-place` | Upgrade all nodes simultaneously (fastest, riskiest) |
+
+**Examples:**
+
+```bash
+# Check available versions
+sloth-kubernetes upgrade versions
+
+# Plan an upgrade to version 1.29.0
+sloth-kubernetes upgrade plan --to 1.29.0
+
+# Execute upgrade with rolling strategy
+sloth-kubernetes upgrade apply --to 1.29.0 --strategy rolling
+
+# Dry-run to see what would happen
+sloth-kubernetes upgrade apply --to 1.29.0 --dry-run
+
+# Rollback to previous version
+sloth-kubernetes upgrade rollback
+
+# Upgrade specific nodes only
+sloth-kubernetes upgrade apply --to 1.29.0 --nodes master-1,worker-1
+```
+
+---
+
+### 🏥 health
+
+Run comprehensive health checks on your Kubernetes cluster.
+
+**Usage:**
+```bash
+sloth-kubernetes health [flags]
+```
+
+**Checks Performed:**
+- Node health and readiness
+- System pods status (kube-system namespace)
+- CoreDNS availability
+- Certificate expiration
+- Etcd cluster health
+- API server responsiveness
+- Persistent volume claims status
+- CNI/networking status
+- Memory pressure on nodes
+- Disk pressure on nodes
+
+**Examples:**
+
+```bash
+# Check cluster health via SSH
+sloth-kubernetes health --config cluster.yaml
+
+# Check cluster health using local kubeconfig
+sloth-kubernetes health --kubeconfig ~/.kube/config
+
+# Run only specific checks
+sloth-kubernetes health --checks nodes,pods,dns
+
+# Verbose output with all details
+sloth-kubernetes health --verbose
+
+# Compact output (only show issues)
+sloth-kubernetes health --compact
+
+# Check certificate expiration
+sloth-kubernetes health certs
+
+# Quick health summary
+sloth-kubernetes health summary
+```
+
+**Output:**
+```
+🏥 Cluster Health Check
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+✅ Nodes           6/6 Ready
+✅ System Pods     24/24 Running
+✅ CoreDNS         2/2 Available
+✅ Certificates    Valid (expires in 364 days)
+✅ Etcd            Healthy (3 members)
+✅ API Server      Responsive (12ms)
+✅ Storage         5/5 PVCs Bound
+✅ Network         CNI healthy
+✅ Memory          No pressure
+✅ Disk            No pressure
+
+Overall Status: ✅ HEALTHY
+```
+
+---
+
+### 📊 benchmark
+
+Run comprehensive performance benchmarks on your Kubernetes cluster.
+
+**Usage:**
+```bash
+sloth-kubernetes benchmark [command]
+```
+
+**Benchmark Types:**
+| Type | Description |
+|------|-------------|
+| `network` | Pod-to-pod latency, DNS resolution, throughput |
+| `storage` | IOPS, sequential I/O, random I/O, PVC provisioning |
+| `cpu` | CPU efficiency, scheduling latency, API response |
+| `memory` | Memory utilization, bandwidth, etcd usage |
+| `all` | Run all benchmarks (default) |
+
+**Examples:**
+
+```bash
+# Run all benchmarks
+sloth-kubernetes benchmark run
+
+# Run only network benchmarks
+sloth-kubernetes benchmark run --type network
+
+# Run storage benchmarks with verbose output
+sloth-kubernetes benchmark run --type storage --verbose
+
+# Save results to JSON file
+sloth-kubernetes benchmark run --output json --save results.json
+
+# Show quick benchmark summary
+sloth-kubernetes benchmark quick
+
+# Compare with previous results
+sloth-kubernetes benchmark compare previous.json current.json
+```
+
+**Output:**
+```
+📊 Kubernetes Cluster Benchmark Results
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+🌐 Network Performance
+  Pod-to-Pod Latency:     0.8ms (excellent)
+  DNS Resolution:         2.1ms (good)
+  Cross-Node Throughput:  8.2 Gbps
+
+💾 Storage Performance
+  Sequential Read:        450 MB/s
+  Sequential Write:       380 MB/s
+  Random IOPS:           12,500
+
+⚡ CPU Performance
+  Scheduling Latency:     15ms (p99)
+  API Server Response:    8ms (p95)
+
+💻 Memory Performance
+  Available:              82%
+  Etcd Memory:           256 MB
+
+Overall Score: 87/100 (Very Good)
 ```
 
 ---
