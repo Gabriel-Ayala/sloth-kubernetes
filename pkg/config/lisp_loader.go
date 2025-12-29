@@ -55,6 +55,16 @@ func LoadFromLisp(filePath string) (*ClusterConfig, error) {
 					cfg.LoadBalancer = parseLoadBalancer(section)
 				case "addons":
 					cfg.Addons = parseAddons(section)
+				case "upgrade":
+					cfg.Upgrade = parseUpgradeConfig(section)
+				case "backup":
+					cfg.Backup = parseBackupConfig(section)
+				case "hooks":
+					cfg.Hooks = parseHooksConfig(section)
+				case "cost-control", "costControl":
+					cfg.CostControl = parseCostControlConfig(section)
+				case "private-cluster", "privateCluster":
+					cfg.PrivateCluster = parsePrivateClusterConfig(section)
 				}
 			}
 		}
@@ -214,6 +224,10 @@ func parseNetwork(l *List) NetworkConfig {
 		cfg.Firewall = parseFirewall(fw)
 	}
 
+	if pc := l.GetList("private-cluster"); pc != nil {
+		cfg.PrivateCluster = parsePrivateClusterConfig(pc)
+	}
+
 	return cfg
 }
 
@@ -353,7 +367,7 @@ func parseNodePools(l *List) map[string]NodePool {
 		if pool, ok := item.(*List); ok {
 			if head := pool.Head(); head != nil {
 				name := head.AsString()
-				pools[name] = NodePool{
+				nodePool := NodePool{
 					Name:         pool.GetString("name"),
 					Provider:     pool.GetString("provider"),
 					Count:        pool.GetInt("count"),
@@ -370,6 +384,31 @@ func parseNodePools(l *List) map[string]NodePool {
 					Preemptible:  pool.GetBool("preemptible"),
 					UserData:     pool.GetString("user-data"),
 				}
+
+				// Parse advanced configurations
+				if autoscaling := pool.GetList("autoscaling"); autoscaling != nil {
+					nodePool.AutoScalingConfig = parseAutoScalingConfig(autoscaling)
+					nodePool.AutoScaling = nodePool.AutoScalingConfig.Enabled
+				}
+
+				if spotConfig := pool.GetList("spot-config"); spotConfig != nil {
+					nodePool.SpotConfig = parseSpotConfig(spotConfig)
+					nodePool.SpotInstance = nodePool.SpotConfig.Enabled
+				}
+
+				if distribution := pool.GetList("distribution"); distribution != nil {
+					nodePool.Distribution = parseZoneDistribution(distribution)
+				}
+
+				if taints := pool.GetList("taints"); taints != nil {
+					nodePool.Taints = parseTaints(taints)
+				}
+
+				if image := pool.GetList("image"); image != nil {
+					nodePool.CustomImage = parseCustomImageConfig(image)
+				}
+
+				pools[name] = nodePool
 			}
 		}
 	}
@@ -472,4 +511,230 @@ func parseAddons(l *List) AddonsConfig {
 // LoadConfig loads configuration from a Lisp file
 func LoadConfig(filePath string) (*ClusterConfig, error) {
 	return LoadFromLisp(filePath)
+}
+
+// parseUpgradeConfig parses upgrade configuration
+func parseUpgradeConfig(l *List) *UpgradeConfig {
+	return &UpgradeConfig{
+		Strategy:            l.GetString("strategy"),
+		MaxUnavailable:      l.GetInt("max-unavailable"),
+		MaxSurge:            l.GetInt("max-surge"),
+		DrainTimeout:        l.GetInt("drain-timeout"),
+		HealthCheckInterval: l.GetInt("health-check-interval"),
+		PauseOnFailure:      l.GetBool("pause-on-failure"),
+		AutoRollback:        l.GetBool("auto-rollback"),
+	}
+}
+
+// parseBackupConfig parses backup configuration
+func parseBackupConfig(l *List) *BackupConfig {
+	cfg := &BackupConfig{
+		Enabled:        l.GetBool("enabled"),
+		Schedule:       l.GetString("schedule"),
+		Retention:      l.GetInt("retention"),
+		RetentionDays:  l.GetInt("retention-days"),
+		Provider:       l.GetString("provider"),
+		Location:       l.GetString("location"),
+		IncludeEtcd:    l.GetBool("include-etcd"),
+		IncludeVolumes: l.GetBool("include-volumes"),
+		Components:     l.GetStringSlice("components"),
+	}
+
+	if storage := l.GetList("storage"); storage != nil {
+		cfg.Storage = parseBackupStorageConfig(storage)
+	}
+
+	return cfg
+}
+
+// parseBackupStorageConfig parses backup storage configuration
+func parseBackupStorageConfig(l *List) *BackupStorageConfig {
+	return &BackupStorageConfig{
+		Type:      l.GetString("type"),
+		Bucket:    l.GetString("bucket"),
+		Region:    l.GetString("region"),
+		Path:      l.GetString("path"),
+		Endpoint:  l.GetString("endpoint"),
+		AccessKey: l.GetString("access-key"),
+		SecretKey: l.GetString("secret-key"),
+	}
+}
+
+// parseHooksConfig parses provisioning hooks configuration
+func parseHooksConfig(l *List) *HooksConfig {
+	cfg := &HooksConfig{}
+
+	if hooks := l.GetList("post-node-create"); hooks != nil {
+		cfg.PostNodeCreate = parseHookActions(hooks)
+	}
+	if hooks := l.GetList("pre-cluster-destroy"); hooks != nil {
+		cfg.PreClusterDestroy = parseHookActions(hooks)
+	}
+	if hooks := l.GetList("post-cluster-ready"); hooks != nil {
+		cfg.PostClusterReady = parseHookActions(hooks)
+	}
+	if hooks := l.GetList("pre-node-delete"); hooks != nil {
+		cfg.PreNodeDelete = parseHookActions(hooks)
+	}
+	if hooks := l.GetList("post-upgrade"); hooks != nil {
+		cfg.PostUpgrade = parseHookActions(hooks)
+	}
+
+	return cfg
+}
+
+// parseHookActions parses a list of hook actions
+func parseHookActions(l *List) []HookAction {
+	var actions []HookAction
+	for _, item := range l.Items {
+		if action, ok := item.(*List); ok {
+			head := action.Head()
+			if head == nil {
+				continue
+			}
+			hookAction := HookAction{
+				Type:       head.AsString(),
+				Command:    action.GetString("command"),
+				Script:     action.GetString("script"),
+				URL:        action.GetString("url"),
+				Timeout:    action.GetInt("timeout"),
+				RetryCount: action.GetInt("retry-count"),
+				Env:        action.GetMap("env"),
+			}
+			// If it's a simple (script "path") or (kubectl "command") format
+			if len(action.Items) == 2 {
+				if val, ok := action.Items[1].(*Atom); ok {
+					switch head.AsString() {
+					case "script":
+						hookAction.Script = val.AsString()
+					case "kubectl":
+						hookAction.Command = val.AsString()
+						hookAction.Type = "kubectl"
+					case "http":
+						hookAction.URL = val.AsString()
+					}
+				}
+			}
+			actions = append(actions, hookAction)
+		}
+	}
+	return actions
+}
+
+// parseCostControlConfig parses cost control configuration
+func parseCostControlConfig(l *List) *CostControlConfig {
+	return &CostControlConfig{
+		Estimate:             l.GetBool("estimate"),
+		MonthlyBudget:        float64(l.GetInt("monthly-limit")),
+		AlertThreshold:       l.GetInt("alert-threshold"),
+		NotifyEmail:          l.GetString("notify"),
+		RightSizing:          l.GetBool("right-sizing"),
+		UnusedResourcesAlert: l.GetBool("unused-resources-alert"),
+		CostTags:             l.GetMap("cost-tags"),
+	}
+}
+
+// parsePrivateClusterConfig parses private cluster configuration
+func parsePrivateClusterConfig(l *List) *PrivateClusterConfig {
+	return &PrivateClusterConfig{
+		Enabled:         l.GetBool("enabled"),
+		NATGateway:      l.GetBool("nat-gateway"),
+		PrivateEndpoint: l.GetBool("private-endpoint"),
+		PublicEndpoint:  l.GetBool("public-endpoint"),
+		AllowedCIDRs:    l.GetStringSlice("allowed-cidrs"),
+		VPNRequired:     l.GetBool("vpn-required"),
+	}
+}
+
+// parseAutoScalingConfig parses autoscaling configuration for node pools
+func parseAutoScalingConfig(l *List) *AutoScalingConfig {
+	return &AutoScalingConfig{
+		Enabled:        l.GetBool("enabled"),
+		MinNodes:       l.GetInt("min-nodes"),
+		MaxNodes:       l.GetInt("max-nodes"),
+		TargetCPU:      l.GetInt("target-cpu"),
+		TargetMemory:   l.GetInt("target-memory"),
+		ScaleDownDelay: l.GetInt("scale-down-delay"),
+		Cooldown:       l.GetInt("cooldown"),
+	}
+}
+
+// parseSpotConfig parses spot instance configuration
+func parseSpotConfig(l *List) *SpotConfig {
+	return &SpotConfig{
+		Enabled:          l.GetBool("enabled"),
+		MaxPrice:         l.GetString("max-price"),
+		FallbackOnDemand: l.GetBool("fallback-on-demand"),
+		SpotPercentage:   l.GetInt("spot-percentage"),
+		InterruptionMode: l.GetString("interruption-mode"),
+	}
+}
+
+// parseZoneDistribution parses zone distribution configuration
+func parseZoneDistribution(l *List) []ZoneDistribution {
+	var distributions []ZoneDistribution
+	for _, item := range l.Items {
+		if zone, ok := item.(*List); ok {
+			head := zone.Head()
+			if head != nil && head.AsString() == "zone" {
+				if len(zone.Items) >= 2 {
+					dist := ZoneDistribution{
+						Zone: zone.GetString("zone"),
+					}
+					// Parse (zone "us-east-1a" (count 2)) format
+					if len(zone.Items) >= 2 {
+						if zoneName, ok := zone.Items[1].(*Atom); ok {
+							dist.Zone = zoneName.AsString()
+						}
+					}
+					dist.Count = zone.GetInt("count")
+					dist.Region = zone.GetString("region")
+					distributions = append(distributions, dist)
+				}
+			}
+		}
+	}
+	return distributions
+}
+
+// parseCustomImageConfig parses custom image configuration
+func parseCustomImageConfig(l *List) *CustomImageConfig {
+	return &CustomImageConfig{
+		Type:         l.GetString("type"),
+		ID:           l.GetString("id"),
+		User:         l.GetString("user"),
+		Base:         l.GetString("base"),
+		Provisioners: l.GetStringSlice("provisioners"),
+		Tags:         l.GetMap("tags"),
+	}
+}
+
+// parseTaints parses taint configurations
+func parseTaints(l *List) []TaintConfig {
+	var taints []TaintConfig
+	for _, item := range l.Items {
+		if taint, ok := item.(*List); ok {
+			head := taint.Head()
+			if head != nil && head.AsString() == "taint" {
+				// Parse (taint "key" "effect") or (taint (key "x") (value "y") (effect "z"))
+				if len(taint.Items) == 3 {
+					if key, ok := taint.Items[1].(*Atom); ok {
+						if effect, ok := taint.Items[2].(*Atom); ok {
+							taints = append(taints, TaintConfig{
+								Key:    key.AsString(),
+								Effect: effect.AsString(),
+							})
+						}
+					}
+				} else {
+					taints = append(taints, TaintConfig{
+						Key:    taint.GetString("key"),
+						Value:  taint.GetString("value"),
+						Effect: taint.GetString("effect"),
+					})
+				}
+			}
+		}
+	}
+	return taints
 }

@@ -19,6 +19,13 @@ type ClusterConfig struct {
 	Storage      StorageConfig       `yaml:"storage" json:"storage"`
 	LoadBalancer LoadBalancerConfig  `yaml:"loadBalancer" json:"loadBalancer"`
 	Addons       AddonsConfig        `yaml:"addons" json:"addons"`
+
+	// Advanced configurations
+	Upgrade        *UpgradeConfig        `yaml:"upgrade,omitempty" json:"upgrade,omitempty"`
+	Backup         *BackupConfig         `yaml:"backup,omitempty" json:"backup,omitempty"`
+	Hooks          *HooksConfig          `yaml:"hooks,omitempty" json:"hooks,omitempty"`
+	CostControl    *CostControlConfig    `yaml:"costControl,omitempty" json:"costControl,omitempty"`
+	PrivateCluster *PrivateClusterConfig `yaml:"privateCluster,omitempty" json:"privateCluster,omitempty"`
 }
 
 // AddonsConfig defines cluster addons configuration
@@ -159,6 +166,7 @@ type NetworkConfig struct {
 	NetworkPolicies         []NetworkPolicy        `yaml:"networkPolicies" json:"networkPolicies"`
 	WireGuard               *WireGuardConfig       `yaml:"wireguard,omitempty" json:"wireguard,omitempty"`
 	Firewall                *FirewallConfig        `yaml:"firewall,omitempty" json:"firewall,omitempty"`
+	PrivateCluster          *PrivateClusterConfig  `yaml:"privateCluster,omitempty" json:"privateCluster,omitempty"`
 	Custom                  map[string]interface{} `yaml:"custom" json:"custom"`
 }
 
@@ -275,6 +283,12 @@ type NodePool struct {
 	Preemptible  bool                   `yaml:"preemptible" json:"preemptible"`
 	UserData     string                 `yaml:"userData" json:"userData"`
 	Custom       map[string]interface{} `yaml:"custom" json:"custom"`
+
+	// Advanced configurations
+	AutoScalingConfig *AutoScalingConfig  `yaml:"autoscalingConfig,omitempty" json:"autoscalingConfig,omitempty"`
+	SpotConfig        *SpotConfig         `yaml:"spotConfig,omitempty" json:"spotConfig,omitempty"`
+	Distribution      []ZoneDistribution  `yaml:"distribution,omitempty" json:"distribution,omitempty"`
+	CustomImage       *CustomImageConfig  `yaml:"customImage,omitempty" json:"customImage,omitempty"`
 }
 
 // KubernetesConfig for Kubernetes-specific settings
@@ -504,23 +518,118 @@ type TaintConfig struct {
 }
 
 type AutoScalingConfig struct {
-	Enabled      bool   `yaml:"enabled" json:"enabled"`
-	MinNodes     int    `yaml:"minNodes" json:"minNodes"`
-	MaxNodes     int    `yaml:"maxNodes" json:"maxNodes"`
-	TargetCPU    int    `yaml:"targetCpu" json:"targetCpu"`
-	TargetMemory int    `yaml:"targetMemory" json:"targetMemory"`
-	ScaleDown    string `yaml:"scaleDown" json:"scaleDown"`
-	ScaleUp      string `yaml:"scaleUp" json:"scaleUp"`
+	Enabled        bool   `yaml:"enabled" json:"enabled"`
+	MinNodes       int    `yaml:"minNodes" json:"minNodes"`
+	MaxNodes       int    `yaml:"maxNodes" json:"maxNodes"`
+	TargetCPU      int    `yaml:"targetCpu" json:"targetCpu"`
+	TargetMemory   int    `yaml:"targetMemory" json:"targetMemory"`
+	ScaleDown      string `yaml:"scaleDown" json:"scaleDown"`
+	ScaleUp        string `yaml:"scaleUp" json:"scaleUp"`
+	ScaleDownDelay int    `yaml:"scaleDownDelay" json:"scaleDownDelay"` // Seconds to wait before scaling down
+	Cooldown       int    `yaml:"cooldown" json:"cooldown"`             // Cooldown period between scaling actions
+}
+
+// SpotConfig defines spot/preemptible instance configuration
+type SpotConfig struct {
+	Enabled          bool    `yaml:"enabled" json:"enabled"`
+	MaxPrice         string  `yaml:"maxPrice" json:"maxPrice"`                   // Max price per hour (e.g., "0.05")
+	FallbackOnDemand bool    `yaml:"fallbackOnDemand" json:"fallbackOnDemand"`   // Fallback to on-demand if spot unavailable
+	SpotPercentage   int     `yaml:"spotPercentage" json:"spotPercentage"`       // Percentage of nodes as spot (0-100)
+	InterruptionMode string  `yaml:"interruptionMode" json:"interruptionMode"`   // terminate, stop, hibernate
+	MaxSpotPrice     float64 `yaml:"maxSpotPrice" json:"maxSpotPrice"`           // Max spot price as float
+}
+
+// ZoneDistribution defines node distribution across zones
+type ZoneDistribution struct {
+	Zone   string `yaml:"zone" json:"zone"`
+	Region string `yaml:"region" json:"region"`
+	Count  int    `yaml:"count" json:"count"`
+}
+
+// UpgradeConfig defines cluster upgrade settings
+type UpgradeConfig struct {
+	Strategy            string `yaml:"strategy" json:"strategy"`                       // rolling, blue-green, canary
+	MaxUnavailable      int    `yaml:"maxUnavailable" json:"maxUnavailable"`           // Max unavailable nodes during upgrade
+	MaxSurge            int    `yaml:"maxSurge" json:"maxSurge"`                       // Max extra nodes during upgrade
+	DrainTimeout        int    `yaml:"drainTimeout" json:"drainTimeout"`               // Seconds to wait for drain
+	HealthCheckInterval int    `yaml:"healthCheckInterval" json:"healthCheckInterval"` // Seconds between health checks
+	PauseOnFailure      bool   `yaml:"pauseOnFailure" json:"pauseOnFailure"`           // Pause upgrade on failure
+	AutoRollback        bool   `yaml:"autoRollback" json:"autoRollback"`               // Auto rollback on failure
+}
+
+// PrivateClusterConfig defines private cluster settings
+type PrivateClusterConfig struct {
+	Enabled         bool     `yaml:"enabled" json:"enabled"`
+	NATGateway      bool     `yaml:"natGateway" json:"natGateway"`           // Enable NAT for egress
+	PrivateEndpoint bool     `yaml:"privateEndpoint" json:"privateEndpoint"` // Private API endpoint
+	PublicEndpoint  bool     `yaml:"publicEndpoint" json:"publicEndpoint"`   // Public API endpoint
+	AllowedCIDRs    []string `yaml:"allowedCIDRs" json:"allowedCIDRs"`       // CIDRs allowed to access API
+	VPNRequired     bool     `yaml:"vpnRequired" json:"vpnRequired"`         // VPN required for access
+}
+
+// CustomImageConfig defines custom machine image settings
+type CustomImageConfig struct {
+	Type         string            `yaml:"type" json:"type"`                 // custom, packer, ami
+	ID           string            `yaml:"id" json:"id"`                     // Image ID (e.g., ami-12345678)
+	User         string            `yaml:"user" json:"user"`                 // SSH user for the image
+	Base         string            `yaml:"base" json:"base"`                 // Base image for packer builds
+	Provisioners []string          `yaml:"provisioners" json:"provisioners"` // Packer provisioner scripts
+	Tags         map[string]string `yaml:"tags" json:"tags"`                 // Image tags
+}
+
+// HooksConfig defines provisioning hooks
+type HooksConfig struct {
+	PostNodeCreate    []HookAction `yaml:"postNodeCreate" json:"postNodeCreate"`
+	PreClusterDestroy []HookAction `yaml:"preClusterDestroy" json:"preClusterDestroy"`
+	PostClusterReady  []HookAction `yaml:"postClusterReady" json:"postClusterReady"`
+	PreNodeDelete     []HookAction `yaml:"preNodeDelete" json:"preNodeDelete"`
+	PostUpgrade       []HookAction `yaml:"postUpgrade" json:"postUpgrade"`
+}
+
+// HookAction defines a single hook action
+type HookAction struct {
+	Type       string            `yaml:"type" json:"type"`             // script, kubectl, http
+	Command    string            `yaml:"command" json:"command"`       // Command to run
+	Script     string            `yaml:"script" json:"script"`         // Script path
+	URL        string            `yaml:"url" json:"url"`               // HTTP webhook URL
+	Timeout    int               `yaml:"timeout" json:"timeout"`       // Timeout in seconds
+	RetryCount int               `yaml:"retryCount" json:"retryCount"` // Number of retries
+	Env        map[string]string `yaml:"env" json:"env"`               // Environment variables
+}
+
+// CostControlConfig defines cost management settings
+type CostControlConfig struct {
+	Estimate           bool              `yaml:"estimate" json:"estimate"`                     // Enable cost estimation
+	MonthlyBudget      float64           `yaml:"monthlyBudget" json:"monthlyBudget"`           // Monthly budget limit
+	AlertThreshold     int               `yaml:"alertThreshold" json:"alertThreshold"`         // Alert when reaching % of budget
+	NotifyEmail        string            `yaml:"notifyEmail" json:"notifyEmail"`               // Email for budget alerts
+	RightSizing        bool              `yaml:"rightSizing" json:"rightSizing"`               // Enable right-sizing recommendations
+	UnusedResourcesAlert bool            `yaml:"unusedResourcesAlert" json:"unusedResourcesAlert"` // Alert on unused resources
+	CostTags           map[string]string `yaml:"costTags" json:"costTags"`                     // Tags for cost allocation
+}
+
+// BackupStorageConfig defines backup storage settings
+type BackupStorageConfig struct {
+	Type      string `yaml:"type" json:"type"`           // s3, gcs, azure-blob, local
+	Bucket    string `yaml:"bucket" json:"bucket"`       // Bucket name
+	Region    string `yaml:"region" json:"region"`       // Storage region
+	Path      string `yaml:"path" json:"path"`           // Path prefix
+	Endpoint  string `yaml:"endpoint" json:"endpoint"`   // Custom endpoint (for S3-compatible)
+	AccessKey string `yaml:"accessKey" json:"accessKey"` // Access key
+	SecretKey string `yaml:"secretKey" json:"secretKey"` // Secret key
 }
 
 type BackupConfig struct {
-	Enabled        bool   `yaml:"enabled" json:"enabled"`
-	Schedule       string `yaml:"schedule" json:"schedule"`
-	Retention      int    `yaml:"retention" json:"retention"`
-	Provider       string `yaml:"provider" json:"provider"`
-	Location       string `yaml:"location" json:"location"`
-	IncludeEtcd    bool   `yaml:"includeEtcd" json:"includeEtcd"`
-	IncludeVolumes bool   `yaml:"includeVolumes" json:"includeVolumes"`
+	Enabled        bool                 `yaml:"enabled" json:"enabled"`
+	Schedule       string               `yaml:"schedule" json:"schedule"`
+	Retention      int                  `yaml:"retention" json:"retention"`
+	RetentionDays  int                  `yaml:"retentionDays" json:"retentionDays"`
+	Provider       string               `yaml:"provider" json:"provider"`
+	Location       string               `yaml:"location" json:"location"`
+	IncludeEtcd    bool                 `yaml:"includeEtcd" json:"includeEtcd"`
+	IncludeVolumes bool                 `yaml:"includeVolumes" json:"includeVolumes"`
+	Storage        *BackupStorageConfig `yaml:"storage,omitempty" json:"storage,omitempty"`
+	Components     []string             `yaml:"components" json:"components"` // etcd, volumes, secrets, configs
 }
 
 type BackupPolicy struct {
