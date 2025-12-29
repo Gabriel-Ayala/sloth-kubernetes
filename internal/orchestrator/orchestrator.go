@@ -27,6 +27,7 @@ type Orchestrator struct {
 	dnsManager       *dns.Manager
 	ingressManager   *ingress.NginxIngressManager
 	rkeManager       *cluster.RKEManager
+	rke2Manager      *cluster.RKE2Manager
 	healthChecker    *health.HealthChecker
 	validator        *health.PrerequisiteValidator
 	vpnChecker       *network.VPNConnectivityChecker
@@ -41,6 +42,8 @@ func New(ctx *pulumi.Context, config *config.ClusterConfig) *Orchestrator {
 		config:           config,
 		providerRegistry: providers.NewProviderRegistry(),
 		nodes:            make(map[string][]*providers.NodeOutput),
+		validator:        health.NewPrerequisiteValidator(ctx),
+		healthChecker:    health.NewHealthChecker(ctx),
 	}
 }
 
@@ -532,20 +535,56 @@ func (o *Orchestrator) deployRKE() error {
 		o.ctx.Log.Info("VPN connectivity already verified - proceeding with RKE deployment", nil)
 	}
 
-	o.ctx.Log.Info("All prerequisites validated, deploying RKE cluster", nil)
+	o.ctx.Log.Info("All prerequisites validated, deploying Kubernetes cluster", nil)
 
-	o.rkeManager = cluster.NewRKEManager(o.ctx, &o.config.Kubernetes)
-
-	// Add all nodes to RKE manager
-	for _, nodes := range o.nodes {
-		for _, node := range nodes {
-			o.rkeManager.AddNode(node)
-		}
+	// Check distribution type and use appropriate manager
+	distribution := o.config.Kubernetes.Distribution
+	if distribution == "" {
+		distribution = "rke" // Default to RKE1 for backwards compatibility
 	}
 
-	// Deploy the cluster
-	if err := o.rkeManager.DeployCluster(); err != nil {
-		return fmt.Errorf("RKE deployment failed: %w", err)
+	switch distribution {
+	case "rke2":
+		o.ctx.Log.Info("Using RKE2 distribution", nil)
+		o.rke2Manager = cluster.NewRKE2Manager(o.ctx, &o.config.Kubernetes)
+
+		// Set SSH private key if available
+		if o.sshKeyManager != nil {
+			// Get SSH private key content
+			// Note: In production, this should retrieve the actual key
+			o.rke2Manager.SetSSHPrivateKey("")
+		}
+
+		// Add all nodes to RKE2 manager
+		for _, nodes := range o.nodes {
+			for _, node := range nodes {
+				o.rke2Manager.AddNode(node)
+			}
+		}
+
+		// Deploy the cluster
+		if err := o.rke2Manager.DeployCluster(); err != nil {
+			return fmt.Errorf("RKE2 deployment failed: %w", err)
+		}
+
+		// Export cluster info
+		o.rke2Manager.ExportClusterInfo()
+
+	default: // "rke" or any other value defaults to RKE1
+		o.ctx.Log.Info("Using RKE1 distribution", nil)
+		o.rkeManager = cluster.NewRKEManager(o.ctx, &o.config.Kubernetes)
+
+		// Add all nodes to RKE manager
+		for _, nodes := range o.nodes {
+			for _, node := range nodes {
+				o.rkeManager.AddNode(node)
+			}
+		}
+
+		// Deploy the cluster
+		if err := o.rkeManager.DeployCluster(); err != nil {
+			return fmt.Errorf("RKE deployment failed: %w", err)
+		}
 	}
 
 	// Wait for Kubernetes to be ready
@@ -644,6 +683,10 @@ func (o *Orchestrator) installIngress() error {
 func (o *Orchestrator) installAddons() error {
 	o.ctx.Log.Info("Installing cluster addons", nil)
 
+	if o.rkeManager == nil {
+		return fmt.Errorf("RKE manager not initialized - cannot install addons")
+	}
+
 	if err := o.rkeManager.InstallAddons(); err != nil {
 		return fmt.Errorf("failed to install addons: %w", err)
 	}
@@ -717,7 +760,9 @@ func (o *Orchestrator) exportOutputs() {
 	o.ctx.Export("nodes", pulumi.ToMap(nodeOutputs))
 
 	// Export network information
-	o.networkManager.ExportNetworkOutputs()
+	if o.networkManager != nil {
+		o.networkManager.ExportNetworkOutputs()
+	}
 
 	// Export WireGuard information
 	if o.wireGuardManager != nil {
