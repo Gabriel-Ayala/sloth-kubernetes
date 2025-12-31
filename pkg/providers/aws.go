@@ -177,10 +177,17 @@ func (p *AWSProvider) CreateNetwork(ctx *pulumi.Context, network *config.Network
 		return nil, fmt.Errorf("failed to create internet gateway: %w", err)
 	}
 
+	// Calculate subnet CIDRs from VPC CIDR
+	// For a /16 VPC (e.g., 10.100.0.0/16), create /24 subnets (e.g., 10.100.1.0/24, 10.100.2.0/24)
+	subnetCIDRs := calculateSubnetCIDRs(vpcConfig.CIDR, 2)
+	if len(subnetCIDRs) < 2 {
+		return nil, fmt.Errorf("failed to calculate subnet CIDRs from VPC CIDR %s", vpcConfig.CIDR)
+	}
+
 	// Create public subnet
 	subnet, err := ec2.NewSubnet(ctx, fmt.Sprintf("%s-subnet-public", ctx.Stack()), &ec2.SubnetArgs{
 		VpcId:                       vpc.ID(),
-		CidrBlock:                   pulumi.String("10.0.1.0/24"),
+		CidrBlock:                   pulumi.String(subnetCIDRs[0]),
 		MapPublicIpOnLaunch:         pulumi.Bool(true),
 		AvailabilityZone:            pulumi.String(fmt.Sprintf("%sa", p.config.Region)),
 		AssignIpv6AddressOnCreation: pulumi.Bool(false),
@@ -199,7 +206,7 @@ func (p *AWSProvider) CreateNetwork(ctx *pulumi.Context, network *config.Network
 	// Create second subnet in different AZ for high availability
 	subnet2, err := ec2.NewSubnet(ctx, fmt.Sprintf("%s-subnet-public-2", ctx.Stack()), &ec2.SubnetArgs{
 		VpcId:               vpc.ID(),
-		CidrBlock:           pulumi.String("10.0.2.0/24"),
+		CidrBlock:           pulumi.String(subnetCIDRs[1]),
 		MapPublicIpOnLaunch: pulumi.Bool(true),
 		AvailabilityZone:    pulumi.String(fmt.Sprintf("%sb", p.config.Region)),
 		Tags: pulumi.StringMap{
@@ -842,4 +849,31 @@ func readSSHPublicKey(path string) (string, error) {
 	}
 
 	return strings.TrimSpace(string(content)), nil
+}
+
+// calculateSubnetCIDRs calculates subnet CIDRs from a VPC CIDR
+// For example, given "10.100.0.0/16" and count=2, returns ["10.100.1.0/24", "10.100.2.0/24"]
+func calculateSubnetCIDRs(vpcCIDR string, count int) []string {
+	parts := strings.Split(vpcCIDR, "/")
+	if len(parts) != 2 {
+		return nil
+	}
+
+	ipParts := strings.Split(parts[0], ".")
+	if len(ipParts) != 4 {
+		return nil
+	}
+
+	// Parse the first two octets
+	firstOctet := ipParts[0]
+	secondOctet := ipParts[1]
+
+	// Create /24 subnets within the VPC CIDR
+	var subnets []string
+	for i := 1; i <= count; i++ {
+		subnet := fmt.Sprintf("%s.%s.%d.0/24", firstOctet, secondOctet, i)
+		subnets = append(subnets, subnet)
+	}
+
+	return subnets
 }
