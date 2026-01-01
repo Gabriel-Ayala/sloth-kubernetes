@@ -86,8 +86,8 @@ func NewSaltTestSuite(t *testing.T) *SaltTestSuite {
 			AWSRegion:       getEnvOrDefault("AWS_REGION", "us-east-1"),
 			StackPrefix:     fmt.Sprintf("salt-comp-e2e-%d", timestamp),
 			Timeout:         30 * time.Minute,
-			MasterSize:      "t3.small",
-			MinionSize:      "t3.micro",
+			MasterSize:      "t3.medium", // Larger instance for faster cloud-init
+			MinionSize:      "t3.small",  // Minions need less resources
 			MinionCount:     2,
 			ClusterToken:    clusterToken,
 			APIPassword:     fmt.Sprintf("salt-api-%s", clusterToken[:16]),
@@ -360,11 +360,11 @@ func (s *SaltTestSuite) DeploySaltMinions() error {
 
 // WaitForSaltServices waits for Salt services to be ready
 func (s *SaltTestSuite) WaitForSaltServices() error {
-	s.t.Log("⏳ Waiting for Salt Master cloud-init (90s)...")
-	time.Sleep(90 * time.Second)
+	s.t.Log("⏳ Waiting for Salt Master cloud-init (180s)...")
+	time.Sleep(180 * time.Second) // Increased to 3 minutes for Salt installation
 
 	// Verify Salt Master is ready
-	for attempt := 1; attempt <= 30; attempt++ {
+	for attempt := 1; attempt <= 40; attempt++ { // Increased attempts
 		output, err := s.runSSH(s.masterIP, "cat /tmp/salt_setup_complete 2>/dev/null || echo 'NOT_READY'")
 		if err == nil && strings.Contains(output, "SALT_MASTER_READY") {
 			s.t.Logf("✅ Salt Master ready after %d attempts", attempt)
