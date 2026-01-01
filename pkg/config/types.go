@@ -31,6 +31,22 @@ type ClusterConfig struct {
 // AddonsConfig defines cluster addons configuration
 type AddonsConfig struct {
 	ArgoCD *ArgoCDConfig `yaml:"argocd,omitempty" json:"argocd,omitempty"`
+	Salt   *SaltConfig   `yaml:"salt,omitempty" json:"salt,omitempty"`
+}
+
+// SaltConfig defines Salt Master/Minion configuration for cluster management
+type SaltConfig struct {
+	Enabled       bool   `yaml:"enabled" json:"enabled"`                               // Enable Salt installation
+	MasterNode    string `yaml:"masterNode,omitempty" json:"masterNode,omitempty"`     // Which node to install Salt Master (default: first master)
+	APIEnabled    bool   `yaml:"apiEnabled" json:"apiEnabled"`                         // Enable Salt API (default: true)
+	APIPort       int    `yaml:"apiPort,omitempty" json:"apiPort,omitempty"`           // Salt API port (default: 8000)
+	SecureAuth    bool   `yaml:"secureAuth" json:"secureAuth"`                         // Use hash-based secure authentication (default: true)
+	AutoJoin      bool   `yaml:"autoJoin" json:"autoJoin"`                             // Automatically join all nodes as minions (default: true)
+	AuditLogging  bool   `yaml:"auditLogging" json:"auditLogging"`                     // Enable authentication audit logging (default: true)
+	StateRoots    string `yaml:"stateRoots,omitempty" json:"stateRoots,omitempty"`     // Path to Salt state files
+	PillarRoots   string `yaml:"pillarRoots,omitempty" json:"pillarRoots,omitempty"`   // Path to Salt pillar files
+	GitOpsRepo    string `yaml:"gitopsRepo,omitempty" json:"gitopsRepo,omitempty"`     // Git repo for Salt states (optional)
+	GitOpsBranch  string `yaml:"gitopsBranch,omitempty" json:"gitopsBranch,omitempty"` // Git branch for Salt states (default: main)
 }
 
 // ArgoCDConfig defines ArgoCD GitOps configuration

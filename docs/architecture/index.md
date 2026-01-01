@@ -255,24 +255,55 @@ Outbound:
   - All traffic allowed
 ```
 
-### 10. SaltStack Integration (`pkg/salt/`)
+### 10. SaltStack Integration
 
-Remote execution and configuration management.
+Remote execution and configuration management with secure authentication.
+
+**Key Files**:
+- `internal/orchestrator/components/salt_master.go` - Salt Master and Minion components
+- `pkg/salt/` - Salt client library
 
 **Architecture**:
 ```
-┌──────────────┐
-│ Salt Master  │ (Running on bastion)
-│  (Port 4505) │
-└──────────────┘
-       │
-       │ ZeroMQ
-       │
-       ▼
+┌──────────────────────────────────────────────────────┐
+│                  Salt Master                          │
+│  (Running on designated node via WireGuard IP)       │
+│  Port 4505/4506 + REST API 8000                      │
+│                                                       │
+│  Security Settings:                                   │
+│  ├── auto_accept: False                               │
+│  ├── open_mode: False                                 │
+│  └── autosign_grains_dir: /etc/salt/autosign_grains  │
+└───────────────────────┬──────────────────────────────┘
+                        │
+                        │ ZeroMQ + Cluster Token Auth
+                        │
+       ┌────────────────┼────────────────┐
+       ▼                ▼                ▼
 ┌──────────────┐ ┌──────────────┐ ┌──────────────┐
 │ Salt Minion  │ │ Salt Minion  │ │ Salt Minion  │
 │  (master-0)  │ │  (worker-0)  │ │  (worker-1)  │
+│              │ │              │ │              │
+│ Grains:      │ │ Grains:      │ │ Grains:      │
+│ cluster_token│ │ cluster_token│ │ cluster_token│
+│ node_type    │ │ node_type    │ │ node_type    │
 └──────────────┘ └──────────────┘ └──────────────┘
+```
+
+**Secure Authentication Flow**:
+1. Cluster token generated with SHA256 hash (cluster + stack + timestamp)
+2. Master stores token in `/etc/salt/autosign_grains/cluster_token`
+3. Minions configured with token in grains
+4. Master validates grain token before accepting minion key
+5. All auth events logged for audit
+
+**Token Generation**:
+```go
+func generateClusterToken(clusterName, stackName string) string {
+    seed := fmt.Sprintf("%s-%s-%d", clusterName, stackName, time.Now().UnixNano())
+    hash := sha256.Sum256([]byte(seed))
+    return hex.EncodeToString(hash[:])[:32]
+}
 ```
 
 **100+ Execution Modules**:
@@ -281,6 +312,11 @@ Remote execution and configuration management.
 - `service.*` - Service control
 - `grains.*` - System information
 - `state.*` - Configuration management
+
+**Salt API Integration**:
+- REST CherryPy backend
+- PAM external authentication
+- Full wheel/runner/jobs access for automation
 
 ### 11. Configuration System (`pkg/config/`)
 

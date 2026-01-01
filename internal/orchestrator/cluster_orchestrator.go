@@ -233,23 +233,58 @@ func NewSimpleRealOrchestratorComponent(ctx *pulumi.Context, name string, cfg *c
 
 	ctx.Log.Info("✅ VPN validation passed - all nodes reachable", nil)
 
-	// Phase 4: K3s Kubernetes Cluster (REAL)
-	ctx.Log.Info("☸️  Phase 4: Installing K3s Kubernetes cluster...", nil)
-	rkeComponent, err := components.NewK3sRealComponent(
-		ctx,
-		fmt.Sprintf("%s-k3s", name),
-		realNodes,
-		sshKeyComponent.PrivateKey,
-		cfg,
-		bastionComponent, // Pass bastion for ProxyJump SSH connections
-		pulumi.Parent(component),
-		pulumi.DependsOn([]pulumi.Resource{vpnValidator}), // Wait for VPN validation
-	)
-	if err != nil {
-		return nil, fmt.Errorf("failed to install K3s: %w", err)
+	// Phase 4: Kubernetes Cluster Installation (K3s or RKE2)
+	var kubeConfig pulumi.StringOutput
+	var clusterInstallResource pulumi.Resource
+
+	distribution := cfg.Kubernetes.Distribution
+	if distribution == "" {
+		distribution = "k3s" // Default to K3s
 	}
 
-	ctx.Log.Info("✅ K3s cluster installed", nil)
+	if distribution == "rke2" {
+		// Install RKE2
+		ctx.Log.Info("☸️  Phase 4: Installing RKE2 Kubernetes cluster...", nil)
+		rke2Component, err := components.NewRKE2RealComponent(
+			ctx,
+			fmt.Sprintf("%s-rke2", name),
+			realNodes,
+			sshKeyComponent.PrivateKey,
+			cfg,
+			bastionComponent,
+			pulumi.Parent(component),
+			pulumi.DependsOn([]pulumi.Resource{vpnValidator}),
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to install RKE2: %w", err)
+		}
+		kubeConfig = rke2Component.KubeConfig
+		clusterInstallResource = rke2Component
+		ctx.Log.Info("✅ RKE2 cluster installed", nil)
+	} else {
+		// Install K3s (default)
+		ctx.Log.Info("☸️  Phase 4: Installing K3s Kubernetes cluster...", nil)
+		k3sComponent, err := components.NewK3sRealComponent(
+			ctx,
+			fmt.Sprintf("%s-k3s", name),
+			realNodes,
+			sshKeyComponent.PrivateKey,
+			cfg,
+			bastionComponent,
+			pulumi.Parent(component),
+			pulumi.DependsOn([]pulumi.Resource{vpnValidator}),
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to install K3s: %w", err)
+		}
+		kubeConfig = k3sComponent.KubeConfig
+		clusterInstallResource = k3sComponent
+		ctx.Log.Info("✅ K3s cluster installed", nil)
+	}
+
+	// Use rkeComponent as alias for compatibility
+	rkeComponent := clusterInstallResource
+	_ = rkeComponent // Silence unused variable warning
 
 	// Phase 5: DNS Records (REAL)
 	ctx.Log.Info("🌐 Phase 5: Creating DNS records...", nil)
@@ -266,6 +301,84 @@ func NewSimpleRealOrchestratorComponent(ctx *pulumi.Context, name string, cfg *c
 	}
 
 	ctx.Log.Info("✅ DNS records created", nil)
+
+	// Phase 5.5: Salt Master Installation (only if enabled in config)
+	var saltMasterComponent *components.SaltMasterComponent
+	var saltMinionComponent *components.SaltMinionJoinComponent
+
+	if cfg.Addons.Salt != nil && cfg.Addons.Salt.Enabled {
+		ctx.Log.Info("", nil)
+		ctx.Log.Info("════════════════════════════════════════════════════════════", nil)
+		ctx.Log.Info("🧂 Phase 5.5: SALT MASTER INSTALLATION", nil)
+		ctx.Log.Info("════════════════════════════════════════════════════════════", nil)
+		ctx.Log.Info("🔐 Secure hash-based authentication enabled", nil)
+		ctx.Log.Info("", nil)
+
+		// Find the Salt Master node - use first node (typically first master)
+		// The MasterNode config can specify an index like "0", "1", etc.
+		var saltMasterNode *components.RealNodeComponent
+		masterNodeIndex := 0 // Default to first node
+
+		if cfg.Addons.Salt.MasterNode != "" {
+			// Parse index if specified (e.g., "1" for second node)
+			if idx, err := fmt.Sscanf(cfg.Addons.Salt.MasterNode, "%d", &masterNodeIndex); err != nil || idx != 1 {
+				masterNodeIndex = 0 // Default to first
+			}
+		}
+
+		if len(realNodes) > masterNodeIndex {
+			saltMasterNode = realNodes[masterNodeIndex]
+		} else if len(realNodes) > 0 {
+			saltMasterNode = realNodes[0]
+		}
+
+		if saltMasterNode != nil {
+			ctx.Log.Info(fmt.Sprintf("📍 Installing Salt Master (API port: %d)...", cfg.Addons.Salt.APIPort), nil)
+
+			saltMasterComponent, err = components.NewSaltMasterComponent(
+				ctx,
+				fmt.Sprintf("%s-salt-master", name),
+				saltMasterNode,
+				sshKeyComponent.PrivateKey,
+				bastionComponent,
+				pulumi.Parent(component),
+				pulumi.DependsOn([]pulumi.Resource{clusterInstallResource, dnsComponent}),
+			)
+			if err != nil {
+				ctx.Log.Warn(fmt.Sprintf("⚠️  Salt Master installation failed: %v", err), nil)
+				ctx.Log.Warn("   Cluster is ready but Salt Master was not installed", nil)
+			} else {
+				ctx.Log.Info("✅ Salt Master installed successfully", nil)
+
+				// Phase 5.6: Salt Minion Join (if auto-join enabled)
+				if cfg.Addons.Salt.AutoJoin {
+					ctx.Log.Info("", nil)
+					ctx.Log.Info("════════════════════════════════════════════════════════════", nil)
+					ctx.Log.Info("🧂 Phase 5.6: SALT MINION CONFIGURATION", nil)
+					ctx.Log.Info("════════════════════════════════════════════════════════════", nil)
+					ctx.Log.Info("", nil)
+
+					saltMinionComponent, err = components.NewSaltMinionJoinComponent(
+						ctx,
+						fmt.Sprintf("%s-salt-minions", name),
+						realNodes,
+						saltMasterComponent,
+						sshKeyComponent.PrivateKey,
+						bastionComponent,
+						pulumi.Parent(component),
+						pulumi.DependsOn([]pulumi.Resource{saltMasterComponent}),
+					)
+					if err != nil {
+						ctx.Log.Warn(fmt.Sprintf("⚠️  Salt Minion configuration failed: %v", err), nil)
+					} else {
+						ctx.Log.Info("✅ All nodes configured as Salt Minions", nil)
+					}
+				}
+			}
+		} else {
+			ctx.Log.Warn("⚠️  No node found for Salt Master installation", nil)
+		}
+	}
 
 	// Phase 6: ArgoCD Installation (if enabled)
 	var argoCDComponent *components.ArgoCDInstallerComponent
@@ -296,7 +409,7 @@ func NewSimpleRealOrchestratorComponent(ctx *pulumi.Context, name string, cfg *c
 
 	// Set outputs
 	component.ClusterName = pulumi.String(cfg.Metadata.Name).ToStringOutput()
-	component.KubeConfig = rkeComponent.KubeConfig
+	component.KubeConfig = kubeConfig
 	component.SSHPrivateKey = sshKeyComponent.PrivateKeyPath
 	component.SSHPublicKey = sshKeyComponent.PublicKey
 	component.APIEndpoint = dnsComponent.APIEndpoint
@@ -342,6 +455,29 @@ func NewSimpleRealOrchestratorComponent(ctx *pulumi.Context, name string, cfg *c
 	if argoCDComponent != nil {
 		ctx.Export("argocd_admin_password", argoCDComponent.AdminPassword)
 		ctx.Export("argocd_status", argoCDComponent.Status)
+	}
+
+	// Export Salt Master information if installed
+	if saltMasterComponent != nil {
+		ctx.Export("salt_master", pulumi.Map{
+			"master_ip":     saltMasterComponent.MasterIP,
+			"api_url":       saltMasterComponent.APIURL,
+			"api_username":  saltMasterComponent.APIUsername,
+			"api_password":  saltMasterComponent.APIPassword,
+			"cluster_token": saltMasterComponent.ClusterToken, // Secure auth token
+			"status":        saltMasterComponent.Status,
+		})
+		ctx.Export("salt_enabled", pulumi.Bool(true))
+	} else {
+		ctx.Export("salt_enabled", pulumi.Bool(false))
+	}
+
+	// Export Salt Minion information if configured
+	if saltMinionComponent != nil {
+		ctx.Export("salt_minions", pulumi.Map{
+			"joined_count": saltMinionComponent.JoinedMinions,
+			"status":       saltMinionComponent.Status,
+		})
 	}
 
 	if err := ctx.RegisterResourceOutputs(component, pulumi.Map{

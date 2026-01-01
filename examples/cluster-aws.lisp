@@ -103,4 +103,16 @@
       (enabled true)
       (retention "15d"))
     (grafana
-      (enabled true))))
+      (enabled true)))
+
+  ; Addons configuration
+  (addons
+    ; Salt Master/Minion for configuration management
+    (salt
+      (enabled true)
+      (master-node "0")        ; Install on first master (index 0)
+      (api-enabled true)       ; Enable Salt API
+      (api-port 8000)          ; API port
+      (secure-auth true)       ; Use hash-based secure authentication
+      (auto-join true)         ; All nodes auto-join as minions
+      (audit-logging true))))

@@ -505,6 +505,42 @@ func parseAddons(l *List) AddonsConfig {
 		}
 	}
 
+	if salt := l.GetList("salt"); salt != nil {
+		cfg.Salt = &SaltConfig{
+			Enabled:      salt.GetBool("enabled"),
+			MasterNode:   salt.GetString("master-node"), // Node name where Salt Master will be installed
+			APIEnabled:   salt.GetBool("api-enabled"),
+			APIPort:      salt.GetInt("api-port"),
+			SecureAuth:   salt.GetBool("secure-auth"),
+			AutoJoin:     salt.GetBool("auto-join"),
+			AuditLogging: salt.GetBool("audit-logging"),
+			StateRoots:   salt.GetString("state-roots"),
+			PillarRoots:  salt.GetString("pillar-roots"),
+			GitOpsRepo:   salt.GetString("gitops-repo"),
+			GitOpsBranch: salt.GetString("gitops-branch"),
+		}
+		// Apply Salt defaults
+		if cfg.Salt.APIPort == 0 {
+			cfg.Salt.APIPort = 8000
+		}
+		// Default to secure auth if not specified
+		if !salt.GetBool("secure-auth") && salt.Get("secure-auth") == nil {
+			cfg.Salt.SecureAuth = true
+		}
+		// Default to auto-join if not specified
+		if !salt.GetBool("auto-join") && salt.Get("auto-join") == nil {
+			cfg.Salt.AutoJoin = true
+		}
+		// Default to API enabled
+		if !salt.GetBool("api-enabled") && salt.Get("api-enabled") == nil {
+			cfg.Salt.APIEnabled = true
+		}
+		// Default to audit logging
+		if !salt.GetBool("audit-logging") && salt.Get("audit-logging") == nil {
+			cfg.Salt.AuditLogging = true
+		}
+	}
+
 	return cfg
 }
 

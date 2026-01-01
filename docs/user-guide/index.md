@@ -1107,9 +1107,116 @@ addons:
 
 salt:
   enabled: true
-  masterPort: 4505
-  publishPort: 4506
+  masterNode: "0"           # Node index to run Salt Master
+  apiEnabled: true          # Enable Salt REST API
+  apiPort: 8000             # Salt API port
+  secureAuth: true          # Use SHA256 hash-based minion authentication
+  autoJoin: true            # Automatically join minions to master
+  auditLogging: true        # Enable authentication audit logging
 ```
+
+---
+
+## Salt Configuration
+
+### Secure Hash-Based Authentication
+
+sloth-kubernetes implements a secure minion authentication system using SHA256 hash tokens instead of the insecure `auto_accept: True` approach.
+
+**How it works:**
+
+1. A unique cluster token is generated using SHA256 hash of cluster name + stack name + timestamp
+2. Salt Master is configured with `auto_accept: False` and `autosign_grains_dir`
+3. Each minion is configured with the cluster token in its grains
+4. Salt Master validates the grain token before accepting the minion key
+5. All authentication events are logged for audit
+
+**Security Configuration:**
+
+```yaml
+salt:
+  enabled: true
+  secureAuth: true         # Enables hash-based authentication
+  auditLogging: true       # Logs all key auth events
+```
+
+**Master Security Settings:**
+
+When `secureAuth` is enabled, the Salt Master is configured with:
+
+```yaml
+auto_accept: False              # Never auto-accept minion keys
+open_mode: False                # Disable open mode
+autosign_grains_dir: /etc/salt/autosign_grains  # Grain-based autosign
+```
+
+**Minion Grain Token:**
+
+Each minion receives a grain configuration with the cluster token:
+
+```yaml
+grains:
+  cluster_token: <sha256-token>
+  node_type: master|worker
+  cluster: sloth-kubernetes
+```
+
+### Salt Configuration in Lisp
+
+For Lisp-based configuration files:
+
+```lisp
+(addons
+  (salt
+    (enabled true)
+    (master-node "0")       ; Node index for Salt Master
+    (api-enabled true)      ; Enable REST API
+    (api-port 8000)         ; API port
+    (secure-auth true)      ; SHA256 token authentication
+    (auto-join true)        ; Auto-join minions
+    (audit-logging true)))  ; Authentication audit logs
+```
+
+### Salt API
+
+When `apiEnabled` is true, Salt REST API is available for programmatic access:
+
+```bash
+# Login to Salt API
+curl -sSk http://<master-ip>:8000/login \
+  -d username=saltapi \
+  -d password=<api-password> \
+  -d eauth=pam
+
+# Run commands via API
+curl -sSk http://<master-ip>:8000/ \
+  -H "X-Auth-Token: <token>" \
+  -d client=local \
+  -d tgt='*' \
+  -d fun=cmd.run \
+  -d arg='uptime'
+```
+
+### Reactor Audit Logging
+
+When `auditLogging` is enabled, all authentication events are logged:
+
+```yaml
+# Salt reactor configuration
+reactor:
+  - 'salt/auth':
+    - /srv/reactor/auth_log.sls
+```
+
+Authentication events are logged to `/var/log/salt/auth_audit.log`:
+
+```
+[2024-01-15 10:30:45] Key auth event: worker-0 - accept
+[2024-01-15 10:30:46] Key auth event: worker-1 - accept
+[2024-01-15 10:31:00] Key auth event: unknown-node - reject
+```
+
+---
 
 ## Common Workflows
 
