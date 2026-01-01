@@ -1101,18 +1101,53 @@ EOF
 # Clear any old keys
 rm -f /etc/salt/pki/minion/minion_master.pub 2>/dev/null || true
 
+# Wait for Salt Master to be reachable (port 4505 - publish port)
+echo "Waiting for Salt Master to be reachable..."
+MASTER_IP="%s"
+for attempt in $(seq 1 60); do
+    if nc -z -w5 "$MASTER_IP" 4505 2>/dev/null; then
+        echo "✅ Salt Master is reachable on port 4505 (attempt $attempt)"
+        break
+    fi
+    echo "   Attempt $attempt: Master not ready yet, waiting 5s..."
+    sleep 5
+done
+
+# Install netcat if not available (for future checks)
+apt-get install -y netcat-openbsd 2>/dev/null || true
+
 # Start Salt Minion
 echo "Starting Salt Minion..."
 systemctl enable salt-minion
 systemctl restart salt-minion
 
+# Wait for minion to connect and retry if needed
+echo "Waiting for minion to connect to master..."
+for attempt in $(seq 1 10); do
+    sleep 10
+    # Check if minion is connected by looking at the key exchange
+    if [ -f /etc/salt/pki/minion/minion_master.pub ]; then
+        echo "✅ Minion connected to master (attempt $attempt)"
+        break
+    fi
+    echo "   Attempt $attempt: Minion not connected, restarting service..."
+    systemctl restart salt-minion
+done
+
 # Verify service
 echo "Verifying service..."
 systemctl status salt-minion --no-pager || true
 
+# Final check
+if [ -f /etc/salt/pki/minion/minion_master.pub ]; then
+    echo "✅ Salt Minion successfully connected to master"
+else
+    echo "⚠️  Salt Minion may not be connected yet"
+fi
+
 echo "=== Salt Minion Setup Complete ==="
 echo "SALT_MINION_READY" > /tmp/salt_setup_complete
-`, minionID, s.masterPrivIP, minionID, s.masterPrivIP, minionID, minionID, s.config.ClusterToken)
+`, minionID, s.masterPrivIP, minionID, s.masterPrivIP, minionID, minionID, s.config.ClusterToken, s.masterPrivIP)
 }
 
 // generateSSHKeyPairForSalt generates an RSA SSH key pair
