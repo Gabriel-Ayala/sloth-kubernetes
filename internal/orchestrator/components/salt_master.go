@@ -106,11 +106,18 @@ else
     curl -o /tmp/bootstrap-salt.sh -L https://github.com/saltstack/salt-bootstrap/releases/latest/download/bootstrap-salt.sh
     chmod +x /tmp/bootstrap-salt.sh
 
-    # Install Salt Master and API (no minion on master)
-    sudo sh /tmp/bootstrap-salt.sh -M -N stable
+    # Install Salt Master with API (-M = Master, -W = Salt API with CherryPy, -N = no minion on master)
+    sudo sh /tmp/bootstrap-salt.sh -M -W -N stable
 
-    echo "✅ Salt Master installed"
+    echo "✅ Salt Master and API installed"
 fi
+
+# Ensure CherryPy dependencies are installed for Salt API
+echo "📦 Ensuring Salt API dependencies..."
+sudo apt-get update -qq
+sudo apt-get install -y python3-cherrypy3 python3-ws4py 2>/dev/null || {
+    pip3 install cherrypy ws4py 2>/dev/null || true
+}
 
 # Configure Salt Master with SECURE authentication
 echo "⚙️  Configuring Salt Master with hash-based auth..."
@@ -158,7 +165,8 @@ cat <<'AUTOSIGN' | sudo tee /etc/salt/autosign_grains/cluster_token
 %s
 AUTOSIGN
 
-# Salt API configuration with secure password
+# Salt API configuration with sharedsecret auth (more reliable than PAM)
+echo "🔐 Configuring Salt API with sharedsecret authentication..."
 cat <<'APICONF' | sudo tee /etc/salt/master.d/api.conf
 # Salt API Configuration
 rest_cherrypy:
@@ -166,8 +174,18 @@ rest_cherrypy:
   host: 0.0.0.0
   disable_ssl: true
 
+# Enable API clients
+netapi_enable_clients:
+  - local
+  - local_async
+  - runner
+  - wheel
+
+# Sharedsecret auth - password serves as the shared secret
+sharedsecret: %s
+
 external_auth:
-  pam:
+  sharedsecret:
     %s:
       - .*
       - '@wheel'
@@ -175,12 +193,7 @@ external_auth:
       - '@jobs'
 APICONF
 
-# Create saltapi user with secure password
-echo "👤 Creating Salt API user..."
-if ! id -u %s &>/dev/null; then
-    sudo useradd -r -s /bin/false %s
-fi
-echo "%s:%s" | sudo chpasswd
+echo "✅ Salt API configured with sharedsecret authentication"
 
 # Create Salt directories
 sudo mkdir -p /srv/salt /srv/pillar
@@ -257,16 +270,38 @@ sudo systemctl enable salt-master
 sudo systemctl restart salt-master
 
 # Install and start Salt API
-echo "🌐 Starting Salt API..."
-sudo systemctl enable salt-api 2>/dev/null || true
-sudo systemctl restart salt-api 2>/dev/null || {
-    # If salt-api service doesn't exist, install cherrypy
-    pip3 install cherrypy 2>/dev/null || sudo apt-get install -y python3-cherrypy3
-    sudo systemctl restart salt-api
-}
+echo "🌐 Configuring Salt API service..."
+
+# Create salt-api systemd service file if it doesn't exist
+if [ ! -f /etc/systemd/system/salt-api.service ] && [ ! -f /lib/systemd/system/salt-api.service ]; then
+    echo "📝 Creating salt-api systemd service..."
+    cat <<'SALTAPISERVICE' | sudo tee /lib/systemd/system/salt-api.service
+[Unit]
+Description=The Salt API
+Documentation=man:salt-api(1) file:///usr/share/doc/salt/html/contents.html https://docs.saltproject.io/en/latest/contents.html
+After=network.target salt-master.service
+Wants=salt-master.service
+
+[Service]
+Type=notify
+NotifyAccess=all
+LimitNOFILE=100000
+ExecStart=/usr/bin/salt-api
+TimeoutStopSec=3
+
+[Install]
+WantedBy=multi-user.target
+SALTAPISERVICE
+    sudo systemctl daemon-reload
+fi
+
+# Enable and start Salt API
+echo "🚀 Starting Salt API..."
+sudo systemctl enable salt-api
+sudo systemctl restart salt-api
 
 # Wait for Salt Master to be ready
-echo "⏳ Waiting for Salt Master to be ready..."
+echo "⏳ Waiting for Salt services to be ready..."
 sleep 5
 
 # Verify services are running
@@ -278,11 +313,30 @@ else
     exit 1
 fi
 
-# Check Salt API
-if sudo systemctl is-active --quiet salt-api 2>/dev/null; then
-    echo "✅ Salt API is running on port 8000"
-else
-    echo "⚠️  Salt API may not be running (optional)"
+# Check Salt API with retry
+echo "🔍 Verifying Salt API..."
+for i in 1 2 3; do
+    if sudo systemctl is-active --quiet salt-api; then
+        echo "✅ Salt API is running on port 8000"
+        break
+    else
+        if [ $i -lt 3 ]; then
+            echo "⏳ Waiting for Salt API to start (attempt $i/3)..."
+            sleep 3
+            sudo systemctl restart salt-api
+        else
+            echo "❌ Salt API failed to start"
+            sudo journalctl -u salt-api -n 20 --no-pager
+            # Don't exit - Salt API is not critical for basic operation
+        fi
+    fi
+done
+
+# Verify API is responding
+if command -v curl &> /dev/null; then
+    if curl -s -o /dev/null -w '' http://localhost:8000/ 2>/dev/null; then
+        echo "✅ Salt API is responding on http://localhost:8000"
+    fi
 fi
 
 # Create auth audit log
@@ -296,10 +350,10 @@ echo "════════════════════════�
 echo "  Master IP: %s"
 echo "  API URL: http://%s:8000"
 echo "  API User: %s"
-echo "  Auth Mode: Hash-based (cluster_token grain)"
+echo "  Auth Mode: Sharedsecret (cluster_token grain for minions)"
 echo "  Audit Log: /var/log/salt/auth_audit.log"
 echo "════════════════════════════════════════════════════════════"
-`, nodeName, wgIP, clusterToken, apiUsername, apiUsername, apiUsername, apiUsername, apiPassword, wgIP, wgIP, apiUsername)
+`, nodeName, wgIP, clusterToken, apiPassword, apiUsername, wgIP, wgIP, apiUsername)
 		}).(pulumi.StringOutput),
 	}, pulumi.Parent(component), pulumi.Timeouts(&pulumi.CustomTimeouts{
 		Create: "10m",

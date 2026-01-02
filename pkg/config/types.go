@@ -40,6 +40,8 @@ type SaltConfig struct {
 	MasterNode    string `yaml:"masterNode,omitempty" json:"masterNode,omitempty"`     // Which node to install Salt Master (default: first master)
 	APIEnabled    bool   `yaml:"apiEnabled" json:"apiEnabled"`                         // Enable Salt API (default: true)
 	APIPort       int    `yaml:"apiPort,omitempty" json:"apiPort,omitempty"`           // Salt API port (default: 8000)
+	APIUsername   string `yaml:"apiUsername,omitempty" json:"apiUsername,omitempty"`   // Salt API username (default: saltapi)
+	APIPassword   string `yaml:"apiPassword,omitempty" json:"apiPassword,omitempty"`   // Salt API password (auto-generated if empty)
 	SecureAuth    bool   `yaml:"secureAuth" json:"secureAuth"`                         // Use hash-based secure authentication (default: true)
 	AutoJoin      bool   `yaml:"autoJoin" json:"autoJoin"`                             // Automatically join all nodes as minions (default: true)
 	AuditLogging  bool   `yaml:"auditLogging" json:"auditLogging"`                     // Enable authentication audit logging (default: true)

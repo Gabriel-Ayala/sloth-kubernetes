@@ -26,7 +26,7 @@ func NewClient(baseURL, username, password string) *Client {
 		Username: username,
 		Password: password,
 		HTTPClient: &http.Client{
-			Timeout: 30 * time.Second,
+			Timeout: 120 * time.Second, // Increased timeout for Salt commands
 			Transport: &http.Transport{
 				TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
 			},
@@ -54,11 +54,12 @@ type LoginResponse struct {
 }
 
 // Login authenticates with Salt API and obtains a token
+// Uses sharedsecret authentication for more reliable programmatic access
 func (c *Client) Login() error {
 	loginReq := LoginRequest{
 		Username: c.Username,
 		Password: c.Password,
-		Eauth:    "pam",
+		Eauth:    "sharedsecret",
 	}
 
 	jsonData, err := json.Marshal(loginReq)
@@ -830,6 +831,10 @@ func (c *Client) KeyList() (map[string][]string, error) {
 	keys := make(map[string][]string)
 	if len(result.Return) > 0 {
 		data := result.Return[0].Data
+		// The actual keys are nested inside data["return"]
+		if returnData, ok := data["return"].(map[string]interface{}); ok {
+			data = returnData
+		}
 		for keyType, keyList := range data {
 			if keySlice, ok := keyList.([]interface{}); ok {
 				strSlice := make([]string, len(keySlice))

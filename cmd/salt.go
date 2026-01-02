@@ -1,12 +1,17 @@
 package cmd
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
+	"net"
 	"os"
+	"os/exec"
 	"strings"
+	"time"
 
 	"github.com/fatih/color"
+	"github.com/pulumi/pulumi/sdk/v3/go/auto"
 	"github.com/spf13/cobra"
 
 	"github.com/chalkan3/sloth-kubernetes/pkg/salt"
@@ -211,26 +216,394 @@ func init() {
 }
 
 func getSaltClient() (*salt.Client, error) {
+	// If no URL provided, try to auto-login from stack
 	if saltAPIURL == "" {
-		return nil, fmt.Errorf(`Salt API URL is required.
+		if err := autoLoginFromStack(); err != nil {
+			return nil, fmt.Errorf(`Salt API URL is required.
 
 Please run one of the following:
 
-  1. Login to Salt using your stack:
+  1. Use with stack flag (auto-login):
      %s
 
-  2. Set environment variables:
-     export SALT_API_URL="http://bastion-ip:8000"
+  2. Login to Salt using your stack:
+     %s
+
+  3. Set environment variables:
+     export SALT_API_URL="http://master-ip:8000"
      export SALT_USERNAME="saltapi"
      export SALT_PASSWORD="saltapi123"
 
-  3. Use command-line flags:
-     --url "http://bastion-ip:8000" --username saltapi --password saltapi123`,
-			color.CyanString("sloth-kubernetes salt login"))
+  4. Use command-line flags:
+     --url "http://master-ip:8000" --username saltapi --password saltapi123
+
+Auto-login error: %v`,
+				color.CyanString("sloth-kubernetes salt ping -s <stack-name>"),
+				color.CyanString("sloth-kubernetes salt login"),
+				err)
+		}
 	}
 
 	client := salt.NewClient(saltAPIURL, saltUsername, saltPassword)
 	return client, nil
+}
+
+// autoLoginFromStack automatically fetches Salt API credentials from the Pulumi stack
+// and ensures VPN connectivity if the Salt API is on a VPN IP
+func autoLoginFromStack() error {
+	ctx := context.Background()
+
+	// Create workspace
+	ws, err := createWorkspaceForSalt(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to create workspace: %w", err)
+	}
+
+	// Get stack name from global flag
+	targetStack := stackName
+	if targetStack == "" {
+		targetStack = "production"
+	}
+
+	// Try to select the stack
+	stack, err := auto.SelectStack(ctx, fmt.Sprintf("organization/sloth-kubernetes/%s", targetStack), ws)
+	if err != nil {
+		// Try without organization prefix
+		stack, err = auto.SelectStack(ctx, targetStack, ws)
+		if err != nil {
+			return fmt.Errorf("failed to select stack %q: %w", targetStack, err)
+		}
+	}
+
+	// Get stack outputs
+	outputs, err := stack.Outputs(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to get stack outputs: %w", err)
+	}
+
+	// Try to find Salt API URL from outputs
+	var saltIP string
+
+	// First check for salt_master output
+	if saltMasterOutput, ok := outputs["salt_master"]; ok {
+		if saltMaster, ok := saltMasterOutput.Value.(map[string]interface{}); ok {
+			if apiURL, ok := saltMaster["api_url"].(string); ok && apiURL != "" {
+				saltAPIURL = apiURL
+				// Extract IP from URL
+				saltIP = extractIPFromURL(apiURL)
+
+				// Get credentials from salt_master output if available
+				// Try different naming conventions for username
+				if user, ok := saltMaster["api_username"].(string); ok && user != "" {
+					saltUsername = user
+				} else if user, ok := saltMaster["api_user"].(string); ok && user != "" {
+					saltUsername = user
+				}
+				// Get password (shared secret for sharedsecret auth)
+				if pass, ok := saltMaster["api_password"].(string); ok && pass != "" {
+					saltPassword = pass
+				}
+			}
+		}
+	}
+
+	// Fallback: Check for bastion output
+	if saltAPIURL == "" {
+		if bastionOutput, ok := outputs["bastion"]; ok {
+			bastionIP, err := extractBastionIP(bastionOutput.Value)
+			if err == nil && bastionIP != "" {
+				saltAPIURL = fmt.Sprintf("http://%s:8000", bastionIP)
+				saltIP = bastionIP
+			}
+		}
+	}
+
+	// Fallback: Check nodes output for master node
+	if saltAPIURL == "" {
+		if nodesOutput, ok := outputs["nodes"]; ok {
+			if nodes, ok := nodesOutput.Value.([]interface{}); ok {
+				for _, node := range nodes {
+					if nodeMap, ok := node.(map[string]interface{}); ok {
+						// Check for master role
+						if roles, ok := nodeMap["roles"].([]interface{}); ok {
+							for _, role := range roles {
+								if roleStr, ok := role.(string); ok && (roleStr == "master" || roleStr == "control-plane") {
+									// Use VPN IP if available, otherwise public IP
+									if vpnIP, ok := nodeMap["vpn_ip"].(string); ok && vpnIP != "" {
+										saltAPIURL = fmt.Sprintf("http://%s:8000", vpnIP)
+										saltIP = vpnIP
+										break
+									}
+									if pubIP, ok := nodeMap["public_ip"].(string); ok && pubIP != "" {
+										saltAPIURL = fmt.Sprintf("http://%s:8000", pubIP)
+										saltIP = pubIP
+										break
+									}
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+
+	if saltAPIURL == "" {
+		return fmt.Errorf("no Salt API URL found in stack outputs")
+	}
+
+	// Check if Salt IP is on VPN network (10.8.0.x)
+	if isVPNIP(saltIP) {
+		color.Cyan("🔐 Salt API is on VPN network: %s", saltAPIURL)
+
+		// Check if we can reach the VPN IP
+		if !canReachIP(saltIP, 8000) {
+			color.Yellow("⚠️  Cannot reach Salt API - VPN connection required")
+
+			// Check if WireGuard is running locally
+			if !isWireGuardRunning() {
+				color.Cyan("🔗 Attempting to join VPN automatically...")
+
+				// Try to join VPN
+				if err := autoJoinVPN(targetStack, outputs); err != nil {
+					return fmt.Errorf("failed to auto-join VPN: %w\n\nPlease join the VPN manually:\n  sloth-kubernetes vpn join %s --install", err, targetStack)
+				}
+
+				// Wait for VPN to establish
+				color.Cyan("⏳ Waiting for VPN connection to establish...")
+				time.Sleep(3 * time.Second)
+
+				// Verify we can now reach the Salt API
+				if !canReachIP(saltIP, 8000) {
+					return fmt.Errorf("VPN connected but still cannot reach Salt API at %s", saltAPIURL)
+				}
+			} else {
+				// WireGuard is running but can't reach the IP - might be wrong network
+				return fmt.Errorf("WireGuard is running but cannot reach Salt API at %s. Check your VPN configuration", saltAPIURL)
+			}
+		}
+
+		color.Green("✅ VPN connected - Salt API reachable at %s", saltAPIURL)
+	} else {
+		color.Green("🔐 Auto-login: Using Salt API from stack %q: %s", targetStack, saltAPIURL)
+	}
+
+	return nil
+}
+
+// extractIPFromURL extracts the IP address from a URL like "http://10.8.0.10:8000"
+func extractIPFromURL(url string) string {
+	// Remove protocol
+	url = strings.TrimPrefix(url, "http://")
+	url = strings.TrimPrefix(url, "https://")
+
+	// Remove port
+	if idx := strings.Index(url, ":"); idx != -1 {
+		url = url[:idx]
+	}
+
+	return url
+}
+
+// isVPNIP checks if an IP is in the VPN range (10.8.0.0/24)
+func isVPNIP(ip string) bool {
+	return strings.HasPrefix(ip, "10.8.0.")
+}
+
+// canReachIP checks if we can establish a TCP connection to an IP:port
+func canReachIP(ip string, port int) bool {
+	address := fmt.Sprintf("%s:%d", ip, port)
+	conn, err := net.DialTimeout("tcp", address, 3*time.Second)
+	if err != nil {
+		return false
+	}
+	conn.Close()
+	return true
+}
+
+// isWireGuardRunning checks if WireGuard is running on the local machine
+func isWireGuardRunning() bool {
+	// Try to detect WireGuard by running 'wg show' which works on both Linux and macOS
+	cmd := exec.Command("sh", "-c", "sudo wg show 2>/dev/null | head -1")
+	output, err := cmd.CombinedOutput()
+	return err == nil && len(strings.TrimSpace(string(output))) > 0
+}
+
+// autoJoinVPN automatically joins the VPN for the given stack
+func autoJoinVPN(stackName string, outputs auto.OutputMap) error {
+	// Parse nodes from outputs
+	nodes, err := ParseNodeOutputs(outputs)
+	if err != nil {
+		return fmt.Errorf("failed to parse nodes: %w", err)
+	}
+
+	if len(nodes) == 0 {
+		return fmt.Errorf("no nodes found in stack")
+	}
+
+	// Get SSH key path
+	sshKeyPath := GetSSHKeyPath(stackName)
+
+	// Check if SSH key exists
+	if _, err := os.Stat(sshKeyPath); os.IsNotExist(err) {
+		return fmt.Errorf("SSH key not found at %s. Please ensure the cluster was deployed from this machine", sshKeyPath)
+	}
+
+	// Get bastion info if enabled
+	bastionEnabled := false
+	bastionIP := ""
+
+	if bastionEnabledOutput, ok := outputs["bastion_enabled"]; ok {
+		if bastionEnabledOutput.Value != nil {
+			bastionEnabled = bastionEnabledOutput.Value == true
+		}
+	}
+
+	if bastionEnabled {
+		if bastionOutput, ok := outputs["bastion"]; ok {
+			if bastionMap, ok := bastionOutput.Value.(map[string]interface{}); ok {
+				if pubIP, ok := bastionMap["public_ip"].(string); ok {
+					bastionIP = pubIP
+				}
+			}
+		}
+	}
+
+	// Generate WireGuard keypair
+	color.Cyan("🔑 Generating WireGuard keypair...")
+	privateKey, publicKey, err := generateWireGuardKeypair()
+	if err != nil {
+		return fmt.Errorf("failed to generate keypair: %w", err)
+	}
+
+	// Auto-assign VPN IP (100-254 range for clients)
+	vpnIP := "10.8.0.100"
+	for i := 100; i < 255; i++ {
+		candidateIP := fmt.Sprintf("10.8.0.%d", i)
+		// Simple assignment - could check for conflicts in production
+		vpnIP = candidateIP
+		break
+	}
+
+	color.Cyan("📡 VPN IP: %s", vpnIP)
+
+	// Add peer to cluster nodes
+	color.Cyan("🔗 Adding peer to cluster nodes...")
+	for _, node := range nodes {
+		targetIP := node.PublicIP
+		peerAddScript := generatePeerAddScript(vpnIP, publicKey, "cli-auto-join")
+
+		var sshCmd *exec.Cmd
+		if bastionEnabled && bastionIP != "" {
+			nodeTargetIP := node.WireGuardIP
+			if nodeTargetIP == "" {
+				nodeTargetIP = node.PrivateIP
+				if nodeTargetIP == "" {
+					nodeTargetIP = node.PublicIP
+				}
+			}
+			sshUser := getSSHUserForNode(node.Provider)
+			sshCmd = exec.Command("ssh",
+				"-i", sshKeyPath,
+				"-o", "StrictHostKeyChecking=accept-new",
+				"-o", "UserKnownHostsFile=/dev/null",
+				"-o", "ConnectTimeout=10",
+				"-o", fmt.Sprintf("ProxyCommand=ssh -i %s -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null -W %%h:%%p root@%s", sshKeyPath, bastionIP),
+				fmt.Sprintf("%s@%s", sshUser, nodeTargetIP),
+				"bash", "-s",
+			)
+		} else {
+			sshUser := getSSHUserForNode(node.Provider)
+			sshCmd = exec.Command("ssh",
+				"-i", sshKeyPath,
+				"-o", "StrictHostKeyChecking=accept-new",
+				"-o", "UserKnownHostsFile=/dev/null",
+				"-o", "ConnectTimeout=10",
+				fmt.Sprintf("%s@%s", sshUser, targetIP),
+				"bash", "-s",
+			)
+		}
+		sshCmd.Stdin = strings.NewReader(peerAddScript)
+
+		if _, err := sshCmd.CombinedOutput(); err != nil {
+			color.Yellow("  ⚠️  Failed to add peer to %s: %v", node.Name, err)
+		} else {
+			color.Green("  ✓ Added peer to %s", node.Name)
+		}
+	}
+
+	// Generate and install client config
+	color.Cyan("📝 Generating WireGuard configuration...")
+	clientConfig := generateClientConfig(privateKey, vpnIP, "cli-auto-join", nodes, nil, sshKeyPath, bastionEnabled, bastionIP)
+
+	// Detect OS and install
+	osType := detectOS()
+
+	switch osType {
+	case "darwin":
+		// macOS installation
+		mkdirCmd := exec.Command("sudo", "mkdir", "-p", "/opt/homebrew/etc/wireguard")
+		if err := mkdirCmd.Run(); err != nil {
+			// Try alternative path
+			mkdirCmd = exec.Command("sudo", "mkdir", "-p", "/usr/local/etc/wireguard")
+			if err := mkdirCmd.Run(); err != nil {
+				return fmt.Errorf("failed to create WireGuard directory: %w", err)
+			}
+		}
+
+		// Write config to temp file first
+		tmpFile := "/tmp/wg0-auto.conf"
+		if err := os.WriteFile(tmpFile, []byte(clientConfig), 0600); err != nil {
+			return fmt.Errorf("failed to write temp config: %w", err)
+		}
+
+		// Copy to WireGuard directory
+		cpCmd := exec.Command("sudo", "cp", tmpFile, "/opt/homebrew/etc/wireguard/wg0.conf")
+		if err := cpCmd.Run(); err != nil {
+			cpCmd = exec.Command("sudo", "cp", tmpFile, "/usr/local/etc/wireguard/wg0.conf")
+			if err := cpCmd.Run(); err != nil {
+				return fmt.Errorf("failed to install config: %w", err)
+			}
+		}
+
+		// Start WireGuard
+		color.Cyan("🚀 Starting WireGuard VPN...")
+		upCmd := exec.Command("sudo", "wg-quick", "up", "wg0")
+		if output, err := upCmd.CombinedOutput(); err != nil {
+			return fmt.Errorf("failed to start WireGuard: %w (output: %s)", err, string(output))
+		}
+
+	case "linux":
+		// Linux installation
+		mkdirCmd := exec.Command("sudo", "mkdir", "-p", "/etc/wireguard")
+		if err := mkdirCmd.Run(); err != nil {
+			return fmt.Errorf("failed to create WireGuard directory: %w", err)
+		}
+
+		// Write config
+		tmpFile := "/tmp/wg0-auto.conf"
+		if err := os.WriteFile(tmpFile, []byte(clientConfig), 0600); err != nil {
+			return fmt.Errorf("failed to write temp config: %w", err)
+		}
+
+		cpCmd := exec.Command("sudo", "cp", tmpFile, "/etc/wireguard/wg0.conf")
+		if err := cpCmd.Run(); err != nil {
+			return fmt.Errorf("failed to install config: %w", err)
+		}
+
+		// Start WireGuard
+		color.Cyan("🚀 Starting WireGuard VPN...")
+		upCmd := exec.Command("sudo", "wg-quick", "up", "wg0")
+		if output, err := upCmd.CombinedOutput(); err != nil {
+			return fmt.Errorf("failed to start WireGuard: %w (output: %s)", err, string(output))
+		}
+
+	default:
+		return fmt.Errorf("unsupported OS: %s. Please install WireGuard manually", osType)
+	}
+
+	color.Green("✅ VPN connected successfully!")
+	return nil
 }
 
 func runSaltPing(cmd *cobra.Command, args []string) error {

@@ -511,6 +511,8 @@ func parseAddons(l *List) AddonsConfig {
 			MasterNode:   salt.GetString("master-node"), // Node name where Salt Master will be installed
 			APIEnabled:   salt.GetBool("api-enabled"),
 			APIPort:      salt.GetInt("api-port"),
+			APIUsername:  salt.GetString("api-username"), // Salt API username (default: saltapi)
+			APIPassword:  salt.GetString("api-password"), // Salt API password (auto-generated if empty)
 			SecureAuth:   salt.GetBool("secure-auth"),
 			AutoJoin:     salt.GetBool("auto-join"),
 			AuditLogging: salt.GetBool("audit-logging"),
@@ -523,6 +525,11 @@ func parseAddons(l *List) AddonsConfig {
 		if cfg.Salt.APIPort == 0 {
 			cfg.Salt.APIPort = 8000
 		}
+		// Default API username
+		if cfg.Salt.APIUsername == "" {
+			cfg.Salt.APIUsername = "saltapi"
+		}
+		// Note: APIPassword will be auto-generated in salt_master.go if empty
 		// Default to secure auth if not specified
 		if !salt.GetBool("secure-auth") && salt.Get("secure-auth") == nil {
 			cfg.Salt.SecureAuth = true
