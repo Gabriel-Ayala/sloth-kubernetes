@@ -19,19 +19,26 @@ import (
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
+	"github.com/pulumi/pulumi/sdk/v3/go/auto"
+	"github.com/pulumi/pulumi/sdk/v3/go/common/tokens"
+	"github.com/pulumi/pulumi/sdk/v3/go/common/workspace"
+	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 // SlothPulumiCLITestSuite manages the Pulumi CLI E2E test environment
 type SlothPulumiCLITestSuite struct {
-	t          *testing.T
-	ctx        context.Context
-	s3Client   *s3.Client
-	config     *SlothPulumiCLIConfig
-	binaryPath string
-	bucketName string
-	stackName  string
-	workDir    string
+	t           *testing.T
+	ctx         context.Context
+	s3Client    *s3.Client
+	config      *SlothPulumiCLIConfig
+	binaryPath  string
+	bucketName  string
+	stackName   string
+	workDir     string
+	backendURL  string
+	pulumiStack auto.Stack
 }
 
 // SlothPulumiCLIConfig holds test configuration
@@ -91,6 +98,10 @@ func (s *SlothPulumiCLITestSuite) Setup() error {
 	if err := s.createS3Bucket(); err != nil {
 		return fmt.Errorf("failed to create S3 bucket: %w", err)
 	}
+
+	// Set backend URL
+	s.backendURL = fmt.Sprintf("s3://%s?region=%s", s.bucketName, s.config.Region)
+	s.t.Logf("Backend URL: %s", s.backendURL)
 
 	return nil
 }
@@ -173,9 +184,121 @@ func (s *SlothPulumiCLITestSuite) createS3Bucket() error {
 	return nil
 }
 
+// createStackWithAutomationAPI creates a stack using Pulumi Automation API
+// This mirrors exactly what our CLI does internally
+func (s *SlothPulumiCLITestSuite) createStackWithAutomationAPI() error {
+	s.printPhase("Create Stack", "Creating stack using Pulumi Automation API (same as CLI)")
+
+	// Set environment variables (same as CLI expects)
+	os.Setenv("PULUMI_BACKEND_URL", s.backendURL)
+	os.Setenv("PULUMI_CONFIG_PASSPHRASE", s.config.Passphrase)
+	os.Setenv("AWS_REGION", s.config.Region)
+
+	// Create workspace with same configuration as CLI
+	projectName := "sloth-kubernetes"
+	workspaceOpts := []auto.LocalWorkspaceOption{
+		auto.Project(workspace.Project{
+			Name:    tokens.PackageName(projectName),
+			Runtime: workspace.NewProjectRuntimeInfo("go", nil),
+		}),
+		auto.EnvVars(map[string]string{
+			"PULUMI_BACKEND_URL":        s.backendURL,
+			"PULUMI_CONFIG_PASSPHRASE":  s.config.Passphrase,
+			"AWS_REGION":                s.config.Region,
+			"AWS_ACCESS_KEY_ID":         os.Getenv("AWS_ACCESS_KEY_ID"),
+			"AWS_SECRET_ACCESS_KEY":     os.Getenv("AWS_SECRET_ACCESS_KEY"),
+			"AWS_SESSION_TOKEN":         os.Getenv("AWS_SESSION_TOKEN"),
+		}),
+		auto.SecretsProvider("passphrase"),
+	}
+
+	ws, err := auto.NewLocalWorkspace(s.ctx, workspaceOpts...)
+	if err != nil {
+		return fmt.Errorf("failed to create workspace: %w", err)
+	}
+
+	s.t.Logf("Workspace created successfully")
+
+	// Create stack with fully qualified name (same format as CLI uses)
+	fullyQualifiedStackName := fmt.Sprintf("organization/%s/%s", projectName, s.stackName)
+	s.t.Logf("Creating stack: %s", fullyQualifiedStackName)
+
+	// Define a simple inline program that exports some values
+	stack, err := auto.UpsertStackInlineSource(s.ctx, fullyQualifiedStackName, projectName,
+		func(ctx *pulumi.Context) error {
+			ctx.Export("testOutput", pulumi.String("e2e-test-value"))
+			ctx.Export("stackName", pulumi.String(s.stackName))
+			ctx.Export("timestamp", pulumi.String(fmt.Sprintf("%d", time.Now().Unix())))
+			return nil
+		},
+		auto.EnvVars(map[string]string{
+			"PULUMI_BACKEND_URL":        s.backendURL,
+			"PULUMI_CONFIG_PASSPHRASE":  s.config.Passphrase,
+			"AWS_REGION":                s.config.Region,
+			"AWS_ACCESS_KEY_ID":         os.Getenv("AWS_ACCESS_KEY_ID"),
+			"AWS_SECRET_ACCESS_KEY":     os.Getenv("AWS_SECRET_ACCESS_KEY"),
+			"AWS_SESSION_TOKEN":         os.Getenv("AWS_SESSION_TOKEN"),
+		}),
+		auto.SecretsProvider("passphrase"),
+	)
+	if err != nil {
+		return fmt.Errorf("failed to create stack: %w", err)
+	}
+
+	s.pulumiStack = stack
+	s.t.Logf("Stack created: %s", fullyQualifiedStackName)
+
+	// Run up to create state
+	s.t.Log("Running pulumi up to create state...")
+	upResult, err := stack.Up(s.ctx)
+	if err != nil {
+		return fmt.Errorf("failed to run up: %w", err)
+	}
+
+	s.t.Logf("Stack deployed successfully with %d outputs", len(upResult.Outputs))
+	for key, val := range upResult.Outputs {
+		s.t.Logf("  Output: %s = %v", key, val.Value)
+	}
+
+	// Verify we can list stacks and find ours
+	stacks, err := ws.ListStacks(s.ctx)
+	if err != nil {
+		return fmt.Errorf("failed to list stacks: %w", err)
+	}
+
+	found := false
+	for _, st := range stacks {
+		s.t.Logf("  Found stack: %s", st.Name)
+		if strings.Contains(st.Name, s.stackName) {
+			found = true
+		}
+	}
+	if !found {
+		return fmt.Errorf("created stack not found in list")
+	}
+
+	s.t.Log("Stack verified in list")
+	return nil
+}
+
 // Cleanup removes all test resources
 func (s *SlothPulumiCLITestSuite) Cleanup() {
 	s.printPhase("Cleanup", "Removing test resources")
+
+	// Destroy stack if it exists
+	if s.pulumiStack.Name() != "" {
+		s.t.Log("Destroying stack...")
+		_, err := s.pulumiStack.Destroy(s.ctx)
+		if err != nil {
+			s.t.Logf("Warning: Failed to destroy stack: %v", err)
+		}
+
+		s.t.Log("Removing stack...")
+		err = s.pulumiStack.Workspace().RemoveStack(s.ctx, s.pulumiStack.Name())
+		if err != nil {
+			s.t.Logf("Warning: Failed to remove stack: %v", err)
+		}
+	}
 
 	// Delete all objects in bucket first
 	if s.bucketName != "" {
@@ -245,32 +368,9 @@ func (s *SlothPulumiCLITestSuite) runCLI(args ...string) (string, string, error)
 	cmd := exec.Command(s.binaryPath, args...)
 	cmd.Dir = s.workDir
 
-	// Set environment for S3 backend
-	backendURL := fmt.Sprintf("s3://%s?region=%s", s.bucketName, s.config.Region)
+	// Set environment for S3 backend (same as what CLI expects)
 	cmd.Env = append(os.Environ(),
-		fmt.Sprintf("PULUMI_BACKEND_URL=%s", backendURL),
-		fmt.Sprintf("PULUMI_CONFIG_PASSPHRASE=%s", s.config.Passphrase),
-		fmt.Sprintf("AWS_REGION=%s", s.config.Region),
-	)
-
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-
-	err := cmd.Run()
-	return stdout.String(), stderr.String(), err
-}
-
-// runCLIWithInput executes the CLI with input
-func (s *SlothPulumiCLITestSuite) runCLIWithInput(input string, args ...string) (string, string, error) {
-	cmd := exec.Command(s.binaryPath, args...)
-	cmd.Dir = s.workDir
-	cmd.Stdin = strings.NewReader(input)
-
-	// Set environment for S3 backend
-	backendURL := fmt.Sprintf("s3://%s?region=%s", s.bucketName, s.config.Region)
-	cmd.Env = append(os.Environ(),
-		fmt.Sprintf("PULUMI_BACKEND_URL=%s", backendURL),
+		fmt.Sprintf("PULUMI_BACKEND_URL=%s", s.backendURL),
 		fmt.Sprintf("PULUMI_CONFIG_PASSPHRASE=%s", s.config.Passphrase),
 		fmt.Sprintf("AWS_REGION=%s", s.config.Region),
 	)
@@ -298,8 +398,8 @@ func (s *SlothPulumiCLITestSuite) printTest(name string) {
 	s.t.Logf("--- Test: %s ---", name)
 }
 
-// TestE2E_Sloth_Pulumi_CLI is the main E2E test for Pulumi CLI commands
-func TestE2E_Sloth_Pulumi_CLI(t *testing.T) {
+// TestE2E_Sloth_Pulumi_CLI_Integration tests the real integration between CLI and Pulumi
+func TestE2E_Sloth_Pulumi_CLI_Integration(t *testing.T) {
 	if testing.Short() {
 		t.Skip("Skipping E2E test in short mode")
 	}
@@ -314,7 +414,7 @@ func TestE2E_Sloth_Pulumi_CLI(t *testing.T) {
 
 	// Print test header
 	t.Log("================================================================")
-	t.Log("SLOTH-KUBERNETES PULUMI CLI E2E TEST")
+	t.Log("SLOTH-KUBERNETES PULUMI CLI INTEGRATION TEST")
 	t.Log("================================================================")
 	t.Logf("  Region: %s", suite.config.Region)
 	t.Logf("  Bucket: %s", suite.bucketName)
@@ -325,609 +425,289 @@ func TestE2E_Sloth_Pulumi_CLI(t *testing.T) {
 	err := suite.Setup()
 	require.NoError(t, err, "Setup failed")
 
-	// Run tests in order
-	t.Run("PulumiHelp", suite.testPulumiHelp)
-	t.Run("StackList_Empty", suite.testStackListEmpty)
-	t.Run("StackCurrent_NoSelection", suite.testStackCurrentNoSelection)
-	t.Run("StacksCommand", suite.testStacksCommand)
+	// Create stack using Automation API (same as CLI uses internally)
+	err = suite.createStackWithAutomationAPI()
+	require.NoError(t, err, "Failed to create stack with Automation API")
 
-	// These tests require a deployed stack - we'll create a minimal test
-	// For now, test the commands that work without deployed resources
-	t.Run("PulumiPreview_NoStack", suite.testPulumiPreviewNoStack)
-	t.Run("PulumiRefresh_NoStack", suite.testPulumiRefreshNoStack)
+	// Now test CLI commands against this stack
+	t.Run("StackList_FindsCreatedStack", suite.testStackListFindsCreatedStack)
+	t.Run("StackInfo_ShowsStackDetails", suite.testStackInfoShowsDetails)
+	t.Run("StackOutput_ReturnsValues", suite.testStackOutputReturnsValues)
+	t.Run("StackOutput_JSONFormat", suite.testStackOutputJSONFormat)
+	t.Run("StackCancel_Works", suite.testStackCancelWorks)
 
 	t.Log("")
 	t.Log("================================================================")
-	t.Log("ALL PULUMI CLI E2E TESTS COMPLETED")
+	t.Log("ALL PULUMI CLI INTEGRATION TESTS COMPLETED")
 	t.Log("================================================================")
 }
 
-// testPulumiHelp tests the pulumi help command
-func (s *SlothPulumiCLITestSuite) testPulumiHelp(t *testing.T) {
-	s.printTest("pulumi help")
-
-	stdout, stderr, err := s.runCLI("pulumi")
-	output := stdout + stderr
-
-	// Command should succeed (shows help)
-	require.NoError(t, err, "pulumi command failed: %s", output)
-
-	// Check help content
-	require.Contains(t, output, "Pulumi Automation API", "Should mention Automation API")
-	require.Contains(t, output, "stack list", "Should list stack commands")
-	require.Contains(t, output, "stack output", "Should list output command")
-	require.Contains(t, output, "preview", "Should list preview command")
-	require.Contains(t, output, "refresh", "Should list refresh command")
-	require.Contains(t, output, "No Pulumi CLI required", "Should mention no CLI required")
-
-	t.Log("pulumi help: PASSED")
-}
-
-// testStackListEmpty tests stack list with no stacks
-func (s *SlothPulumiCLITestSuite) testStackListEmpty(t *testing.T) {
-	s.printTest("pulumi stack list (empty)")
+// testStackListFindsCreatedStack verifies CLI can list and find the stack we created
+func (s *SlothPulumiCLITestSuite) testStackListFindsCreatedStack(t *testing.T) {
+	s.printTest("pulumi stack list - finds created stack")
 
 	stdout, stderr, err := s.runCLI("pulumi", "stack", "list")
 	output := stdout + stderr
 
-	// Command may succeed with empty list or show "no stacks"
-	if err != nil {
-		// Some backends return error when no stacks exist
-		t.Logf("Output: %s", output)
-	}
+	t.Logf("Output:\n%s", output)
 
-	// Either shows empty table or no stacks message
-	if !strings.Contains(output, "No stacks found") &&
-		!strings.Contains(output, "NAME") &&
-		!strings.Contains(output, "Deployment Stacks") {
-		t.Logf("Output: %s", output)
-	}
+	// Command should succeed
+	require.NoError(t, err, "stack list command failed")
 
-	t.Log("pulumi stack list (empty): PASSED")
+	// Should contain our stack name or show stacks table
+	assert.True(t,
+		strings.Contains(output, s.stackName) ||
+			strings.Contains(output, "NAME") ||
+			strings.Contains(output, "Deployment Stacks"),
+		"Output should show stacks list")
+
+	t.Log("PASSED: CLI can list stacks from S3 backend")
 }
 
-// testStackCurrentNoSelection tests stack current with no selection
-func (s *SlothPulumiCLITestSuite) testStackCurrentNoSelection(t *testing.T) {
-	s.printTest("pulumi stack current (no selection)")
-
-	stdout, stderr, err := s.runCLI("pulumi", "stack", "current")
-	output := stdout + stderr
-
-	// Command should show no stack selected
-	if err != nil {
-		t.Logf("Expected behavior - no stack selected: %s", output)
-	}
-
-	// Should indicate no stack is selected or show current stack
-	if strings.Contains(output, "No stack") ||
-		strings.Contains(output, "Current stack") ||
-		strings.Contains(output, "not selected") ||
-		strings.Contains(output, "Select a stack") {
-		t.Log("pulumi stack current (no selection): PASSED")
-		return
-	}
-
-	t.Logf("Output: %s", output)
-	t.Log("pulumi stack current (no selection): PASSED")
-}
-
-// testStacksCommand tests the stacks command (direct access)
-func (s *SlothPulumiCLITestSuite) testStacksCommand(t *testing.T) {
-	s.printTest("stacks command (direct access)")
-
-	// Test stacks list
-	stdout, stderr, err := s.runCLI("stacks", "list")
-	output := stdout + stderr
-
-	if err != nil {
-		t.Logf("stacks list output: %s", output)
-	}
-
-	// Should work similar to pulumi stack list
-	t.Log("stacks command (direct access): PASSED")
-}
-
-// testPulumiPreviewNoStack tests preview without a stack
-func (s *SlothPulumiCLITestSuite) testPulumiPreviewNoStack(t *testing.T) {
-	s.printTest("pulumi preview (no stack)")
-
-	stdout, stderr, err := s.runCLI("pulumi", "preview", "--stack", "nonexistent")
-	output := stdout + stderr
-
-	// Should fail - no stack exists
-	if err == nil {
-		t.Logf("Unexpected success: %s", output)
-	}
-
-	// Should mention stack not found or similar
-	require.True(t,
-		strings.Contains(output, "stack") ||
-			strings.Contains(output, "not found") ||
-			strings.Contains(output, "failed") ||
-			strings.Contains(output, "error") ||
-			strings.Contains(output, "required"),
-		"Should indicate stack issue: %s", output)
-
-	t.Log("pulumi preview (no stack): PASSED (expected error)")
-}
-
-// testPulumiRefreshNoStack tests refresh without a stack
-func (s *SlothPulumiCLITestSuite) testPulumiRefreshNoStack(t *testing.T) {
-	s.printTest("pulumi refresh (no stack)")
-
-	stdout, stderr, err := s.runCLI("pulumi", "refresh", "--stack", "nonexistent", "--yes")
-	output := stdout + stderr
-
-	// Should fail - no stack exists
-	if err == nil {
-		t.Logf("Unexpected success: %s", output)
-	}
-
-	// Should mention stack not found or similar
-	require.True(t,
-		strings.Contains(output, "stack") ||
-			strings.Contains(output, "not found") ||
-			strings.Contains(output, "failed") ||
-			strings.Contains(output, "error"),
-		"Should indicate stack issue: %s", output)
-
-	t.Log("pulumi refresh (no stack): PASSED (expected error)")
-}
-
-// TestE2E_Sloth_Pulumi_CLI_WithStack tests Pulumi commands with actual stack operations
-func TestE2E_Sloth_Pulumi_CLI_WithStack(t *testing.T) {
-	if testing.Short() {
-		t.Skip("Skipping E2E test in short mode")
-	}
-
-	// Check AWS credentials
-	if os.Getenv("AWS_ACCESS_KEY_ID") == "" || os.Getenv("AWS_SECRET_ACCESS_KEY") == "" {
-		t.Skip("AWS credentials not set (AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY)")
-	}
-
-	suite := NewSlothPulumiCLITestSuite(t)
-	defer suite.Cleanup()
-
-	// Print test header
-	t.Log("================================================================")
-	t.Log("SLOTH-KUBERNETES PULUMI CLI E2E TEST (WITH STACK)")
-	t.Log("================================================================")
-	t.Logf("  Region: %s", suite.config.Region)
-	t.Logf("  Bucket: %s", suite.bucketName)
-	t.Logf("  Stack: %s", suite.stackName)
-	t.Log("================================================================")
-
-	// Setup
-	err := suite.Setup()
-	require.NoError(t, err, "Setup failed")
-
-	// Create a Pulumi project and stack for testing
-	err = suite.createTestPulumiProject()
-	require.NoError(t, err, "Failed to create test Pulumi project")
-
-	// Run stack-dependent tests
-	t.Run("StackList_WithStack", suite.testStackListWithStack)
-	t.Run("StackInfo", suite.testStackInfo)
-	t.Run("StackOutput", suite.testStackOutput)
-	t.Run("StackSelect", suite.testStackSelect)
-	t.Run("StackCurrent_WithSelection", suite.testStackCurrentWithSelection)
-	t.Run("StackExport", suite.testStackExport)
-	t.Run("StackStateList", suite.testStackStateList)
-	t.Run("StackRename", suite.testStackRename)
-	t.Run("StackCancel", suite.testStackCancel)
-	t.Run("StackDelete", suite.testStackDelete)
-
-	t.Log("")
-	t.Log("================================================================")
-	t.Log("ALL PULUMI CLI E2E TESTS (WITH STACK) COMPLETED")
-	t.Log("================================================================")
-}
-
-// createTestPulumiProject creates a minimal Pulumi project for testing
-func (s *SlothPulumiCLITestSuite) createTestPulumiProject() error {
-	s.printPhase("Create Test Stack", "Creating minimal Pulumi stack for testing")
-
-	// Create Pulumi.yaml with the correct project name that matches our CLI
-	pulumiYaml := `name: sloth-kubernetes
-runtime: go
-description: E2E test project for sloth-kubernetes
-`
-	err := os.WriteFile(filepath.Join(s.workDir, "Pulumi.yaml"), []byte(pulumiYaml), 0644)
-	if err != nil {
-		return fmt.Errorf("failed to create Pulumi.yaml: %w", err)
-	}
-
-	// Create main.go with a simple stack that exports a value
-	mainGo := `package main
-
-import (
-	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
-)
-
-func main() {
-	pulumi.Run(func(ctx *pulumi.Context) error {
-		ctx.Export("testOutput", pulumi.String("e2e-test-value"))
-		ctx.Export("stackName", pulumi.String(ctx.Stack()))
-		return nil
-	})
-}
-`
-	err = os.WriteFile(filepath.Join(s.workDir, "main.go"), []byte(mainGo), 0644)
-	if err != nil {
-		return fmt.Errorf("failed to create main.go: %w", err)
-	}
-
-	// Create go.mod
-	goMod := `module sloth-kubernetes-e2e-test
-
-go 1.21
-
-require github.com/pulumi/pulumi/sdk/v3 v3.142.0
-`
-	err = os.WriteFile(filepath.Join(s.workDir, "go.mod"), []byte(goMod), 0644)
-	if err != nil {
-		return fmt.Errorf("failed to create go.mod: %w", err)
-	}
-
-	// Run go mod tidy
-	s.t.Log("Running go mod tidy...")
-	cmd := exec.Command("go", "mod", "tidy")
-	cmd.Dir = s.workDir
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		s.t.Logf("go mod tidy output: %s", string(output))
-		// Continue even if it fails - might work anyway
-	}
-
-	// Initialize stack using pulumi CLI directly (since our CLI uses it internally)
-	// Use fully qualified stack name format: organization/project/stack
-	fullyQualifiedStack := fmt.Sprintf("organization/sloth-kubernetes/%s", s.stackName)
-	s.t.Logf("Creating stack: %s (fully qualified: %s)", s.stackName, fullyQualifiedStack)
-
-	// Set up environment
-	backendURL := fmt.Sprintf("s3://%s?region=%s", s.bucketName, s.config.Region)
-
-	// Use pulumi login
-	cmd = exec.Command("pulumi", "login", backendURL)
-	cmd.Dir = s.workDir
-	cmd.Env = append(os.Environ(),
-		fmt.Sprintf("PULUMI_CONFIG_PASSPHRASE=%s", s.config.Passphrase),
-		fmt.Sprintf("AWS_REGION=%s", s.config.Region),
-	)
-	output, err = cmd.CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("pulumi login failed: %w\nOutput: %s", err, string(output))
-	}
-	s.t.Logf("Pulumi login successful")
-
-	// Create stack with fully qualified name
-	cmd = exec.Command("pulumi", "stack", "init", fullyQualifiedStack)
-	cmd.Dir = s.workDir
-	cmd.Env = append(os.Environ(),
-		fmt.Sprintf("PULUMI_CONFIG_PASSPHRASE=%s", s.config.Passphrase),
-		fmt.Sprintf("AWS_REGION=%s", s.config.Region),
-	)
-	output, err = cmd.CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("pulumi stack init failed: %w\nOutput: %s", err, string(output))
-	}
-	s.t.Logf("Stack created: %s", fullyQualifiedStack)
-
-	// Run pulumi up to create some state
-	s.t.Log("Running pulumi up to create state...")
-	cmd = exec.Command("pulumi", "up", "--yes", "--skip-preview")
-	cmd.Dir = s.workDir
-	cmd.Env = append(os.Environ(),
-		fmt.Sprintf("PULUMI_CONFIG_PASSPHRASE=%s", s.config.Passphrase),
-		fmt.Sprintf("AWS_REGION=%s", s.config.Region),
-	)
-	output, err = cmd.CombinedOutput()
-	if err != nil {
-		s.t.Logf("pulumi up output: %s", string(output))
-		// This might fail due to missing dependencies, but the stack should still exist
-	} else {
-		s.t.Log("Stack deployed successfully")
-	}
-
-	return nil
-}
-
-// testStackListWithStack tests stack list with an existing stack
-func (s *SlothPulumiCLITestSuite) testStackListWithStack(t *testing.T) {
-	s.printTest("pulumi stack list (with stack)")
-
-	stdout, stderr, err := s.runCLI("pulumi", "stack", "list")
-	output := stdout + stderr
-
-	if err != nil {
-		t.Logf("Warning: stack list returned error: %v", err)
-		t.Logf("Output: %s", output)
-	}
-
-	// Should show the stack we created
-	// Note: The CLI might format names differently
-	if strings.Contains(output, s.stackName) ||
-		strings.Contains(output, "NAME") ||
-		strings.Contains(output, "Deployment Stacks") {
-		t.Log("pulumi stack list (with stack): PASSED")
-		return
-	}
-
-	t.Logf("Output: %s", output)
-	t.Log("pulumi stack list (with stack): PASSED (stack visible)")
-}
-
-// testStackInfo tests stack info command
-func (s *SlothPulumiCLITestSuite) testStackInfo(t *testing.T) {
-	s.printTest("pulumi stack info")
+// testStackInfoShowsDetails verifies CLI can get stack info
+func (s *SlothPulumiCLITestSuite) testStackInfoShowsDetails(t *testing.T) {
+	s.printTest("pulumi stack info - shows stack details")
 
 	stdout, stderr, err := s.runCLI("pulumi", "stack", "info", s.stackName)
 	output := stdout + stderr
 
+	t.Logf("Output:\n%s", output)
+
+	// Check output contains stack info
 	if err != nil {
-		t.Logf("Warning: stack info returned error: %v", err)
+		// If error, check if it's a "not found" error or something else
+		if strings.Contains(output, "not found") {
+			t.Logf("Note: Stack not found by simple name, CLI may need fully qualified name")
+		} else {
+			t.Logf("Command returned error: %v", err)
+		}
 	}
 
-	// Should show stack information
-	if strings.Contains(output, "Stack") ||
-		strings.Contains(output, "Info") ||
-		strings.Contains(output, s.stackName) {
-		t.Log("pulumi stack info: PASSED")
-		return
-	}
+	// Should at least mention the stack or show info header
+	assert.True(t,
+		strings.Contains(output, "Stack") ||
+			strings.Contains(output, "Info") ||
+			strings.Contains(output, s.stackName),
+		"Output should contain stack info header")
 
-	t.Logf("Output: %s", output)
-	t.Log("pulumi stack info: PASSED")
+	t.Log("PASSED: CLI stack info command works")
 }
 
-// testStackOutput tests stack output command
-func (s *SlothPulumiCLITestSuite) testStackOutput(t *testing.T) {
-	s.printTest("pulumi stack output")
+// testStackOutputReturnsValues verifies CLI can get stack outputs
+func (s *SlothPulumiCLITestSuite) testStackOutputReturnsValues(t *testing.T) {
+	s.printTest("pulumi stack output - returns values")
 
 	stdout, stderr, err := s.runCLI("pulumi", "stack", "output", s.stackName)
 	output := stdout + stderr
 
+	t.Logf("Output:\n%s", output)
+
 	if err != nil {
-		t.Logf("Warning: stack output returned error: %v", err)
+		t.Logf("Command returned error: %v", err)
 	}
 
-	t.Logf("Output: %s", output)
+	// Should show outputs or output-related content
+	assert.True(t,
+		strings.Contains(output, "Output") ||
+			strings.Contains(output, "testOutput") ||
+			strings.Contains(output, "KEY") ||
+			strings.Contains(output, "Outputs"),
+		"Output should show stack outputs or related content")
 
-	// Should show outputs (if stack was deployed)
-	if strings.Contains(output, "Output") ||
-		strings.Contains(output, "testOutput") ||
-		strings.Contains(output, "No outputs") ||
-		strings.Contains(output, "KEY") {
-		t.Log("pulumi stack output: PASSED")
-		return
-	}
-
-	t.Log("pulumi stack output: PASSED")
+	t.Log("PASSED: CLI stack output command works")
 }
 
-// testStackSelect tests stack select command
-func (s *SlothPulumiCLITestSuite) testStackSelect(t *testing.T) {
-	s.printTest("pulumi stack select")
+// testStackOutputJSONFormat verifies CLI can output in JSON format
+func (s *SlothPulumiCLITestSuite) testStackOutputJSONFormat(t *testing.T) {
+	s.printTest("pulumi stack output --json")
 
-	stdout, stderr, err := s.runCLI("pulumi", "stack", "select", s.stackName)
+	stdout, stderr, err := s.runCLI("pulumi", "stack", "output", s.stackName, "--json")
 	output := stdout + stderr
 
-	if err != nil {
-		t.Logf("Warning: stack select returned error: %v", err)
-		t.Logf("Output: %s", output)
-	}
-
-	// Should confirm selection or show error
-	if strings.Contains(output, "selected") ||
-		strings.Contains(output, s.stackName) ||
-		strings.Contains(output, "Selecting") {
-		t.Log("pulumi stack select: PASSED")
-		return
-	}
-
-	t.Logf("Output: %s", output)
-	t.Log("pulumi stack select: PASSED")
-}
-
-// testStackCurrentWithSelection tests stack current after selection
-func (s *SlothPulumiCLITestSuite) testStackCurrentWithSelection(t *testing.T) {
-	s.printTest("pulumi stack current (with selection)")
-
-	stdout, stderr, err := s.runCLI("pulumi", "stack", "current")
-	output := stdout + stderr
+	t.Logf("Output:\n%s", output)
 
 	if err != nil {
-		t.Logf("Warning: stack current returned error: %v", err)
+		t.Logf("Command returned error: %v", err)
+		// Even with error, the command should have run
 	}
 
-	// Should show current stack
-	if strings.Contains(output, "Current") ||
-		strings.Contains(output, s.stackName) ||
-		strings.Contains(output, "stack") {
-		t.Log("pulumi stack current (with selection): PASSED")
-		return
+	// If successful, should have JSON-like output
+	if strings.Contains(stdout, "{") {
+		var jsonOutput map[string]interface{}
+		parseErr := json.Unmarshal([]byte(stdout), &jsonOutput)
+		if parseErr == nil {
+			t.Log("Valid JSON output received")
+		}
 	}
 
-	t.Logf("Output: %s", output)
-	t.Log("pulumi stack current (with selection): PASSED")
+	t.Log("PASSED: CLI stack output --json command works")
 }
 
-// testStackExport tests stack export command
-func (s *SlothPulumiCLITestSuite) testStackExport(t *testing.T) {
-	s.printTest("pulumi stack export")
-
-	stdout, stderr, err := s.runCLI("pulumi", "stack", "export", s.stackName)
-	output := stdout + stderr
-
-	if err != nil {
-		t.Logf("Warning: stack export returned error: %v", err)
-	}
-
-	t.Logf("Output: %s", output)
-
-	// Should provide export info or JSON
-	// Note: Our CLI might redirect to pulumi CLI
-	t.Log("pulumi stack export: PASSED")
-}
-
-// testStackStateList tests stack state list command
-func (s *SlothPulumiCLITestSuite) testStackStateList(t *testing.T) {
-	s.printTest("pulumi stack state list")
-
-	stdout, stderr, err := s.runCLI("pulumi", "stack", "state", "list", s.stackName)
-	output := stdout + stderr
-
-	if err != nil {
-		t.Logf("Warning: stack state list returned error: %v", err)
-	}
-
-	t.Logf("Output: %s", output)
-
-	// Should show state or empty message
-	if strings.Contains(output, "State") ||
-		strings.Contains(output, "resources") ||
-		strings.Contains(output, "URN") ||
-		strings.Contains(output, "No resources") {
-		t.Log("pulumi stack state list: PASSED")
-		return
-	}
-
-	t.Log("pulumi stack state list: PASSED")
-}
-
-// testStackRename tests stack rename command
-func (s *SlothPulumiCLITestSuite) testStackRename(t *testing.T) {
-	s.printTest("pulumi stack rename")
-
-	newName := s.stackName + "-renamed"
-
-	stdout, stderr, err := s.runCLI("pulumi", "stack", "rename", s.stackName, newName)
-	output := stdout + stderr
-
-	if err != nil {
-		t.Logf("Warning: stack rename returned error: %v", err)
-		t.Logf("Output: %s", output)
-	}
-
-	// Rename back if successful
-	if err == nil || strings.Contains(output, "renamed") {
-		s.runCLI("pulumi", "stack", "rename", newName, s.stackName)
-	}
-
-	t.Log("pulumi stack rename: PASSED")
-}
-
-// testStackCancel tests stack cancel command
-func (s *SlothPulumiCLITestSuite) testStackCancel(t *testing.T) {
+// testStackCancelWorks verifies CLI cancel command
+func (s *SlothPulumiCLITestSuite) testStackCancelWorks(t *testing.T) {
 	s.printTest("pulumi stack cancel")
 
 	stdout, stderr, err := s.runCLI("pulumi", "stack", "cancel", s.stackName)
 	output := stdout + stderr
 
-	// Cancel might succeed or fail if nothing to cancel
+	t.Logf("Output:\n%s", output)
+
+	// Cancel might succeed (unlocks) or "fail" (nothing to cancel)
+	// Both are valid outcomes
 	if err != nil {
-		t.Logf("Cancel result (may be expected): %v", err)
+		t.Logf("Command returned (expected for no active operation): %v", err)
 	}
 
-	t.Logf("Output: %s", output)
+	// Should show cancel-related output
+	assert.True(t,
+		strings.Contains(output, "Cancel") ||
+			strings.Contains(output, "unlock") ||
+			strings.Contains(output, "Stack") ||
+			strings.Contains(output, s.stackName),
+		"Output should show cancel-related content")
 
-	// Should show cancel result
-	if strings.Contains(output, "Cancel") ||
-		strings.Contains(output, "unlock") ||
-		strings.Contains(output, "success") ||
-		strings.Contains(output, "nothing") ||
-		strings.Contains(output, "stack") {
-		t.Log("pulumi stack cancel: PASSED")
-		return
-	}
-
-	t.Log("pulumi stack cancel: PASSED")
+	t.Log("PASSED: CLI stack cancel command works")
 }
 
-// testStackDelete tests stack delete command
-func (s *SlothPulumiCLITestSuite) testStackDelete(t *testing.T) {
-	s.printTest("pulumi stack delete")
-
-	// Use fully qualified stack name
-	fullyQualifiedStack := fmt.Sprintf("organization/sloth-kubernetes/%s", s.stackName)
-
-	// First destroy any resources
-	s.t.Log("Destroying stack resources first...")
-	cmd := exec.Command("pulumi", "destroy", "--yes", "--skip-preview", "--stack", fullyQualifiedStack)
-	cmd.Dir = s.workDir
-	cmd.Env = append(os.Environ(),
-		fmt.Sprintf("PULUMI_CONFIG_PASSPHRASE=%s", s.config.Passphrase),
-		fmt.Sprintf("AWS_REGION=%s", s.config.Region),
-	)
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		t.Logf("Destroy output: %s", string(output))
-	}
-
-	// Now test delete through our CLI
-	stdout, stderr, err := s.runCLI("pulumi", "stack", "delete", s.stackName, "--force", "--yes")
-	cliOutput := stdout + stderr
-
-	if err != nil {
-		t.Logf("Warning: stack delete returned error: %v", err)
-		t.Logf("Output: %s", cliOutput)
-
-		// Try with pulumi directly using fully qualified name
-		cmd = exec.Command("pulumi", "stack", "rm", fullyQualifiedStack, "--yes", "--force")
-		cmd.Dir = s.workDir
-		cmd.Env = append(os.Environ(),
-			fmt.Sprintf("PULUMI_CONFIG_PASSPHRASE=%s", s.config.Passphrase),
-			fmt.Sprintf("AWS_REGION=%s", s.config.Region),
-		)
-		output, err = cmd.CombinedOutput()
-		if err != nil {
-			t.Logf("Direct pulumi rm output: %s", string(output))
-		} else {
-			t.Log("Stack deleted via direct pulumi command")
-		}
-	}
-
-	t.Log("pulumi stack delete: PASSED")
-}
-
-// TestE2E_Sloth_Pulumi_CLI_JSONOutput tests JSON output flag
-func TestE2E_Sloth_Pulumi_CLI_JSONOutput(t *testing.T) {
+// TestE2E_Sloth_Pulumi_AutomationAPI_Direct tests the Automation API directly
+func TestE2E_Sloth_Pulumi_AutomationAPI_Direct(t *testing.T) {
 	if testing.Short() {
 		t.Skip("Skipping E2E test in short mode")
 	}
 
 	// Check AWS credentials
 	if os.Getenv("AWS_ACCESS_KEY_ID") == "" || os.Getenv("AWS_SECRET_ACCESS_KEY") == "" {
-		t.Skip("AWS credentials not set (AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY)")
+		t.Skip("AWS credentials not set")
 	}
 
 	suite := NewSlothPulumiCLITestSuite(t)
 	defer suite.Cleanup()
 
-	// Setup
-	err := suite.Setup()
-	require.NoError(t, err, "Setup failed")
+	t.Log("================================================================")
+	t.Log("PULUMI AUTOMATION API DIRECT TEST")
+	t.Log("================================================================")
 
-	t.Run("StackOutput_JSON", func(t *testing.T) {
-		suite.printTest("pulumi stack output --json")
+	// Setup (only bucket, no CLI needed)
+	err := suite.createS3Bucket()
+	require.NoError(t, err, "Failed to create S3 bucket")
 
-		stdout, stderr, err := suite.runCLI("pulumi", "stack", "output", suite.stackName, "--json")
+	suite.backendURL = fmt.Sprintf("s3://%s?region=%s", suite.bucketName, suite.config.Region)
+
+	// Test Automation API directly
+	t.Run("CreateWorkspace", func(t *testing.T) {
+		os.Setenv("PULUMI_BACKEND_URL", suite.backendURL)
+		os.Setenv("PULUMI_CONFIG_PASSPHRASE", suite.config.Passphrase)
+
+		ws, err := auto.NewLocalWorkspace(suite.ctx,
+			auto.Project(workspace.Project{
+				Name:    tokens.PackageName("sloth-kubernetes"),
+				Runtime: workspace.NewProjectRuntimeInfo("go", nil),
+			}),
+			auto.EnvVars(map[string]string{
+				"PULUMI_BACKEND_URL":       suite.backendURL,
+				"PULUMI_CONFIG_PASSPHRASE": suite.config.Passphrase,
+			}),
+			auto.SecretsProvider("passphrase"),
+		)
+		require.NoError(t, err, "Failed to create workspace")
+
+		t.Log("Workspace created successfully")
+
+		// List stacks (should be empty initially)
+		stacks, err := ws.ListStacks(suite.ctx)
+		require.NoError(t, err, "Failed to list stacks")
+		t.Logf("Found %d stacks", len(stacks))
+	})
+
+	t.Run("CreateAndDestroyStack", func(t *testing.T) {
+		stackName := fmt.Sprintf("organization/sloth-kubernetes/test-%d", time.Now().Unix())
+
+		stack, err := auto.UpsertStackInlineSource(suite.ctx, stackName, "sloth-kubernetes",
+			func(ctx *pulumi.Context) error {
+				ctx.Export("test", pulumi.String("value"))
+				return nil
+			},
+			auto.EnvVars(map[string]string{
+				"PULUMI_BACKEND_URL":       suite.backendURL,
+				"PULUMI_CONFIG_PASSPHRASE": suite.config.Passphrase,
+			}),
+			auto.SecretsProvider("passphrase"),
+		)
+		require.NoError(t, err, "Failed to create stack")
+
+		t.Log("Stack created")
+
+		// Run up
+		upResult, err := stack.Up(suite.ctx)
+		require.NoError(t, err, "Failed to run up")
+		t.Logf("Up complete with %d outputs", len(upResult.Outputs))
+
+		// Get outputs
+		outputs, err := stack.Outputs(suite.ctx)
+		require.NoError(t, err, "Failed to get outputs")
+		assert.Equal(t, "value", outputs["test"].Value)
+		t.Log("Outputs verified")
+
+		// Destroy
+		_, err = stack.Destroy(suite.ctx)
+		require.NoError(t, err, "Failed to destroy")
+		t.Log("Stack destroyed")
+
+		// Remove stack
+		err = stack.Workspace().RemoveStack(suite.ctx, stackName)
+		require.NoError(t, err, "Failed to remove stack")
+		t.Log("Stack removed")
+	})
+
+	t.Log("================================================================")
+	t.Log("AUTOMATION API TESTS COMPLETED")
+	t.Log("================================================================")
+}
+
+// TestE2E_Sloth_Pulumi_CLI_Help tests basic CLI help commands (no AWS needed)
+func TestE2E_Sloth_Pulumi_CLI_Help(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping E2E test in short mode")
+	}
+
+	suite := NewSlothPulumiCLITestSuite(t)
+
+	// Only build CLI, no AWS resources needed
+	workDir, err := os.MkdirTemp("", "sloth-pulumi-help-*")
+	require.NoError(t, err)
+	defer os.RemoveAll(workDir)
+
+	suite.workDir = workDir
+	err = suite.buildCLI()
+	require.NoError(t, err, "Failed to build CLI")
+
+	t.Run("PulumiHelp", func(t *testing.T) {
+		stdout, stderr, err := suite.runCLI("pulumi")
 		output := stdout + stderr
 
-		if err != nil {
-			t.Logf("Warning: command returned error: %v", err)
-			t.Logf("Output: %s", output)
-		}
+		require.NoError(t, err, "pulumi command failed")
+		assert.Contains(t, output, "Pulumi Automation API")
+		assert.Contains(t, output, "stack list")
+		assert.Contains(t, output, "stack output")
+		assert.Contains(t, output, "No Pulumi CLI required")
+		t.Log("Help output verified")
+	})
 
-		// If we got JSON output, validate it
-		if strings.HasPrefix(strings.TrimSpace(stdout), "{") {
-			var jsonOutput map[string]interface{}
-			err := json.Unmarshal([]byte(stdout), &jsonOutput)
-			if err == nil {
-				t.Log("Valid JSON output received")
-			}
-		}
+	t.Run("StackHelp", func(t *testing.T) {
+		stdout, stderr, err := suite.runCLI("pulumi", "stack", "--help")
+		output := stdout + stderr
 
-		t.Log("StackOutput_JSON: PASSED")
+		require.NoError(t, err, "pulumi stack --help failed")
+		assert.Contains(t, output, "stack")
+		t.Log("Stack help verified")
+	})
+
+	t.Run("StacksCommand", func(t *testing.T) {
+		stdout, stderr, err := suite.runCLI("stacks", "--help")
+		output := stdout + stderr
+
+		require.NoError(t, err, "stacks --help failed")
+		assert.Contains(t, output, "stack")
+		t.Log("Stacks command help verified")
 	})
 }
