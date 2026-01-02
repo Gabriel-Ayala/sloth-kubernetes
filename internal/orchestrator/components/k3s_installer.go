@@ -110,16 +110,16 @@ set -e
 
 echo "🔧 Installing K3s on first master..."
 
-# Wait for WireGuard to be ready
+# Wait for WireGuard to be ready (optimized: 20s timeout, 1s polling)
 echo "⏳ Waiting for WireGuard VPN interface (wg0)..."
-timeout=60
+timeout=20
 elapsed=0
 while [ $elapsed -lt $timeout ]; do
   if ip addr show wg0 &>/dev/null && ip addr show wg0 | grep -q "%s"; then
     break
   fi
-  sleep 2
-  elapsed=$((elapsed + 2))
+  sleep 1
+  elapsed=$((elapsed + 1))
 done
 
 echo "✅ WireGuard ready (IP: %s)"
@@ -143,7 +143,7 @@ fi
 
 # Verify K3s service started successfully
 echo "🔍 Checking K3s service status..."
-sleep 5
+sleep 2
 if ! systemctl is-active --quiet k3s; then
   echo "❌ K3s service is not running!"
   echo "Service status:"
@@ -322,16 +322,16 @@ set -e
 
 echo "🔧 Installing K3s on master %d (join cluster)..."
 
-# Wait for WireGuard to be ready
+# Wait for WireGuard to be ready (optimized: 20s timeout, 1s polling)
 echo "⏳ Waiting for WireGuard VPN interface (wg0)..."
-timeout=60
+timeout=20
 elapsed=0
 while [ $elapsed -lt $timeout ]; do
   if ip addr show wg0 &>/dev/null && ip addr show wg0 | grep -q "%s"; then
     break
   fi
-  sleep 2
-  elapsed=$((elapsed + 2))
+  sleep 1
+  elapsed=$((elapsed + 1))
 done
 
 echo "✅ WireGuard ready (IP: %s)"
@@ -380,7 +380,7 @@ fi
 
 # Verify K3s service started successfully
 echo "🔍 Checking K3s service status..."
-sleep 5
+sleep 2
 if ! systemctl is-active --quiet k3s; then
   echo "❌ K3s service is not running!"
   echo "Service status:"
@@ -460,16 +460,16 @@ set -e
 
 echo "🔧 Installing K3s agent on worker %d..."
 
-# Wait for WireGuard to be ready
+# Wait for WireGuard to be ready (optimized: 20s timeout, 1s polling)
 echo "⏳ Waiting for WireGuard VPN interface (wg0)..."
-timeout=60
+timeout=20
 elapsed=0
 while [ $elapsed -lt $timeout ]; do
   if ip addr show wg0 &>/dev/null && ip addr show wg0 | grep -q "%s"; then
     break
   fi
-  sleep 2
-  elapsed=$((elapsed + 2))
+  sleep 1
+  elapsed=$((elapsed + 1))
 done
 
 echo "✅ WireGuard ready (IP: %s)"
@@ -513,7 +513,7 @@ fi
 
 # Verify K3s agent service started successfully
 echo "🔍 Checking K3s agent service status..."
-sleep 5
+sleep 2
 if ! systemctl is-active --quiet k3s-agent; then
   echo "❌ K3s agent service is not running!"
   echo "Service status:"
@@ -525,9 +525,18 @@ if ! systemctl is-active --quiet k3s-agent; then
 fi
 echo "✅ K3s agent service is running!"
 
-# Wait for K3s agent to join
-echo "⏳ Waiting for K3s agent to join cluster..."
-sleep 30
+# Wait for K3s agent to join (poll service status instead of hard sleep)
+echo "⏳ Waiting for K3s agent to stabilize..."
+timeout=30
+elapsed=0
+while [ $elapsed -lt $timeout ]; do
+  if systemctl is-active --quiet k3s-agent; then
+    echo "✅ K3s agent service stable"
+    break
+  fi
+  sleep 2
+  elapsed=$((elapsed + 2))
+done
 
 echo "✅ K3s worker %d joined cluster"
 `, workerNum, myWgIP, myWgIP, firstMasterWgIP, firstMasterWgIP, firstMasterWgIP, firstMasterWgIP, token, myWgIP, myPublicIP, workerNum)

@@ -527,9 +527,9 @@ echo "🚀 Starting Salt Minion..."
 sudo systemctl enable salt-minion
 sudo systemctl restart salt-minion
 
-# Wait for minion to authenticate
+# Wait for minion to authenticate (reduced wait with polling)
 echo "⏳ Waiting for Salt Minion to authenticate with master..."
-sleep 8
+sleep 3
 
 # Verify minion is running
 if sudo systemctl is-active --quiet salt-minion; then

@@ -66,4 +66,4 @@
       ; (api-password "your-strong-password")
       (secure-auth true)        ; Use hash-based minion authentication
       (auto-join true)          ; Automatically join nodes as minions
-      (audit-logging true)))    ; Log authentication events
+      (audit-logging true))))   ; Log authentication events
