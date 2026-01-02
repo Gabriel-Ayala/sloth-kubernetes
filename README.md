@@ -27,7 +27,7 @@ State stored locally in `~/.pulumi`. Simple for development.
 
 ```bash
 # No configuration needed - works out of the box
-sloth-kubernetes deploy --config cluster.yaml
+sloth-kubernetes deploy --config cluster.lisp
 ```
 
 #### 2. S3 Backend (Recommended for Production)
@@ -43,7 +43,7 @@ export AWS_SECRET_ACCESS_KEY="..."
 export AWS_SESSION_TOKEN="..."  # Optional, for temporary credentials
 
 # Deploy
-sloth-kubernetes deploy --config cluster.yaml
+sloth-kubernetes deploy --config cluster.lisp
 ```
 
 #### 3. Persistent Config File
@@ -87,51 +87,52 @@ export ARM_SUBSCRIPTION_ID="..."
 
 ### 1. Create Configuration
 
-```yaml
-# cluster.yaml
-apiVersion: kubernetes-create.io/v1
-kind: Cluster
-metadata:
-  name: my-cluster
+```lisp
+; cluster.lisp
+(cluster
+  (metadata
+    (name "my-cluster")
+    (environment "production"))
 
-spec:
-  providers:
-    digitalocean:
-      enabled: true
-      token: ${DIGITALOCEAN_TOKEN}
-      region: nyc3
-      vpc:
-        create: true
-        cidr: 10.10.0.0/16
+  (providers
+    (digitalocean
+      (enabled true)
+      (token "${DIGITALOCEAN_TOKEN}")
+      (region "nyc3")
+      (vpc
+        (create true)
+        (cidr "10.10.0.0/16"))))
 
-  network:
-    wireguard:
-      create: true
-      provider: digitalocean
-      meshNetworking: true
+  (network
+    (mode "wireguard")
+    (wireguard
+      (enabled true)
+      (create true)
+      (mesh-networking true)))
 
-  kubernetes:
-    distribution: rke2
-    version: v1.28.5+rke2r1
+  (node-pools
+    (masters
+      (name "masters")
+      (provider "digitalocean")
+      (count 1)
+      (roles master etcd)
+      (size "s-2vcpu-4gb"))
+    (workers
+      (name "workers")
+      (provider "digitalocean")
+      (count 2)
+      (roles worker)
+      (size "s-2vcpu-4gb")))
 
-  nodePools:
-    - name: masters
-      provider: digitalocean
-      count: 1
-      roles: [master]
-      size: s-2vcpu-4gb
-
-    - name: workers
-      provider: digitalocean
-      count: 2
-      roles: [worker]
-      size: s-2vcpu-4gb
+  (kubernetes
+    (distribution "rke2")
+    (version "v1.28.5+rke2r1")))
 ```
 
 ### 2. Deploy
 
 ```bash
-sloth-kubernetes deploy --config cluster.yaml
+sloth-kubernetes deploy --config cluster.lisp
 ```
 
 ### 3. Access Your Cluster
@@ -196,67 +197,110 @@ sloth-kubernetes kubectl get nodes
 
 ### Multi-Cloud Cluster
 
-```yaml
-spec:
-  providers:
-    digitalocean:
-      enabled: true
-      region: nyc3
-    linode:
-      enabled: true
-      region: us-east
-    aws:
-      enabled: true
-      region: us-east-1
+```lisp
+(cluster
+  (metadata
+    (name "multi-cloud-cluster"))
 
-  nodePools:
-    - name: do-masters
-      provider: digitalocean
-      count: 1
-      roles: [master]
-      size: s-2vcpu-4gb
+  (providers
+    (digitalocean
+      (enabled true)
+      (region "nyc3"))
+    (linode
+      (enabled true)
+      (region "us-east"))
+    (aws
+      (enabled true)
+      (region "us-east-1")))
 
-    - name: linode-workers
-      provider: linode
-      count: 2
-      roles: [worker]
-      size: g6-standard-2
+  (network
+    (mode "wireguard")
+    (wireguard
+      (enabled true)
+      (create true)
+      (mesh-networking true)))
 
-    - name: aws-workers
-      provider: aws
-      count: 2
-      roles: [worker]
-      size: t3.medium
+  (node-pools
+    (do-masters
+      (name "do-masters")
+      (provider "digitalocean")
+      (count 1)
+      (roles master etcd)
+      (size "s-2vcpu-4gb"))
+    (linode-workers
+      (name "linode-workers")
+      (provider "linode")
+      (count 2)
+      (roles worker)
+      (size "g6-standard-2"))
+    (aws-workers
+      (name "aws-workers")
+      (provider "aws")
+      (count 2)
+      (roles worker)
+      (size "t3.medium"))))
 ```
 
 ### HA Cluster (3 Masters)
 
-```yaml
-nodePools:
-  - name: masters
-    provider: digitalocean
-    count: 3
-    roles: [master]
-    size: s-4vcpu-8gb
+```lisp
+(cluster
+  (metadata
+    (name "ha-cluster")
+    (environment "production"))
 
-  - name: workers
-    provider: digitalocean
-    count: 5
-    roles: [worker]
-    size: s-2vcpu-4gb
+  (providers
+    (digitalocean
+      (enabled true)
+      (region "nyc3")))
+
+  (node-pools
+    (masters
+      (name "masters")
+      (provider "digitalocean")
+      (count 3)
+      (roles master etcd)
+      (size "s-4vcpu-8gb"))
+    (workers
+      (name "workers")
+      (provider "digitalocean")
+      (count 5)
+      (roles worker)
+      (size "s-2vcpu-4gb")))
+
+  (kubernetes
+    (distribution "rke2")
+    (version "v1.29.0+rke2r1")
+    (high-availability true)))
 ```
 
-### With Spot Instances (AWS)
+### AWS with Spot Instances
 
-```yaml
-nodePools:
-  - name: workers
-    provider: aws
-    count: 10
-    roles: [worker]
-    size: t3.large
-    spotInstance: true
-    spotMaxPrice: "0.05"
+```lisp
+(cluster
+  (metadata
+    (name "aws-spot-cluster"))
+
+  (providers
+    (aws
+      (enabled true)
+      (region "us-east-1")))
+
+  (node-pools
+    (masters
+      (name "masters")
+      (provider "aws")
+      (count 3)
+      (roles master etcd)
+      (size "t3.large"))
+    (workers
+      (name "workers")
+      (provider "aws")
+      (count 10)
+      (roles worker)
+      (size "t3.large")
+      (spot-instance true)
+      (spot-max-price "0.05"))))
 ```
 
 ## Troubleshooting
@@ -272,7 +316,7 @@ sloth-kubernetes stacks cancel <stack-name>
 
 ```bash
 # Verbose output
-sloth-kubernetes deploy --config cluster.yaml --verbose
+sloth-kubernetes deploy --config cluster.lisp --verbose
 ```
 
 ### Check Node Status

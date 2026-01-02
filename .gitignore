@@ -78,3 +78,11 @@ setup-env.sh
 kubernetes-create
 sloth-kubernetes
 sloth-kubernetes
+
+# Build artifacts
+sloth-kubernetes
+sloth
+sloth-k8s
+
+# Python (not needed)
+requirements.txt
