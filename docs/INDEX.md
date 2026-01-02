@@ -64,7 +64,7 @@ Deploy secure, production-grade Kubernetes clusters across **DigitalOcean**, **L
 
 ### :material-cloud-outline: Multi-Cloud Infrastructure
 
-Deploy across **5 cloud providers** with unified YAML configuration:
+Deploy across **5 cloud providers** with unified LISP configuration:
 
 - **DigitalOcean** - Droplets, VPCs, Floating IPs, Cloud Firewalls
 - **Linode** - Instances, VLANs, NodeBalancers
@@ -111,11 +111,11 @@ Comprehensive command-line interface organized by function:
 === "Cluster Lifecycle"
 
     ```bash
-    sloth-kubernetes deploy --config cluster.yaml
+    sloth-kubernetes deploy --config cluster.lisp
     sloth-kubernetes destroy
     sloth-kubernetes refresh
-    sloth-kubernetes status
-    sloth-kubernetes validate
+    sloth-kubernetes preview
+    sloth-kubernetes validate --config cluster.lisp
     ```
 
 === "Node Management"
@@ -209,17 +209,17 @@ graph LR
 
 Manage cluster addons declaratively with Git-based workflows:
 
-```yaml
-addons:
-  argocd:
-    enabled: true
-    version: "v2.9.0"
-    repository: "https://github.com/your-org/k8s-addons"
-    path: "clusters/production"
-    syncPolicy:
-      automated:
-        prune: true
-        selfHeal: true
+```lisp
+(addons
+  (argocd
+    (enabled true)
+    (version "v2.9.0")
+    (repository "https://github.com/your-org/k8s-addons")
+    (path "clusters/production")
+    (sync-policy
+      (automated true)
+      (prune true)
+      (self-heal true))))
 ```
 
 Automatically deploys:
@@ -257,38 +257,51 @@ Automatically deploys:
 
 ### Deploy Your First Cluster
 
-```yaml title="cluster.yaml"
-metadata:
-  name: production
-  region: nyc3
+```lisp title="cluster.lisp"
+; Minimal production cluster configuration
+(cluster
+  (metadata
+    (name "production")
+    (environment "production"))
 
-providers:
-  digitalocean:
-    enabled: true
-    token: ${DO_TOKEN}
+  (providers
+    (digitalocean
+      (enabled true)
+      (token "${DIGITALOCEAN_TOKEN}")
+      (region "nyc3")
+      (vpc
+        (create true)
+        (cidr "10.10.0.0/16"))))
 
-security:
-  bastion:
-    enabled: true
-    provider: digitalocean
+  (network
+    (mode "wireguard")
+    (wireguard
+      (enabled true)
+      (create true)
+      (mesh-networking true)))
 
-nodePools:
-  - name: masters
-    provider: digitalocean
-    role: master
-    count: 3
-    size: s-2vcpu-4gb
+  (node-pools
+    (masters
+      (name "masters")
+      (provider "digitalocean")
+      (count 3)
+      (roles master etcd)
+      (size "s-2vcpu-4gb"))
+    (workers
+      (name "workers")
+      (provider "digitalocean")
+      (count 5)
+      (roles worker)
+      (size "s-4vcpu-8gb")))
 
-  - name: workers
-    provider: digitalocean
-    role: worker
-    count: 5
-    size: s-4vcpu-8gb
+  (kubernetes
+    (distribution "rke2")
+    (version "v1.29.0+rke2r1")))
 ```
 
 ```bash
-export DO_TOKEN="your-digitalocean-token"
-sloth-kubernetes deploy --config cluster.yaml
+export DIGITALOCEAN_TOKEN="your-digitalocean-token"
+sloth-kubernetes deploy --config cluster.lisp
 ```
 
 ---
@@ -411,25 +424,29 @@ graph TB
 
 Deploy masters across **3 cloud providers** for maximum resilience:
 
-```yaml
-nodePools:
-  - name: do-masters
-    provider: digitalocean
-    role: master
-    count: 1
-    region: nyc3
-
-  - name: linode-masters
-    provider: linode
-    role: master
-    count: 1
-    region: us-east
-
-  - name: aws-masters
-    provider: aws
-    role: master
-    count: 1
-    region: us-east-1
+```lisp
+(node-pools
+  (do-masters
+    (name "do-masters")
+    (provider "digitalocean")
+    (count 1)
+    (roles master etcd)
+    (size "s-2vcpu-4gb")
+    (region "nyc3"))
+  (linode-masters
+    (name "linode-masters")
+    (provider "linode")
+    (count 1)
+    (roles master etcd)
+    (size "g6-standard-2")
+    (region "us-east"))
+  (aws-masters
+    (name "aws-masters")
+    (provider "aws")
+    (count 1)
+    (roles master etcd)
+    (size "t3.medium")
+    (region "us-east-1")))
 ```
 
 **Result**: Cluster survives complete cloud provider outage.
@@ -438,35 +455,37 @@ nodePools:
 
 Mix instance types across clouds for optimal price/performance:
 
-```yaml
-nodePools:
-  - name: spot-workers
-    provider: aws
-    role: worker
-    count: 10
-    instanceType: t3.large
-    spot: true  # 70% cost savings
-
-  - name: stable-workers
-    provider: digitalocean
-    role: worker
-    count: 3
-    size: s-4vcpu-8gb  # Guaranteed availability
+```lisp
+(node-pools
+  (spot-workers
+    (name "spot-workers")
+    (provider "aws")
+    (count 10)
+    (roles worker)
+    (size "t3.large")
+    (spot-instance true)
+    (spot-max-price "0.05"))  ; 70% cost savings
+  (stable-workers
+    (name "stable-workers")
+    (provider "digitalocean")
+    (count 3)
+    (roles worker)
+    (size "s-4vcpu-8gb")))  ; Guaranteed availability
 ```
 
 ### Disaster Recovery
 
 Maintain standby cluster in different geographic region:
 
-```yaml
-metadata:
-  name: dr-cluster
-  region: eu-west-1
-
-providers:
-  aws:
-    enabled: true
-    region: eu-west-1
+```lisp
+(cluster
+  (metadata
+    (name "dr-cluster")
+    (environment "disaster-recovery"))
+  (providers
+    (aws
+      (enabled true)
+      (region "eu-west-1"))))
 ```
 
 Sync data with ArgoCD GitOps and automated backups.

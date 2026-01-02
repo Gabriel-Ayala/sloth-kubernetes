@@ -1,42 +1,40 @@
-# 🦥 Configuration Examples
+# Configuration Examples
 
-Real-world cluster configurations for every scenario. Copy, paste, and customize at your own pace!
+Real-world cluster configurations for every scenario. Copy, paste, and customize!
 
 ---
 
 ## Simple Single-Cloud Cluster
 
-Perfect for development or small projects. 🦥
+Perfect for development or small projects.
 
-```yaml
-apiVersion: kubernetes-create.io/v1
-kind: Cluster
-metadata:
-  name: simple-dev
-  labels:
-    environment: development
+```lisp
+; cluster.lisp - Simple development cluster
+(cluster
+  (metadata
+    (name "simple-dev")
+    (environment "development"))
 
-spec:
-  providers:
-    digitalocean:
-      enabled: true
-      token: ${DIGITALOCEAN_TOKEN}  # 🦥 From environment
-      region: nyc3
+  (providers
+    (digitalocean
+      (enabled true)
+      (token "${DIGITALOCEAN_TOKEN}")
+      (region "nyc3")))
 
-  kubernetes:
-    distribution: rke2
-    version: v1.28.5+rke2r1
+  (node-pools
+    (all-in-one
+      (name "all-in-one")
+      (provider "digitalocean")
+      (count 1)
+      (roles master worker)
+      (size "s-2vcpu-4gb")))
 
-  nodePools:
-    - name: all-in-one
-      provider: digitalocean
-      count: 1  # 🦥 Single node for dev
-      roles: [master, worker]
-      size: s-2vcpu-4gb
+  (kubernetes
+    (distribution "rke2")
+    (version "v1.29.0+rke2r1")))
 ```
 
 **What you get:**
-
 - 1 node serving as both master and worker
 - No VPN (single node doesn't need it)
 - Perfect for testing
@@ -46,636 +44,534 @@ spec:
 
 ## Production HA Multi-Cloud
 
-High availability across multiple clouds. 🦥
+High availability across multiple clouds.
 
-```yaml
-apiVersion: kubernetes-create.io/v1
-kind: Cluster
-metadata:
-  name: production-ha
-  labels:
-    environment: production
-    tier: critical
+```lisp
+; cluster.lisp - Production HA multi-cloud
+(cluster
+  (metadata
+    (name "production-ha")
+    (environment "production"))
 
-spec:
-  providers:
-    # DigitalOcean for masters
-    digitalocean:
-      enabled: true
-      token: ${DIGITALOCEAN_TOKEN}
-      region: nyc3
-      vpc:
-        create: true
-        cidr: 10.10.0.0/16
+  (providers
+    ; DigitalOcean for masters
+    (digitalocean
+      (enabled true)
+      (token "${DIGITALOCEAN_TOKEN}")
+      (region "nyc3")
+      (vpc
+        (create true)
+        (cidr "10.10.0.0/16")))
+    ; Linode for masters and workers
+    (linode
+      (enabled true)
+      (token "${LINODE_TOKEN}")
+      (region "us-east")
+      (vpc
+        (create true)
+        (cidr "10.11.0.0/16"))))
 
-    # Linode for masters and workers
-    linode:
-      enabled: true
-      token: ${LINODE_TOKEN}
-      region: us-east
-      vpc:
-        create: true
-        cidr: 10.11.0.0/16
+  ; Secure VPN mesh
+  (network
+    (mode "wireguard")
+    (wireguard
+      (enabled true)
+      (create true)
+      (mesh-networking true)
+      (subnet "10.8.0.0/24")
+      (port 51820)))
 
-  # 🦥 Secure VPN mesh
-  network:
-    wireguard:
-      create: true
-      meshNetworking: true
-      subnet: 10.8.0.0/24
-      port: 51820
+  (node-pools
+    ; Masters across clouds for HA
+    (do-masters
+      (name "do-masters")
+      (provider "digitalocean")
+      (count 1)
+      (roles master etcd)
+      (size "s-2vcpu-4gb"))
+    (linode-masters
+      (name "linode-masters")
+      (provider "linode")
+      (count 2)  ; 3 total masters (quorum)
+      (roles master etcd)
+      (size "g6-standard-2"))
+    ; Workers for application workloads
+    (do-workers
+      (name "do-workers")
+      (provider "digitalocean")
+      (count 2)
+      (roles worker)
+      (size "s-4vcpu-8gb"))
+    (linode-workers
+      (name "linode-workers")
+      (provider "linode")
+      (count 2)
+      (roles worker)
+      (size "g6-standard-4")))
 
-  kubernetes:
-    distribution: rke2
-    version: v1.28.5+rke2r1
-    rke2:
-      secretsEncryption: true  # 🦥 Encrypt at rest
-      snapshotScheduleCron: "0 */6 * * *"  # Backup every 6 hours
-      profiles:
-        - cis-1.6  # CIS security benchmark
-
-  nodePools:
-    # Masters across clouds for HA
-    - name: do-masters
-      provider: digitalocean
-      count: 1
-      roles: [master]
-      size: s-2vcpu-4gb
-      tags: [master, production]
-
-    - name: linode-masters
-      provider: linode
-      count: 2  # 🦥 3 total masters (quorum)
-      roles: [master]
-      size: g6-standard-2
-      tags: [master, production]
-
-    # Workers for application workloads
-    - name: do-workers
-      provider: digitalocean
-      count: 2
-      roles: [worker]
-      size: s-4vcpu-8gb  # 🦥 More resources for apps
-      tags: [worker, production]
-
-    - name: linode-workers
-      provider: linode
-      count: 2
-      roles: [worker]
-      size: g6-standard-4
-      tags: [worker, production]
-
-  # 🦥 Bastion for secure access
-  security:
-    bastion:
-      enabled: true
-      provider: digitalocean
-      size: s-1vcpu-1gb
-      allowedIPs:
-        - "203.0.113.0/24"  # Your office IP range
-
-  # 🦥 GitOps with ArgoCD
-  addons:
-    gitops:
-      enabled: true
-      repository: https://github.com/yourorg/k8s-gitops
-      branch: main
+  (kubernetes
+    (distribution "rke2")
+    (version "v1.29.0+rke2r1")
+    (high-availability true)))
 ```
 
 **What you get:**
-
 - 3 master nodes (1 DO + 2 Linode) for HA
 - 4 worker nodes across both clouds
 - WireGuard VPN mesh
-- Encrypted secrets
-- CIS security benchmarks
-- Automated backups every 6 hours
-- Bastion host for secure access
-- ArgoCD for GitOps
-- Cost: ~$240/month
+- Automatic failover
+- Cost: ~$180/month
 
 ---
 
 ## Cost-Optimized Cluster
 
-Maximum value for minimum spend. 🦥
+Maximum value for minimum spend.
 
-```yaml
-apiVersion: kubernetes-create.io/v1
-kind: Cluster
-metadata:
-  name: budget-friendly
-  labels:
-    environment: staging
-    cost-optimized: "true"
+```lisp
+; cluster.lisp - Budget-friendly cluster
+(cluster
+  (metadata
+    (name "budget-friendly")
+    (environment "staging"))
 
-spec:
-  providers:
-    # Linode (generally cheaper)
-    linode:
-      enabled: true
-      token: ${LINODE_TOKEN}
-      region: us-east
-      vpc:
-        create: true
-        cidr: 10.20.0.0/16
+  (providers
+    ; Linode (generally cheaper)
+    (linode
+      (enabled true)
+      (token "${LINODE_TOKEN}")
+      (region "us-east")
+      (vpc
+        (create true)
+        (cidr "10.20.0.0/16"))))
 
-  kubernetes:
-    distribution: rke2
-    version: v1.28.5+rke2r1
+  (node-pools
+    ; Single master (not HA, but cheap!)
+    (master
+      (name "master")
+      (provider "linode")
+      (count 1)
+      (roles master etcd)
+      (size "g6-nanode-1"))  ; Smallest size: $5/month
+    ; 2 small workers
+    (workers
+      (name "workers")
+      (provider "linode")
+      (count 2)
+      (roles worker)
+      (size "g6-nanode-1")))  ; Also $5/month each
 
-  nodePools:
-    # Single master (not HA, but cheap!)
-    - name: master
-      provider: linode
-      count: 1
-      roles: [master]
-      size: g6-nanode-1  # 🦥 Smallest size: $5/month
-      tags: [master, staging]
-
-    # 2 small workers
-    - name: workers
-      provider: linode
-      count: 2
-      roles: [worker]
-      size: g6-nanode-1  # 🦥 Also $5/month each
-      tags: [worker, staging]
+  (kubernetes
+    (distribution "k3s")  ; Lighter than RKE2
+    (version "v1.29.0+k3s1")))
 ```
 
 **What you get:**
-
 - 1 master + 2 workers
 - Single cloud (no VPN overhead)
-- Basic Kubernetes functionality
+- K3s for lower resource usage
 - Perfect for staging/testing
 - Cost: ~$15/month
 
 ---
 
-## GPU Workloads Cluster
+## AWS with Spot Instances
 
-For ML/AI and GPU-intensive workloads. 🦥
+Cost savings with spot instances for workers.
 
-```yaml
-apiVersion: kubernetes-create.io/v1
-kind: Cluster
-metadata:
-  name: gpu-cluster
-  labels:
-    environment: ml-training
-    workload: gpu
+```lisp
+; cluster.lisp - AWS spot instance cluster
+(cluster
+  (metadata
+    (name "aws-spot-cluster")
+    (environment "production"))
 
-spec:
-  providers:
-    # DigitalOcean for control plane
-    digitalocean:
-      enabled: true
-      token: ${DIGITALOCEAN_TOKEN}
-      region: nyc3
-      vpc:
-        create: true
-        cidr: 10.30.0.0/16
+  (providers
+    (aws
+      (enabled true)
+      (region "us-east-1")
+      (vpc
+        (create true)
+        (cidr "10.0.0.0/16"))))
 
-    # Linode for GPU nodes
-    linode:
-      enabled: true
-      token: ${LINODE_TOKEN}
-      region: us-east
-      vpc:
-        create: true
-        cidr: 10.31.0.0/16
+  (network
+    (mode "wireguard")
+    (wireguard
+      (enabled true)
+      (create true)
+      (mesh-networking true)))
 
-  network:
-    wireguard:
-      create: true
-      meshNetworking: true
+  (node-pools
+    ; On-demand masters for stability
+    (masters
+      (name "masters")
+      (provider "aws")
+      (count 3)
+      (roles master etcd)
+      (size "t3.medium"))
+    ; Spot workers for cost savings
+    (spot-workers
+      (name "spot-workers")
+      (provider "aws")
+      (count 10)
+      (roles worker)
+      (size "t3.large")
+      (spot-instance true)
+      (spot-max-price "0.05")))  ; Max $0.05/hour
 
-  kubernetes:
-    distribution: rke2
-    version: v1.28.5+rke2r1
-
-  nodePools:
-    # Control plane on DO
-    - name: masters
-      provider: digitalocean
-      count: 3
-      roles: [master]
-      size: s-2vcpu-4gb
-
-    # CPU workers for system services
-    - name: cpu-workers
-      provider: digitalocean
-      count: 2
-      roles: [worker]
-      size: s-4vcpu-8gb
-      labels:
-        node-type: cpu  # 🦥 Label for scheduling
-
-    # GPU workers for ML workloads
-    - name: gpu-workers
-      provider: linode
-      count: 2
-      roles: [worker]
-      size: g1-gpu-rtx6000-1  # 🦥 RTX 6000 GPU
-      labels:
-        node-type: gpu
-        nvidia.com/gpu: "true"
-      taints:
-        - key: nvidia.com/gpu
-          value: "true"
-          effect: NoSchedule  # 🦥 Only GPU pods here
+  (kubernetes
+    (distribution "rke2")
+    (version "v1.29.0+rke2r1")
+    (high-availability true)))
 ```
 
-**Example GPU pod:**
+**What you get:**
+- 3 stable on-demand masters
+- 10 spot instance workers (up to 90% savings)
+- Automatic spot instance management
+- Cost: ~$150/month (vs ~$500 on-demand)
 
-```yaml
-apiVersion: v1
-kind: Pod
-metadata:
-  name: gpu-training
-spec:
-  nodeSelector:
-    node-type: gpu  # 🦥 Schedule on GPU nodes
-  tolerations:
-    - key: nvidia.com/gpu
-      operator: Exists
-  containers:
-    - name: pytorch
-      image: pytorch/pytorch:latest
-      resources:
-        limits:
-          nvidia.com/gpu: 1  # 🦥 Request GPU
+---
+
+## GPU Workloads Cluster
+
+For ML/AI and GPU-intensive workloads.
+
+```lisp
+; cluster.lisp - GPU cluster
+(cluster
+  (metadata
+    (name "gpu-cluster")
+    (environment "ml-training"))
+
+  (providers
+    ; DigitalOcean for control plane
+    (digitalocean
+      (enabled true)
+      (token "${DIGITALOCEAN_TOKEN}")
+      (region "nyc3")
+      (vpc
+        (create true)
+        (cidr "10.30.0.0/16")))
+    ; Linode for GPU nodes
+    (linode
+      (enabled true)
+      (token "${LINODE_TOKEN}")
+      (region "us-east")
+      (vpc
+        (create true)
+        (cidr "10.31.0.0/16"))))
+
+  (network
+    (mode "wireguard")
+    (wireguard
+      (enabled true)
+      (create true)
+      (mesh-networking true)))
+
+  (node-pools
+    ; Control plane on DO
+    (masters
+      (name "masters")
+      (provider "digitalocean")
+      (count 3)
+      (roles master etcd)
+      (size "s-2vcpu-4gb"))
+    ; CPU workers for system services
+    (cpu-workers
+      (name "cpu-workers")
+      (provider "digitalocean")
+      (count 2)
+      (roles worker)
+      (size "s-4vcpu-8gb")
+      (labels
+        (node-type "cpu")))
+    ; GPU workers for ML workloads
+    (gpu-workers
+      (name "gpu-workers")
+      (provider "linode")
+      (count 2)
+      (roles worker)
+      (size "g1-gpu-rtx6000-1")  ; RTX 6000 GPU
+      (labels
+        (node-type "gpu")
+        (accelerator "nvidia"))
+      (taints
+        (gpu
+          (key "nvidia.com/gpu")
+          (value "true")
+          (effect "NoSchedule")))))  ; Only GPU pods here
+
+  (kubernetes
+    (distribution "rke2")
+    (version "v1.29.0+rke2r1")))
 ```
 
 ---
 
 ## Edge Computing Cluster
 
-Distributed edge locations. 🦥
+Distributed edge locations.
 
-```yaml
-apiVersion: kubernetes-create.io/v1
-kind: Cluster
-metadata:
-  name: edge-distributed
-  labels:
-    environment: edge
-    topology: distributed
+```lisp
+; cluster.lisp - Edge distributed cluster
+(cluster
+  (metadata
+    (name "edge-distributed")
+    (environment "edge"))
 
-spec:
-  providers:
-    digitalocean:
-      enabled: true
-      token: ${DIGITALOCEAN_TOKEN}
-      regions:  # 🦥 Multiple regions!
-        - nyc3
-        - sfo3
-        - ams3
+  (providers
+    (digitalocean
+      (enabled true)
+      (token "${DIGITALOCEAN_TOKEN}")
+      (region "nyc3")
+      (vpc
+        (create true)
+        (cidr "10.40.0.0/16"))))
 
-    linode:
-      enabled: true
-      token: ${LINODE_TOKEN}
-      regions:
-        - us-east
-        - us-west
-        - eu-central
+  (network
+    (mode "wireguard")
+    (wireguard
+      (enabled true)
+      (create true)
+      (mesh-networking true)))
 
-  network:
-    wireguard:
-      create: true
-      meshNetworking: true
-      subnet: 10.8.0.0/24
+  (node-pools
+    ; Masters in primary region
+    (central-masters
+      (name "central-masters")
+      (provider "digitalocean")
+      (count 3)
+      (roles master etcd)
+      (size "s-2vcpu-4gb")
+      (region "nyc3"))
+    ; Edge workers in NYC
+    (nyc-edge
+      (name "nyc-edge")
+      (provider "digitalocean")
+      (count 2)
+      (roles worker)
+      (size "s-2vcpu-4gb")
+      (region "nyc3")
+      (labels
+        (edge-location "nyc")))
+    ; Edge workers in SF
+    (sfo-edge
+      (name "sfo-edge")
+      (provider "digitalocean")
+      (count 2)
+      (roles worker)
+      (size "s-2vcpu-4gb")
+      (region "sfo3")
+      (labels
+        (edge-location "sfo")))
+    ; Edge workers in Amsterdam
+    (ams-edge
+      (name "ams-edge")
+      (provider "digitalocean")
+      (count 2)
+      (roles worker)
+      (size "s-2vcpu-4gb")
+      (region "ams3")
+      (labels
+        (edge-location "ams"))))
 
-  kubernetes:
-    distribution: rke2
-    version: v1.28.5+rke2r1
-
-  nodePools:
-    # Masters in primary region
-    - name: central-masters
-      provider: digitalocean
-      region: nyc3
-      count: 3
-      roles: [master]
-      size: s-2vcpu-4gb
-
-    # Edge workers in NYC
-    - name: nyc-edge
-      provider: digitalocean
-      region: nyc3
-      count: 2
-      roles: [worker]
-      size: s-2vcpu-4gb
-      labels:
-        edge-location: nyc  # 🦥 Location-aware scheduling
-
-    # Edge workers in SF
-    - name: sfo-edge
-      provider: digitalocean
-      region: sfo3
-      count: 2
-      roles: [worker]
-      size: s-2vcpu-4gb
-      labels:
-        edge-location: sfo
-
-    # Edge workers in Amsterdam
-    - name: ams-edge
-      provider: digitalocean
-      region: ams3
-      count: 2
-      roles: [worker]
-      size: s-2vcpu-4gb
-      labels:
-        edge-location: ams
-
-    # Edge workers in Asia
-    - name: asia-edge
-      provider: linode
-      region: ap-south
-      count: 2
-      roles: [worker]
-      size: g6-standard-2
-      labels:
-        edge-location: asia
-```
-
-**Deploy geographically:**
-
-```yaml
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: cdn-cache
-spec:
-  replicas: 8
-  template:
-    spec:
-      affinity:
-        podAntiAffinity:
-          preferredDuringSchedulingIgnoredDuringExecution:
-            - weight: 100
-              podAffinityTerm:
-                labelSelector:
-                  matchExpressions:
-                    - key: app
-                      operator: In
-                      values: [cdn-cache]
-                topologyKey: edge-location  # 🦥 Spread across locations
+  (kubernetes
+    (distribution "rke2")
+    (version "v1.29.0+rke2r1")))
 ```
 
 ---
 
-## Development Team Cluster
+## Azure Cluster
 
-For collaborative development teams. 🦥
+Single-cloud Azure deployment.
 
-```yaml
-apiVersion: kubernetes-create.io/v1
-kind: Cluster
-metadata:
-  name: dev-team
-  labels:
-    environment: development
-    team: engineering
+```lisp
+; cluster.lisp - Azure cluster
+(cluster
+  (metadata
+    (name "azure-cluster")
+    (environment "production"))
 
-spec:
-  providers:
-    digitalocean:
-      enabled: true
-      token: ${DIGITALOCEAN_TOKEN}
-      region: nyc3
-      vpc:
-        create: true
-        cidr: 10.50.0.0/16
+  (providers
+    (azure
+      (enabled true)
+      (location "eastus")
+      (resource-group "k8s-rg")
+      (vnet
+        (create true)
+        (cidr "10.50.0.0/16"))))
 
-  network:
-    wireguard:
-      create: true
-      meshNetworking: true
-      clients:  # 🦥 VPN for developers
-        - name: alice-laptop
-          allowedIPs: [10.8.0.100/32]
-        - name: bob-laptop
-          allowedIPs: [10.8.0.101/32]
-        - name: charlie-laptop
-          allowedIPs: [10.8.0.102/32]
+  (network
+    (mode "wireguard")
+    (wireguard
+      (enabled true)
+      (create true)
+      (mesh-networking true)))
 
-  kubernetes:
-    distribution: rke2
-    version: v1.28.5+rke2r1
-    rke2:
-      profiles:
-        - cis-1.6  # 🦥 Security even in dev!
+  (node-pools
+    (masters
+      (name "masters")
+      (provider "azure")
+      (count 3)
+      (roles master etcd)
+      (size "Standard_D2s_v3"))
+    (workers
+      (name "workers")
+      (provider "azure")
+      (count 5)
+      (roles worker)
+      (size "Standard_D4s_v3")))
 
-  nodePools:
-    - name: masters
-      provider: digitalocean
-      count: 1  # Single master for dev
-      roles: [master]
-      size: s-2vcpu-4gb
-
-    - name: workers
-      provider: digitalocean
-      count: 3
-      roles: [worker]
-      size: s-4vcpu-8gb  # 🦥 Enough for multiple apps
-      labels:
-        node-type: general
-
-  # 🦥 Pre-install development tools
-  addons:
-    gitops:
-      enabled: true
-      repository: https://github.com/yourorg/dev-cluster-config
-      applications:
-        - name: dev-namespace-creator
-          path: namespaces/
-        - name: ingress-nginx
-          path: ingress/
-        - name: cert-manager
-          path: cert-manager/
-        - name: monitoring
-          path: monitoring/
-
-  # 🦥 DNS for easy access
-  dns:
-    enabled: true
-    domain: dev.yourcompany.com
-    provider: digitalocean
-    records:
-      - name: "*.dev"
-        type: A
-        value: "${INGRESS_IP}"
+  (kubernetes
+    (distribution "rke2")
+    (version "v1.29.0+rke2r1")
+    (high-availability true)))
 ```
-
-**Team members can:**
-
-- Connect via VPN to access internal services
-- Deploy to their own namespaces
-- Use `*.dev.yourcompany.com` domains
-- Share the cluster without conflicts
 
 ---
 
-## Compliance-First Cluster
+## Three-Cloud HA
 
-For regulated industries (healthcare, finance). 🦥
+Maximum resilience across three cloud providers.
 
-```yaml
-apiVersion: kubernetes-create.io/v1
-kind: Cluster
-metadata:
-  name: compliance-cluster
-  labels:
-    environment: production
-    compliance: hipaa-pci
+```lisp
+; cluster.lisp - Three-cloud HA cluster
+(cluster
+  (metadata
+    (name "ultra-ha")
+    (environment "production"))
 
-spec:
-  providers:
-    digitalocean:
-      enabled: true
-      token: ${DIGITALOCEAN_TOKEN}
-      region: nyc3
-      vpc:
-        create: true
-        cidr: 10.100.0.0/16
+  (providers
+    (digitalocean
+      (enabled true)
+      (token "${DIGITALOCEAN_TOKEN}")
+      (region "nyc3")
+      (vpc
+        (create true)
+        (cidr "10.10.0.0/16")))
+    (linode
+      (enabled true)
+      (token "${LINODE_TOKEN}")
+      (region "us-east")
+      (vpc
+        (create true)
+        (cidr "10.11.0.0/16")))
+    (aws
+      (enabled true)
+      (region "us-east-1")
+      (vpc
+        (create true)
+        (cidr "10.0.0.0/16"))))
 
-  network:
-    wireguard:
-      create: true
-      meshNetworking: true
-      # 🦥 Strong encryption
-      allowedCipherSuites:
-        - TLS_AES_256_GCM_SHA384
+  (network
+    (mode "wireguard")
+    (wireguard
+      (enabled true)
+      (create true)
+      (mesh-networking true)))
 
-  kubernetes:
-    distribution: rke2
-    version: v1.28.5+rke2r1
-    rke2:
-      secretsEncryption: true  # 🦥 Required for compliance
-      snapshotScheduleCron: "0 */4 * * *"  # Backup every 4 hours
-      snapshotRetention: 72  # Keep 72 backups (2 weeks)
-      auditLogEnabled: true  # 🦥 Audit all API calls
-      profiles:
-        - cis-1.6  # CIS benchmarks
-      podSecurityPolicy: restricted  # Strictest policy
+  (node-pools
+    ; One master per cloud
+    (do-master
+      (name "do-master")
+      (provider "digitalocean")
+      (count 1)
+      (roles master etcd)
+      (size "s-4vcpu-8gb"))
+    (linode-master
+      (name "linode-master")
+      (provider "linode")
+      (count 1)
+      (roles master etcd)
+      (size "g6-standard-4"))
+    (aws-master
+      (name "aws-master")
+      (provider "aws")
+      (count 1)
+      (roles master etcd)
+      (size "t3.large"))
+    ; Workers distributed
+    (do-workers
+      (name "do-workers")
+      (provider "digitalocean")
+      (count 2)
+      (roles worker)
+      (size "s-4vcpu-8gb"))
+    (linode-workers
+      (name "linode-workers")
+      (provider "linode")
+      (count 2)
+      (roles worker)
+      (size "g6-standard-4"))
+    (aws-workers
+      (name "aws-workers")
+      (provider "aws")
+      (count 2)
+      (roles worker)
+      (size "t3.large")))
 
-  nodePools:
-    - name: masters
-      provider: digitalocean
-      count: 3  # 🦥 HA required
-      roles: [master]
-      size: s-4vcpu-8gb
-      encrypted: true  # Encrypted volumes
-      tags: [master, compliance]
-
-    - name: workers
-      provider: digitalocean
-      count: 4
-      roles: [worker]
-      size: s-8vcpu-16gb
-      encrypted: true  # 🦥 All volumes encrypted
-      tags: [worker, compliance]
-
-  # 🦥 Strict security controls
-  security:
-    bastion:
-      enabled: true
-      provider: digitalocean
-      size: s-1vcpu-1gb
-      allowedIPs:
-        - "203.0.113.0/24"  # Only from office
-      mfaRequired: true
-
-    networkPolicies:
-      enabled: true
-      defaultDeny: true  # 🦥 Deny all, allow explicitly
-
-    podSecurityStandards:
-      enforce: restricted
-      audit: restricted
-      warn: restricted
-
-  # 🦥 Monitoring and alerting
-  addons:
-    monitoring:
-      enabled: true
-      retentionDays: 90  # Keep logs for compliance
-      alerts:
-        - unauthorizedAccess
-        - configChanges
-        - podSecurityViolations
+  (kubernetes
+    (distribution "rke2")
+    (version "v1.29.0+rke2r1")
+    (high-availability true)))
 ```
 
-**Compliance features:**
-
-- ✅ Encrypted volumes
-- ✅ Encrypted secrets at rest
-- ✅ Audit logging enabled
-- ✅ CIS benchmarks enforced
-- ✅ Network policies (default deny)
-- ✅ Pod security standards (restricted)
-- ✅ Regular automated backups
-- ✅ Bastion with MFA
-- ✅ Monitoring and alerting
+**What you get:**
+- Survives complete cloud provider outage
+- 3 masters (one per cloud)
+- 6 workers (two per cloud)
+- Full WireGuard mesh across all clouds
 
 ---
 
-## Template Variables
+## Environment Variables
 
-You can use environment variables in your configs:
+Reference environment variables in your configurations:
 
-```yaml
-spec:
-  providers:
-    digitalocean:
-      token: ${DIGITALOCEAN_TOKEN}  # 🦥 From environment
-      region: ${DO_REGION:-nyc3}    # 🦥 Default to nyc3
-
-  network:
-    wireguard:
-      port: ${VPN_PORT:-51820}      # 🦥 Default to 51820
+```lisp
+(providers
+  (digitalocean
+    (token "${DIGITALOCEAN_TOKEN}")  ; From environment
+    (region "${DO_REGION:-nyc3}")))  ; With default value
 ```
 
 Set before deploying:
 
 ```bash
 export DIGITALOCEAN_TOKEN="dop_v1_..."
+export LINODE_TOKEN="..."
 export DO_REGION="sfo3"
-export VPN_PORT="51821"
 
-sloth-kubernetes deploy --config cluster.yaml  # 🦥
+sloth-kubernetes deploy --config cluster.lisp
 ```
 
 ---
 
 ## Tips for Writing Configs
 
-!!! tip "Start Small 🦥"
-    Begin with a simple config and add features gradually. Don't rush!
-
-!!! warning "Test in Dev First 🦥"
-    Always test new configurations in development before production.
-
-!!! success "Version Control 🦥"
-    Keep your configs in Git for tracking and rollback capability.
+1. **Start small** - Begin with a simple config and add features gradually
+2. **Test in dev first** - Always test new configurations in development
+3. **Version control** - Keep your configs in Git for tracking and rollback
+4. **Use environment variables** - Never hardcode credentials
 
 ```bash
 # Good structure
 k8s-clusters/
-├── production.yaml
-├── staging.yaml
-├── development.yaml
+├── production.lisp
+├── staging.lisp
+├── development.lisp
 └── examples/
-    ├── simple.yaml
-    ├── ha.yaml
-    └── multi-cloud.yaml
+    ├── simple.lisp
+    ├── ha.lisp
+    └── multi-cloud.lisp
 ```
 
 ---
 
-!!! quote "Sloth Wisdom 🦥"
-    *"A well-configured cluster is worth the wait. Take your time, get it right!"*
+## Next Steps
 
-**Need more examples?** Check out the [examples directory](https://github.com/yourusername/sloth-kubernetes/tree/main/examples) in the repo! 🦥
+- [LISP Format Reference](lisp-format.md) - Complete syntax documentation
+- [Backend Configuration](backend.md) - S3 and local state storage
+- [CLI Reference](../user-guide/cli-reference.md) - All available commands

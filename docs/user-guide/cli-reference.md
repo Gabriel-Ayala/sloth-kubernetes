@@ -1,6 +1,6 @@
-# 🦥 CLI Reference
+# CLI Reference
 
-Complete reference for all Sloth Kubernetes commands. Slowly, but thoroughly documented!
+Complete reference for all sloth-kubernetes commands.
 
 ---
 
@@ -13,7 +13,7 @@ These flags work with all commands:
 | `--help, -h` | Show help for command | - |
 | `--version, -v` | Show version | - |
 | `--debug` | Enable debug logging | `false` |
-| `--config, -c` | Path to config file | `cluster.yaml` |
+| `--config, -c` | Path to config file | `cluster.lisp` |
 
 ---
 
@@ -25,13 +25,17 @@ sloth-kubernetes [command] [flags]
 
 Available Commands:
 
-- [`deploy`](#deploy) - Deploy a Kubernetes cluster 🦥
-- [`destroy`](#destroy) - Destroy a cluster 🦥
-- [`nodes`](#nodes) - Manage cluster nodes 🦥
-- [`vpn`](#vpn) - Manage WireGuard VPN 🦥
-- [`stacks`](#stacks) - Manage Pulumi stacks 🦥
-- [`kubeconfig`](#kubeconfig) - Generate kubeconfig 🦥
-- [`version`](#version) - Show version info 🦥
+- [`deploy`](#deploy) - Deploy a Kubernetes cluster
+- [`destroy`](#destroy) - Destroy a cluster
+- [`preview`](#preview) - Preview changes
+- [`refresh`](#refresh) - Sync state with cloud
+- [`validate`](#validate) - Validate configuration
+- [`stacks`](#stacks) - Manage Pulumi stacks
+- [`salt`](#salt) - Node management with Salt
+- [`kubectl`](#kubectl) - Kubernetes operations
+- [`kubeconfig`](#kubeconfig) - Generate kubeconfig
+- [`addons`](#addons) - Manage cluster addons
+- [`version`](#version) - Show version info
 
 ---
 
@@ -49,7 +53,7 @@ sloth-kubernetes deploy [flags]
 
 | Flag | Type | Description | Required | Default |
 |------|------|-------------|----------|---------|
-| `--config, -c` | string | Path to cluster config file | Yes | `cluster.yaml` |
+| `--config, -c` | string | Path to cluster config file | Yes | `cluster.lisp` |
 | `--dry-run` | bool | Preview changes without applying | No | `false` |
 | `--auto-approve` | bool | Skip confirmation prompt | No | `false` |
 | `--parallel` | int | Max parallel operations | No | `10` |
@@ -58,26 +62,26 @@ sloth-kubernetes deploy [flags]
 ### Examples
 
 ```bash
-# Deploy with default config 🦥
-sloth-kubernetes deploy
+# Deploy with default config
+sloth-kubernetes deploy --config cluster.lisp
 
 # Deploy with custom config
-sloth-kubernetes deploy --config production.yaml
+sloth-kubernetes deploy --config production.lisp
 
-# Dry run (preview changes)
-sloth-kubernetes deploy --dry-run
+# Preview changes (dry run)
+sloth-kubernetes preview --config cluster.lisp
 
 # Auto-approve without confirmation
-sloth-kubernetes deploy --auto-approve
+sloth-kubernetes deploy --config cluster.lisp --auto-approve
 
 # Deploy with timeout
-sloth-kubernetes deploy --timeout 45m
+sloth-kubernetes deploy --config cluster.lisp --timeout 45m
 ```
 
 ### Output
 
 ```
-🦥 Sloth Kubernetes Deployment
+Sloth Kubernetes Deployment
 Slowly, but surely deploying your cluster...
 
 Stack: my-cluster
@@ -117,15 +121,14 @@ sloth-kubernetes destroy [flags]
 
 | Flag | Type | Description | Required | Default |
 |------|------|-------------|----------|---------|
-| `--config, -c` | string | Path to cluster config file | Yes | `cluster.yaml` |
+| `--config, -c` | string | Path to cluster config file | Yes | `cluster.lisp` |
 | `--force, -f` | bool | Skip confirmation prompt | No | `false` |
 | `--remove-state` | bool | Also remove state files | No | `false` |
 
 ### Examples
 
 ```bash
-# Destroy cluster 🦥
-sloth-kubernetes destroy
+# Destroy clustersloth-kubernetes destroy
 
 # Force destroy (no confirmation)
 sloth-kubernetes destroy --force
@@ -163,11 +166,7 @@ Manage cluster nodes: list, add, remove, or drain.
 
 ### Subcommands
 
-- `nodes list` - List all nodes 🦥
-- `nodes add` - Add nodes to cluster 🦥
-- `nodes remove` - Remove nodes from cluster 🦥
-- `nodes drain` - Drain a node for maintenance 🦥
-
+- `nodes list` - List all nodes- `nodes add` - Add nodes to cluster- `nodes remove` - Remove nodes from cluster- `nodes drain` - Drain a node for maintenance
 ### `nodes list`
 
 List all nodes in the cluster.
@@ -180,14 +179,13 @@ sloth-kubernetes nodes list [flags]
 
 | Flag | Type | Description | Default |
 |------|------|-------------|---------|
-| `--config, -c` | string | Cluster config | `cluster.yaml` |
+| `--config, -c` | string | Cluster config | `cluster.lisp` |
 | `--output, -o` | string | Output format: `table`, `json`, `yaml` | `table` |
 
 **Example:**
 
 ```bash
-# List nodes 🦥
-sloth-kubernetes nodes list
+# List nodessloth-kubernetes nodes list
 
 # Output as JSON
 sloth-kubernetes nodes list -o json
@@ -227,8 +225,7 @@ sloth-kubernetes nodes add --pool POOL_NAME --count COUNT [flags]
 **Example:**
 
 ```bash
-# Add 2 workers to linode-workers pool 🦥
-sloth-kubernetes nodes add --pool linode-workers --count 2
+# Add 2 workers to linode-workers poolsloth-kubernetes nodes add --pool linode-workers --count 2
 
 # Add 1 master
 sloth-kubernetes nodes add --pool do-masters --count 1
@@ -252,8 +249,7 @@ sloth-kubernetes nodes remove NODE_NAME [flags]
 **Example:**
 
 ```bash
-# Remove a node (with graceful drain) 🦥
-sloth-kubernetes nodes remove do-worker-2
+# Remove a node (with graceful drain)sloth-kubernetes nodes remove do-worker-2
 
 # Force remove without drain
 sloth-kubernetes nodes remove do-worker-2 --force
@@ -270,8 +266,7 @@ sloth-kubernetes nodes drain NODE_NAME [flags]
 **Example:**
 
 ```bash
-# Drain node for maintenance 🦥
-sloth-kubernetes nodes drain do-worker-1
+# Drain node for maintenancesloth-kubernetes nodes drain do-worker-1
 ```
 
 ---
@@ -282,11 +277,7 @@ Manage WireGuard VPN configuration and client access.
 
 ### Subcommands
 
-- `vpn status` - Show VPN status 🦥
-- `vpn client-config` - Generate client config 🦥
-- `vpn add-client` - Add new VPN client 🦥
-- `vpn remove-client` - Remove VPN client 🦥
-
+- `vpn status` - Show VPN status- `vpn client-config` - Generate client config- `vpn add-client` - Add new VPN client- `vpn remove-client` - Remove VPN client
 ### `vpn status`
 
 Show WireGuard VPN status and connected clients.
@@ -298,8 +289,7 @@ sloth-kubernetes vpn status [flags]
 **Example:**
 
 ```bash
-# Check VPN status 🦥
-sloth-kubernetes vpn status
+# Check VPN statussloth-kubernetes vpn status
 ```
 
 **Output:**
@@ -340,8 +330,7 @@ sloth-kubernetes vpn client-config --name CLIENT_NAME [flags]
 **Example:**
 
 ```bash
-# Generate client config 🦥
-sloth-kubernetes vpn client-config --name my-laptop
+# Generate client configsloth-kubernetes vpn client-config --name my-laptop
 
 # Save to file
 sloth-kubernetes vpn client-config --name my-laptop -o laptop.conf
@@ -374,10 +363,7 @@ Manage Pulumi stacks for cluster state.
 
 ### Subcommands
 
-- `stacks list` - List all stacks 🦥
-- `stacks state list` - List stack resources 🦥
-- `stacks state delete` - Delete specific resources 🦥
-
+- `stacks list` - List all stacks- `stacks state list` - List stack resources- `stacks state delete` - Delete specific resources
 ### `stacks list`
 
 List all Pulumi stacks.
@@ -389,8 +375,7 @@ sloth-kubernetes stacks list
 **Example:**
 
 ```bash
-# List stacks 🦥
-sloth-kubernetes stacks list
+# List stackssloth-kubernetes stacks list
 ```
 
 **Output:**
@@ -415,14 +400,13 @@ sloth-kubernetes stacks state list [flags]
 
 | Flag | Type | Description | Default |
 |------|------|-------------|---------|
-| `--config, -c` | string | Cluster config | `cluster.yaml` |
+| `--config, -c` | string | Cluster config | `cluster.lisp` |
 | `--type` | string | Filter by resource type | - |
 
 **Example:**
 
 ```bash
-# List all resources 🦥
-sloth-kubernetes stacks state list
+# List all resourcessloth-kubernetes stacks state list
 
 # Filter by type
 sloth-kubernetes stacks state list --type digitalocean:Droplet
@@ -444,14 +428,13 @@ sloth-kubernetes kubeconfig [flags]
 
 | Flag | Type | Description | Default |
 |------|------|-------------|---------|
-| `--config, -c` | string | Cluster config | `cluster.yaml` |
+| `--config, -c` | string | Cluster config | `cluster.lisp` |
 | `--output, -o` | string | Output file | stdout |
 
 ### Examples
 
 ```bash
-# Print kubeconfig 🦥
-sloth-kubernetes kubeconfig
+# Print kubeconfigsloth-kubernetes kubeconfig
 
 # Save to file
 sloth-kubernetes kubeconfig -o ~/.kube/config
