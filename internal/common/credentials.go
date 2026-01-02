@@ -29,10 +29,11 @@ func LoadSavedConfig() error {
 	}
 
 	// Set environment variables from config file
-	// IMPORTANT: Always override existing environment variables with values from config file
-	// This ensures the S3 backend credentials from ~/.sloth-kubernetes/config take precedence
+	// Only set if not already set - environment variables take precedence over config file
 	for key, value := range config {
-		os.Setenv(key, value)
+		if os.Getenv(key) == "" {
+			os.Setenv(key, value)
+		}
 	}
 
 	return nil

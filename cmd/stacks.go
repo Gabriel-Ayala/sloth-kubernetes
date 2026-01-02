@@ -215,11 +215,22 @@ func createWorkspaceWithS3Support(ctx context.Context) (auto.Workspace, error) {
 	_ = common.LoadSavedConfig()
 
 	projectName := "sloth-kubernetes"
+
+	// Build project configuration with optional backend
+	project := workspace.Project{
+		Name:    tokens.PackageName(projectName),
+		Runtime: workspace.NewProjectRuntimeInfo("go", nil),
+	}
+
+	// If PULUMI_BACKEND_URL is set, configure backend in the project
+	if backendURL := os.Getenv("PULUMI_BACKEND_URL"); backendURL != "" {
+		project.Backend = &workspace.ProjectBackend{
+			URL: backendURL,
+		}
+	}
+
 	workspaceOpts := []auto.LocalWorkspaceOption{
-		auto.Project(workspace.Project{
-			Name:    tokens.PackageName(projectName),
-			Runtime: workspace.NewProjectRuntimeInfo("go", nil),
-		}),
+		auto.Project(project),
 	}
 
 	// Collect all AWS/S3 environment variables to pass to Pulumi subprocess
@@ -227,6 +238,7 @@ func createWorkspaceWithS3Support(ctx context.Context) (auto.Workspace, error) {
 	awsEnvKeys := []string{
 		"AWS_ACCESS_KEY_ID",
 		"AWS_SECRET_ACCESS_KEY",
+		"AWS_SESSION_TOKEN",
 		"AWS_REGION",
 		"AWS_S3_ENDPOINT",
 		"AWS_S3_USE_PATH_STYLE",
@@ -263,13 +275,13 @@ func runListStacks(cmd *cobra.Command, args []string) error {
 	printHeader("📦 Deployment Stacks")
 
 	// Create workspace with S3 support
-	workspace, err := createWorkspaceWithS3Support(ctx)
+	ws, err := createWorkspaceWithS3Support(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to create workspace: %w", err)
 	}
 
 	// List stacks
-	stacks, err := workspace.ListStacks(ctx)
+	stacks, err := ws.ListStacks(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to list stacks: %w", err)
 	}
@@ -278,7 +290,7 @@ func runListStacks(cmd *cobra.Command, args []string) error {
 		color.Yellow("\n⚠️  No stacks found")
 		fmt.Println()
 		color.Cyan("Create a new stack with:")
-		fmt.Println("  sloth-kubernetes deploy <stack-name> --config cluster.yaml")
+		fmt.Println("  sloth-kubernetes deploy <stack-name> --config cluster.lisp")
 		return nil
 	}
 

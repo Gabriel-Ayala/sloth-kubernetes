@@ -184,7 +184,7 @@ func TestLoadSavedConfig_NoConfigFile(t *testing.T) {
 	assert.NoError(t, err)
 }
 
-func TestLoadSavedConfig_OverridesExisting(t *testing.T) {
+func TestLoadSavedConfig_EnvVarsTakePrecedence(t *testing.T) {
 	// Create temporary home directory
 	tmpHome := t.TempDir()
 	originalHome := os.Getenv("HOME")
@@ -197,24 +197,24 @@ func TestLoadSavedConfig_OverridesExisting(t *testing.T) {
 	err := os.MkdirAll(configDir, 0755)
 	require.NoError(t, err)
 
-	configContent := `OVERRIDE_TEST=from_config_file`
+	configContent := `PRECEDENCE_TEST=from_config_file`
 
 	configPath := filepath.Join(configDir, "config")
 	err = os.WriteFile(configPath, []byte(configContent), 0600)
 	require.NoError(t, err)
 
-	// Set environment variable to be overridden
-	os.Setenv("OVERRIDE_TEST", "original_value")
+	// Set environment variable - this should NOT be overridden
+	os.Setenv("PRECEDENCE_TEST", "from_environment")
 
 	// Load config
 	err = LoadSavedConfig()
 	assert.NoError(t, err)
 
-	// Verify it was overridden
-	assert.Equal(t, "from_config_file", os.Getenv("OVERRIDE_TEST"))
+	// Verify environment variable was NOT overridden (env takes precedence)
+	assert.Equal(t, "from_environment", os.Getenv("PRECEDENCE_TEST"))
 
 	// Cleanup
-	os.Unsetenv("OVERRIDE_TEST")
+	os.Unsetenv("PRECEDENCE_TEST")
 }
 
 func TestLoadSavedCredentials_Deprecated(t *testing.T) {
