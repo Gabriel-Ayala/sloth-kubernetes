@@ -3,9 +3,9 @@ package orchestrator
 import (
 	"testing"
 
+	"github.com/chalkan3/sloth-kubernetes/pkg/config"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 	"github.com/stretchr/testify/assert"
-	"github.com/chalkan3/sloth-kubernetes/pkg/config"
 )
 
 // TestOrchestrator_TwelveFactorApp tests deployment of 12-factor application infrastructure
@@ -208,7 +208,7 @@ func TestOrchestrator_FeatureFlagsPlatform(t *testing.T) {
 					Count:    3,
 					Size:     "s-2vcpu-4gb",
 					Labels: map[string]string{
-						"service":     "feature-flags",
+						"service":      "feature-flags",
 						"launchdarkly": "true",
 						"experiments":  "enabled",
 					},
@@ -219,9 +219,9 @@ func TestOrchestrator_FeatureFlagsPlatform(t *testing.T) {
 					Count:    2,
 					Size:     "s-4vcpu-8gb",
 					Labels: map[string]string{
-						"service":   "analytics",
-						"ab-test":   "true",
-						"metrics":   "enabled",
+						"service": "analytics",
+						"ab-test": "true",
+						"metrics": "enabled",
 					},
 				},
 			},
@@ -307,9 +307,9 @@ func TestOrchestrator_BuildArtifactManagement(t *testing.T) {
 					Count:    3,
 					Size:     "s-4vcpu-8gb",
 					Labels: map[string]string{
-						"service":  "artifact-registry",
-						"storage":  "large",
-						"nexus":    "true",
+						"service":     "artifact-registry",
+						"storage":     "large",
+						"nexus":       "true",
 						"artifactory": "true",
 					},
 				},
@@ -387,9 +387,9 @@ func TestOrchestrator_ConfigManagement(t *testing.T) {
 					Count:    3,
 					Size:     "s-2vcpu-4gb",
 					Labels: map[string]string{
-						"service":       "config-server",
-						"spring-cloud":  "true",
-						"consul":        "enabled",
+						"service":        "config-server",
+						"spring-cloud":   "true",
+						"consul":         "enabled",
 						"dynamic-reload": "true",
 					},
 				},
@@ -515,11 +515,11 @@ func TestOrchestrator_PolicyAsCode(t *testing.T) {
 					Count:    4,
 					Size:     "s-4vcpu-8gb",
 					Labels: map[string]string{
-						"service":     "policy-engine",
-						"opa":         "true",
-						"kyverno":     "enabled",
-						"admission":   "webhook",
-						"compliance":  "enforced",
+						"service":    "policy-engine",
+						"opa":        "true",
+						"kyverno":    "enabled",
+						"admission":  "webhook",
+						"compliance": "enforced",
 					},
 				},
 			},

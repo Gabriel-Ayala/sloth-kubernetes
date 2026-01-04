@@ -11,10 +11,10 @@ import (
 
 func TestLoadConfigFile(t *testing.T) {
 	tests := []struct {
-		name          string
-		fileContent   string
-		expectedKeys  map[string]string
-		expectError   bool
+		name         string
+		fileContent  string
+		expectedKeys map[string]string
+		expectError  bool
 	}{
 		{
 			name: "ValidConfig",

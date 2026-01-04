@@ -601,10 +601,10 @@ func TestOrchestrator_EtcdClusterConfiguration(t *testing.T) {
 			{
 				Name: "etcd-1",
 				Labels: map[string]string{
-					"role":            "master",
-					"etcd":            "true",
-					"etcd-member":     "etcd-1",
-					"backup-enabled":  "true",
+					"role":           "master",
+					"etcd":           "true",
+					"etcd-member":    "etcd-1",
+					"backup-enabled": "true",
 				},
 			},
 			{

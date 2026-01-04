@@ -8,8 +8,8 @@ import (
 	"time"
 
 	"github.com/chalkan3/sloth-kubernetes/pkg/config"
-	"github.com/chalkan3/sloth-kubernetes/pkg/provisioning"
 	"github.com/chalkan3/sloth-kubernetes/pkg/providers"
+	"github.com/chalkan3/sloth-kubernetes/pkg/provisioning"
 )
 
 // =============================================================================

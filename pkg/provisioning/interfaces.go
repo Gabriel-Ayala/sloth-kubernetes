@@ -301,14 +301,14 @@ type PriceProvider interface {
 
 // CostEstimate represents cost estimation for a resource
 type CostEstimate struct {
-	Resource     string
-	HourlyCost   float64
-	MonthlyCost  float64
-	YearlyCost   float64
-	Currency     string
-	IsSpot       bool
-	SpotSavings  float64
-	Breakdown    map[string]float64
+	Resource    string
+	HourlyCost  float64
+	MonthlyCost float64
+	YearlyCost  float64
+	Currency    string
+	IsSpot      bool
+	SpotSavings float64
+	Breakdown   map[string]float64
 }
 
 // ClusterCostEstimate represents total cluster cost estimation
@@ -326,11 +326,11 @@ type ClusterCostEstimate struct {
 
 // CostRecommendation represents a cost optimization recommendation
 type CostRecommendation struct {
-	Type           string // right_sizing, spot_usage, reserved_instances
-	Description    string
-	PotentialSavings float64
-	Resource       string
-	CurrentConfig  string
+	Type              string // right_sizing, spot_usage, reserved_instances
+	Description       string
+	PotentialSavings  float64
+	Resource          string
+	CurrentConfig     string
 	RecommendedConfig string
 }
 

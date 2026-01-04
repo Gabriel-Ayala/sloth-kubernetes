@@ -6,8 +6,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/chalkan3/sloth-kubernetes/pkg/provisioning"
 	"github.com/chalkan3/sloth-kubernetes/pkg/providers"
+	"github.com/chalkan3/sloth-kubernetes/pkg/provisioning"
 )
 
 // =============================================================================
@@ -77,9 +77,9 @@ func (r *StrategyRegistry) Get(name string) (Strategy, error) {
 
 // RollingStrategy implements rolling upgrade
 type RollingStrategy struct {
-	drainer        provisioning.NodeDrainer
-	nodeUpgrader   NodeUpgrader
-	healthChecker  HealthChecker
+	drainer       provisioning.NodeDrainer
+	nodeUpgrader  NodeUpgrader
+	healthChecker HealthChecker
 }
 
 // NodeUpgrader upgrades individual nodes
@@ -166,8 +166,8 @@ func (s *RollingStrategy) GetBatchSize(totalNodes int, maxUnavailable int) int {
 
 // BlueGreenStrategy implements blue-green deployment upgrade
 type BlueGreenStrategy struct {
-	drainer       provisioning.NodeDrainer
-	nodeUpgrader  NodeUpgrader
+	drainer         provisioning.NodeDrainer
+	nodeUpgrader    NodeUpgrader
 	nodeProvisioner NodeProvisioner
 }
 
@@ -253,9 +253,9 @@ func (s *BlueGreenStrategy) GetBatchSize(totalNodes int, maxUnavailable int) int
 
 // CanaryStrategy implements canary deployment upgrade
 type CanaryStrategy struct {
-	drainer       provisioning.NodeDrainer
-	nodeUpgrader  NodeUpgrader
-	canaryPercent int
+	drainer        provisioning.NodeDrainer
+	nodeUpgrader   NodeUpgrader
+	canaryPercent  int
 	validationTime time.Duration
 }
 

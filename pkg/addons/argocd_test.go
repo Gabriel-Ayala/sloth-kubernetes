@@ -75,9 +75,9 @@ func TestArgoCDStatus(t *testing.T) {
 // TestPodStatus tests the PodStatus struct
 func TestPodStatus(t *testing.T) {
 	tests := []struct {
-		name   string
-		pod    PodStatus
-		isOK   bool
+		name string
+		pod  PodStatus
+		isOK bool
 	}{
 		{
 			name: "running pod",
@@ -276,8 +276,8 @@ func TestArgoCDStatusHealthy(t *testing.T) {
 			expected: false,
 		},
 		{
-			name: "empty pods list",
-			pods: []PodStatus{},
+			name:     "empty pods list",
+			pods:     []PodStatus{},
 			expected: true, // No pods means we can't determine unhealthy
 		},
 	}
@@ -305,9 +305,9 @@ func TestArgoCDStatusHealthy(t *testing.T) {
 // TestSyncPolicyGeneration tests sync policy YAML generation
 func TestSyncPolicyGeneration(t *testing.T) {
 	tests := []struct {
-		name           string
-		syncPolicy     string
-		shouldContain  []string
+		name             string
+		syncPolicy       string
+		shouldContain    []string
 		shouldNotContain []string
 	}{
 		{
@@ -323,8 +323,8 @@ func TestSyncPolicyGeneration(t *testing.T) {
 			shouldNotContain: []string{},
 		},
 		{
-			name:       "manual sync",
-			syncPolicy: "manual",
+			name:          "manual sync",
+			syncPolicy:    "manual",
 			shouldContain: []string{},
 			shouldNotContain: []string{
 				"syncPolicy:",

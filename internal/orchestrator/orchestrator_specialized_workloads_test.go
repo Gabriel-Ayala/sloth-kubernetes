@@ -32,9 +32,9 @@ func TestOrchestrator_VideoStreamingPlatform(t *testing.T) {
 					Size:     "c5.4xlarge",
 					Roles:    []string{"worker"},
 					Labels: map[string]string{
-						"workload":    "transcoding",
+						"workload":      "transcoding",
 						"cpu-optimized": "true",
-						"ffmpeg":      "enabled",
+						"ffmpeg":        "enabled",
 					},
 				},
 				"streaming": {
@@ -56,8 +56,8 @@ func TestOrchestrator_VideoStreamingPlatform(t *testing.T) {
 					Size:     "i3.2xlarge",
 					Roles:    []string{"worker"},
 					Labels: map[string]string{
-						"workload":    "storage",
-						"local-nvme":  "true",
+						"workload":   "storage",
+						"local-nvme": "true",
 					},
 				},
 			},
@@ -112,9 +112,9 @@ func TestOrchestrator_CDNEdgeDeployment(t *testing.T) {
 					Region:   "nyc3",
 					Roles:    []string{"worker"},
 					Labels: map[string]string{
-						"cdn-role":  "edge",
-						"location":  "nyc",
-						"cache":     "enabled",
+						"cdn-role": "edge",
+						"location": "nyc",
+						"cache":    "enabled",
 					},
 				},
 				"edge-sfo": {
@@ -125,9 +125,9 @@ func TestOrchestrator_CDNEdgeDeployment(t *testing.T) {
 					Region:   "sfo3",
 					Roles:    []string{"worker"},
 					Labels: map[string]string{
-						"cdn-role":  "edge",
-						"location":  "sfo",
-						"cache":     "enabled",
+						"cdn-role": "edge",
+						"location": "sfo",
+						"cache":    "enabled",
 					},
 				},
 				"edge-ams": {
@@ -138,9 +138,9 @@ func TestOrchestrator_CDNEdgeDeployment(t *testing.T) {
 					Region:   "ams3",
 					Roles:    []string{"worker"},
 					Labels: map[string]string{
-						"cdn-role":  "edge",
-						"location":  "ams",
-						"cache":     "enabled",
+						"cdn-role": "edge",
+						"location": "ams",
+						"cache":    "enabled",
 					},
 				},
 			},
@@ -180,13 +180,13 @@ func TestOrchestrator_GamingServersCluster(t *testing.T) {
 			},
 			NodePools: map[string]config.NodePool{
 				"game-servers": {
-					Name:     "game-servers",
-					Provider: "aws",
-					Count:    50,
-					MinCount: 20,
-					MaxCount: 200,
-					Size:     "c5.xlarge",
-					Roles:    []string{"worker"},
+					Name:        "game-servers",
+					Provider:    "aws",
+					Count:       50,
+					MinCount:    20,
+					MaxCount:    200,
+					Size:        "c5.xlarge",
+					Roles:       []string{"worker"},
 					AutoScaling: true,
 					Labels: map[string]string{
 						"workload":       "game-server",
@@ -201,8 +201,8 @@ func TestOrchestrator_GamingServersCluster(t *testing.T) {
 					Size:     "m5.2xlarge",
 					Roles:    []string{"worker"},
 					Labels: map[string]string{
-						"workload":    "matchmaking",
-						"redis":       "enabled",
+						"workload": "matchmaking",
+						"redis":    "enabled",
 					},
 				},
 			},
@@ -253,10 +253,10 @@ func TestOrchestrator_FinancialTradingPlatform(t *testing.T) {
 					Size:     "c5n.9xlarge",
 					Roles:    []string{"worker"},
 					Labels: map[string]string{
-						"workload":           "trading",
-						"ultra-low-latency":  "true",
-						"network-optimized":  "true",
-						"cpu-pinning":        "enabled",
+						"workload":          "trading",
+						"ultra-low-latency": "true",
+						"network-optimized": "true",
+						"cpu-pinning":       "enabled",
 					},
 				},
 				"risk-analytics": {
@@ -266,7 +266,7 @@ func TestOrchestrator_FinancialTradingPlatform(t *testing.T) {
 					Size:     "r5.4xlarge",
 					Roles:    []string{"worker"},
 					Labels: map[string]string{
-						"workload":        "risk-analytics",
+						"workload":         "risk-analytics",
 						"memory-optimized": "true",
 					},
 				},
@@ -477,10 +477,10 @@ func TestOrchestrator_ScienceComputingCluster(t *testing.T) {
 					Size:     "p3dn.24xlarge",
 					Roles:    []string{"worker"},
 					Labels: map[string]string{
-						"workload":    "gpu-hpc",
-						"gpu-type":    "V100",
-						"gpu-count":   "8",
-						"nvlink":      "enabled",
+						"workload":  "gpu-hpc",
+						"gpu-type":  "V100",
+						"gpu-count": "8",
+						"nvlink":    "enabled",
 					},
 				},
 			},
@@ -538,9 +538,9 @@ func TestOrchestrator_RenderFarmCluster(t *testing.T) {
 					SpotInstance: true,
 					AutoScaling:  true,
 					Labels: map[string]string{
-						"workload":     "cpu-render",
-						"blender":      "enabled",
-						"arnold":       "enabled",
+						"workload": "cpu-render",
+						"blender":  "enabled",
+						"arnold":   "enabled",
 					},
 				},
 				"render-gpu": {
@@ -554,9 +554,9 @@ func TestOrchestrator_RenderFarmCluster(t *testing.T) {
 					SpotInstance: true,
 					AutoScaling:  true,
 					Labels: map[string]string{
-						"workload":  "gpu-render",
-						"octane":    "enabled",
-						"redshift":  "enabled",
+						"workload": "gpu-render",
+						"octane":   "enabled",
+						"redshift": "enabled",
 					},
 				},
 			},
@@ -609,9 +609,9 @@ func TestOrchestrator_WeatherForecastingCluster(t *testing.T) {
 					Size:     "c2-standard-60",
 					Roles:    []string{"worker"},
 					Labels: map[string]string{
-						"workload":     "weather-model",
-						"wrf":          "enabled",
-						"gfs":          "enabled",
+						"workload": "weather-model",
+						"wrf":      "enabled",
+						"gfs":      "enabled",
 					},
 				},
 				"data-ingestion": {
@@ -674,9 +674,9 @@ func TestOrchestrator_SatelliteImageryProcessing(t *testing.T) {
 					Size:     "r5.8xlarge",
 					Roles:    []string{"worker"},
 					Labels: map[string]string{
-						"workload":        "image-processing",
-						"gdal":            "enabled",
-						"opencv":          "enabled",
+						"workload": "image-processing",
+						"gdal":     "enabled",
+						"opencv":   "enabled",
 					},
 				},
 				"ml-inference": {
@@ -742,10 +742,10 @@ func TestOrchestrator_AutonomousVehicleSimulation(t *testing.T) {
 					Size:     "g4dn.16xlarge",
 					Roles:    []string{"worker"},
 					Labels: map[string]string{
-						"workload":    "simulation",
-						"carla":       "enabled",
-						"unreal":      "enabled",
-						"gpu":         "tesla-t4",
+						"workload": "simulation",
+						"carla":    "enabled",
+						"unreal":   "enabled",
+						"gpu":      "tesla-t4",
 					},
 				},
 				"scenario-runners": {
@@ -755,8 +755,8 @@ func TestOrchestrator_AutonomousVehicleSimulation(t *testing.T) {
 					Size:     "c5.9xlarge",
 					Roles:    []string{"worker"},
 					Labels: map[string]string{
-						"workload":  "scenario-runner",
-						"ros2":      "enabled",
+						"workload": "scenario-runner",
+						"ros2":     "enabled",
 					},
 				},
 			},
@@ -814,7 +814,7 @@ func TestOrchestrator_GreenComputingOptimization(t *testing.T) {
 					Region:   "europe-north1",
 					Roles:    []string{"worker"},
 					Labels: map[string]string{
-						"carbon-aware":    "true",
+						"carbon-aware":     "true",
 						"energy-efficient": "true",
 						"renewable-region": "true",
 					},

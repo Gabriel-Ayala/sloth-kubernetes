@@ -13,13 +13,13 @@ import (
 )
 
 var (
-	argocdNamespace   string
-	argocdVersion     string
-	gitopsRepoURL     string
-	gitopsRepoBranch  string
-	gitopsAppsPath    string
-	appOfAppsEnabled  bool
-	appOfAppsName     string
+	argocdNamespace  string
+	argocdVersion    string
+	gitopsRepoURL    string
+	gitopsRepoBranch string
+	gitopsAppsPath   string
+	appOfAppsEnabled bool
+	appOfAppsName    string
 )
 
 var argocdCmd = &cobra.Command{

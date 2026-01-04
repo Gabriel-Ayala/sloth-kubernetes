@@ -1,3 +1,4 @@
+//go:build e2e
 // +build e2e
 
 // Package e2e provides comprehensive end-to-end tests for orchestrator components
@@ -309,7 +310,7 @@ func TestE2E_ConfigValidation(t *testing.T) {
 				},
 				Providers: config.ProvidersConfig{
 					AWS: &config.AWSProvider{
-					Enabled: true,
+						Enabled: true,
 						Region:  "us-east-1",
 						VPC: &config.VPCConfig{
 							Create: true,
@@ -332,11 +333,11 @@ func TestE2E_ConfigValidation(t *testing.T) {
 				},
 				Providers: config.ProvidersConfig{
 					AWS: &config.AWSProvider{
-					Enabled: true,
+						Enabled: true,
 						Region:  "us-east-1",
 					},
 					DigitalOcean: &config.DigitalOceanProvider{
-						Region:  "nyc1",
+						Region: "nyc1",
 					},
 				},
 				Network: config.NetworkConfig{
@@ -354,7 +355,7 @@ func TestE2E_ConfigValidation(t *testing.T) {
 				},
 				Providers: config.ProvidersConfig{
 					AWS: &config.AWSProvider{
-					Enabled: true,
+						Enabled: true,
 						Region:  "eu-west-1",
 					},
 				},
@@ -388,7 +389,7 @@ func TestE2E_ConfigValidation(t *testing.T) {
 				},
 				Providers: config.ProvidersConfig{
 					AWS: &config.AWSProvider{
-					Enabled: true,
+						Enabled: true,
 						Region:  "us-west-2",
 					},
 				},
@@ -427,7 +428,7 @@ func TestE2E_ConfigValidation(t *testing.T) {
 				},
 				Providers: config.ProvidersConfig{
 					AWS: &config.AWSProvider{
-					Enabled: true,
+						Enabled: true,
 						Region:  "ap-southeast-1",
 					},
 				},

@@ -408,7 +408,7 @@ func TestLoader_Validate_Providers(t *testing.T) {
 		{
 			name: "No providers",
 			config: &ClusterConfig{
-				Metadata: Metadata{Name: "test"},
+				Metadata:  Metadata{Name: "test"},
 				Providers: ProvidersConfig{},
 				NodePools: map[string]NodePool{
 					"masters": {Name: "masters", Count: 3, Roles: []string{"master"}},

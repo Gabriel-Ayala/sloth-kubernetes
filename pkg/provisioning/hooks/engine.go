@@ -271,9 +271,9 @@ type Executor interface {
 
 // ScriptExecutor executes shell scripts
 type ScriptExecutor struct {
-	shell       string
-	workDir     string
-	defaultEnv  map[string]string
+	shell      string
+	workDir    string
+	defaultEnv map[string]string
 }
 
 // NewScriptExecutor creates a new script executor
@@ -396,8 +396,8 @@ func (e *KubectlExecutor) Execute(ctx context.Context, action *config.HookAction
 
 // HTTPExecutor executes HTTP webhooks
 type HTTPExecutor struct {
-	client    *http.Client
-	headers   map[string]string
+	client  *http.Client
+	headers map[string]string
 }
 
 // NewHTTPExecutor creates a new HTTP executor

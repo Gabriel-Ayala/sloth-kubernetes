@@ -141,10 +141,10 @@ func TestSummary(t *testing.T) {
 // TestParseNodeOutput tests parsing kubectl node output
 func TestParseNodeOutput(t *testing.T) {
 	tests := []struct {
-		name           string
-		output         string
-		expectedTotal  int
-		expectedReady  int
+		name             string
+		output           string
+		expectedTotal    int
+		expectedReady    int
 		expectedNotReady int
 	}{
 		{
@@ -165,10 +165,10 @@ worker-1   NotReady   <none>          10d   v1.28.0`,
 			expectedNotReady: 1,
 		},
 		{
-			name:           "empty output",
-			output:         "",
-			expectedTotal:  0,
-			expectedReady:  0,
+			name:             "empty output",
+			output:           "",
+			expectedTotal:    0,
+			expectedReady:    0,
 			expectedNotReady: 0,
 		},
 	}
@@ -414,8 +414,8 @@ func TestOverallStatusDetermination(t *testing.T) {
 // TestRecommendationsGeneration tests recommendation generation
 func TestRecommendationsGeneration(t *testing.T) {
 	tests := []struct {
-		name                  string
-		checks                []CheckResult
+		name                    string
+		checks                  []CheckResult
 		expectedRecommendations int
 	}{
 		{

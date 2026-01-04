@@ -1,3 +1,4 @@
+//go:build integration && e2e
 // +build integration,e2e
 
 package providers_test
@@ -37,17 +38,17 @@ const (
 
 // E2EClusterConfig represents a full cluster configuration
 type E2EClusterConfig struct {
-	Name          string
-	Region        string
-	MasterCount   int
-	WorkerCount   int
-	MasterSize    types.InstanceType
-	WorkerSize    types.InstanceType
-	UseSpot       bool
-	VPCCIDR       string
-	K3sVersion    string
-	EnableBackup  bool
-	BackupBucket  string
+	Name         string
+	Region       string
+	MasterCount  int
+	WorkerCount  int
+	MasterSize   types.InstanceType
+	WorkerSize   types.InstanceType
+	UseSpot      bool
+	VPCCIDR      string
+	K3sVersion   string
+	EnableBackup bool
+	BackupBucket string
 }
 
 // E2EClusterResources tracks all cluster resources
@@ -55,25 +56,25 @@ type E2EClusterResources struct {
 	mu sync.Mutex
 
 	// Network
-	VPCID              string
-	InternetGatewayID  string
-	SubnetIDs          []string
-	RouteTableID       string
+	VPCID                 string
+	InternetGatewayID     string
+	SubnetIDs             []string
+	RouteTableID          string
 	MasterSecurityGroupID string
 	WorkerSecurityGroupID string
 
 	// Compute
-	KeyPairName   string
-	MasterIDs     []string
-	WorkerIDs     []string
-	MasterIPs     []string
-	WorkerIPs     []string
+	KeyPairName    string
+	MasterIDs      []string
+	WorkerIDs      []string
+	MasterIPs      []string
+	WorkerIPs      []string
 	SpotRequestIDs []string
 
 	// Load Balancer
-	LoadBalancerARN  string
-	LoadBalancerDNS  string
-	TargetGroupARN   string
+	LoadBalancerARN string
+	LoadBalancerDNS string
+	TargetGroupARN  string
 
 	// Storage
 	BackupBucket string

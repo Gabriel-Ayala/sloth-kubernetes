@@ -140,27 +140,27 @@ func TestNewRealNodeDeploymentComponent_MultipleNodes(t *testing.T) {
 			},
 			Nodes: []config.NodeConfig{
 				{
-					Name:     "master-1",
-					Provider: "digitalocean",
-					Region:   "nyc1",
-					Size:     "s-2vcpu-4gb",
-					Roles:    []string{"master"},
+					Name:        "master-1",
+					Provider:    "digitalocean",
+					Region:      "nyc1",
+					Size:        "s-2vcpu-4gb",
+					Roles:       []string{"master"},
 					WireGuardIP: "10.10.0.1",
 				},
 				{
-					Name:     "worker-1",
-					Provider: "linode",
-					Region:   "us-east",
-					Size:     "g6-standard-2",
-					Roles:    []string{"worker"},
+					Name:        "worker-1",
+					Provider:    "linode",
+					Region:      "us-east",
+					Size:        "g6-standard-2",
+					Roles:       []string{"worker"},
 					WireGuardIP: "10.10.0.2",
 				},
 				{
-					Name:     "worker-2",
-					Provider: "digitalocean",
-					Region:   "nyc1",
-					Size:     "s-2vcpu-4gb",
-					Roles:    []string{"worker"},
+					Name:        "worker-2",
+					Provider:    "digitalocean",
+					Region:      "nyc1",
+					Size:        "s-2vcpu-4gb",
+					Roles:       []string{"worker"},
 					WireGuardIP: "10.10.0.3",
 				},
 			},
@@ -213,11 +213,11 @@ func TestNewRealNodeDeploymentComponent_WithBastion(t *testing.T) {
 			},
 			Nodes: []config.NodeConfig{
 				{
-					Name:     "master-1",
-					Provider: "digitalocean",
-					Region:   "nyc1",
-					Size:     "s-2vcpu-4gb",
-					Roles:    []string{"master"},
+					Name:        "master-1",
+					Provider:    "digitalocean",
+					Region:      "nyc1",
+					Size:        "s-2vcpu-4gb",
+					Roles:       []string{"master"},
 					WireGuardIP: "10.10.0.1",
 				},
 			},
@@ -268,7 +268,7 @@ func TestNewRealNodeDeploymentComponent_NodePools(t *testing.T) {
 			Metadata: config.Metadata{
 				Name: "test-cluster",
 			},
-			Nodes:       []config.NodeConfig{}, // No individual nodes
+			Nodes: []config.NodeConfig{}, // No individual nodes
 			NodePools: map[string]config.NodePool{
 				"master-pool": {
 					Provider: "digitalocean",
@@ -325,11 +325,11 @@ func TestNewRealNodeDeploymentComponent_MixedConfiguration(t *testing.T) {
 			},
 			Nodes: []config.NodeConfig{
 				{
-					Name:     "special-master",
-					Provider: "digitalocean",
-					Region:   "nyc1",
-					Size:     "s-4vcpu-8gb",
-					Roles:    []string{"master"},
+					Name:        "special-master",
+					Provider:    "digitalocean",
+					Region:      "nyc1",
+					Size:        "s-4vcpu-8gb",
+					Roles:       []string{"master"},
 					WireGuardIP: "10.10.0.1",
 				},
 			},
@@ -381,11 +381,11 @@ func TestRealNodeComponent_Outputs(t *testing.T) {
 			},
 			Nodes: []config.NodeConfig{
 				{
-					Name:     "test-node",
-					Provider: "digitalocean",
-					Region:   "nyc1",
-					Size:     "s-2vcpu-4gb",
-					Roles:    []string{"master"},
+					Name:        "test-node",
+					Provider:    "digitalocean",
+					Region:      "nyc1",
+					Size:        "s-2vcpu-4gb",
+					Roles:       []string{"master"},
 					WireGuardIP: "10.10.0.1",
 				},
 			},

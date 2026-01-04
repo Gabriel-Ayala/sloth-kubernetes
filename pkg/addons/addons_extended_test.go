@@ -361,8 +361,6 @@ func TestInstallArgoCD_WithAdminPassword(t *testing.T) {
 	assert.Equal(t, "custom-password", cfg.Addons.ArgoCD.AdminPassword)
 }
 
-
-
 // TestSSHCommandScriptEscaping tests that SSH commands properly escape quotes
 func TestSSHCommandScriptEscaping(t *testing.T) {
 	// Test that commands with quotes are handled

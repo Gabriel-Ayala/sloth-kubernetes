@@ -209,7 +209,7 @@ func TestNewAddonComponent(t *testing.T) {
 
 func TestNewSimpleRealOrchestratorComponent(t *testing.T) {
 	t.Skip("Skipping - NewSimpleRealOrchestratorComponent requires complete config with nil pointer issues")
-	err := pulumi.RunErr(func(ctx *pulumi.Context) error{
+	err := pulumi.RunErr(func(ctx *pulumi.Context) error {
 		cfg := &config.ClusterConfig{
 			Metadata: config.Metadata{
 				Name:    "test-cluster",
@@ -223,7 +223,7 @@ func TestNewSimpleRealOrchestratorComponent(t *testing.T) {
 			},
 		}
 
-		component, err := NewSimpleRealOrchestratorComponent(ctx, "test-orchestrator", cfg)
+		component, err := NewSimpleRealOrchestratorComponent(ctx, "test-orchestrator", cfg, "", "")
 		assert.NoError(t, err)
 		assert.NotNil(t, component)
 

@@ -180,7 +180,7 @@ func TestGetSSHUserForProviderK3s_CaseSensitivity(t *testing.T) {
 		expectedUser string
 	}{
 		{"Lowercase azure", "azure", "azureuser"},
-		{"Uppercase AZURE", "AZURE", "root"}, // Should default to root
+		{"Uppercase AZURE", "AZURE", "root"},  // Should default to root
 		{"Mixed case Azure", "Azure", "root"}, // Should default to root
 		{"Lowercase aws", "aws", "ubuntu"},
 		{"Uppercase AWS", "AWS", "root"}, // Should default to root

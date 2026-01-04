@@ -412,7 +412,7 @@ func isVPNIP(ip string) bool {
 
 // canReachIP checks if we can establish a TCP connection to an IP:port
 func canReachIP(ip string, port int) bool {
-	address := fmt.Sprintf("%s:%d", ip, port)
+	address := net.JoinHostPort(ip, fmt.Sprintf("%d", port))
 	conn, err := net.DialTimeout("tcp", address, 3*time.Second)
 	if err != nil {
 		return false

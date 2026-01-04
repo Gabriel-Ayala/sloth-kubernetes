@@ -13,8 +13,8 @@ import (
 func TestNewManager_BasicCreation(t *testing.T) {
 	err := pulumi.RunErr(func(ctx *pulumi.Context) error {
 		networkConfig := &config.NetworkConfig{
-			CIDR:       "10.0.0.0/16",
-			PodCIDR:    "10.244.0.0/16",
+			CIDR:        "10.0.0.0/16",
+			PodCIDR:     "10.244.0.0/16",
 			ServiceCIDR: "10.96.0.0/12",
 		}
 

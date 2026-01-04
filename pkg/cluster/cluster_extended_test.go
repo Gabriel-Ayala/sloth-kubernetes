@@ -61,15 +61,15 @@ func TestRKEManager_GenerateClusterConfig(t *testing.T) {
 	t.Skip("Skipping test - GenerateClusterConfig has type assertion bug in pulumi.All")
 	err := pulumi.RunErr(func(ctx *pulumi.Context) error {
 		k8sConfig := &config.KubernetesConfig{
-			Version:       "v1.28.0",
-			NetworkPlugin: "canal",
-			PodCIDR:       "10.244.0.0/16",
-			ServiceCIDR:   "10.96.0.0/12",
-			ClusterDNS:    "10.96.0.10",
-			ClusterDomain: "cluster.local",
-			AuditLog:      true,
+			Version:        "v1.28.0",
+			NetworkPlugin:  "canal",
+			PodCIDR:        "10.244.0.0/16",
+			ServiceCIDR:    "10.96.0.0/12",
+			ClusterDNS:     "10.96.0.10",
+			ClusterDomain:  "cluster.local",
+			AuditLog:       true,
 			EncryptSecrets: true,
-			Addons:        []config.AddonConfig{
+			Addons: []config.AddonConfig{
 				{Name: "addon1", Enabled: true},
 				{Name: "addon2", Enabled: true},
 			},
@@ -110,7 +110,7 @@ func TestRKEManager_GenerateClusterConfig(t *testing.T) {
 // TestRKEManager_gatherNodeInfo tests node info gathering
 func TestRKEManager_gatherNodeInfo(t *testing.T) {
 	t.Skip("Skipping test - gatherNodeInfo has type assertion issues in pulumi.All")
-	err := pulumi.RunErr(func(ctx *pulumi.Context) error{
+	err := pulumi.RunErr(func(ctx *pulumi.Context) error {
 		k8sConfig := &config.KubernetesConfig{
 			Version: "v1.28.0",
 		}
@@ -496,7 +496,7 @@ func TestRKEManager_ConfigWithAddons(t *testing.T) {
 	err := pulumi.RunErr(func(ctx *pulumi.Context) error {
 		k8sConfig := &config.KubernetesConfig{
 			Version: "v1.28.0",
-			Addons:  []config.AddonConfig{
+			Addons: []config.AddonConfig{
 				{Name: "/path/to/addon1.yaml", Enabled: true},
 				{Name: "/path/to/addon2.yaml", Enabled: true},
 			},

@@ -18,10 +18,10 @@ import (
 
 // MockExecutor implements Executor for testing
 type MockExecutor struct {
-	executeError   error
-	executeCalls   int
-	lastAction     *config.HookAction
-	lastData       interface{}
+	executeError error
+	executeCalls int
+	lastAction   *config.HookAction
+	lastData     interface{}
 }
 
 func (m *MockExecutor) Execute(ctx context.Context, action *config.HookAction, data interface{}) error {

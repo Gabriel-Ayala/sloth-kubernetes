@@ -447,7 +447,7 @@ func TestConservativeStrategy_ShouldUseSpot(t *testing.T) {
 		{"50% with safety margin - second node", 50, 1, 5, true},
 		{"50% with safety margin - third node", 50, 2, 5, false},
 		{"Default 50% when not set", 0, 0, 4, true},
-		{"Default 50% when not set - second node", 0, 1, 4, false},  // 50%-10%=40%, so 4*40/100=1 spot node
+		{"Default 50% when not set - second node", 0, 1, 4, false}, // 50%-10%=40%, so 4*40/100=1 spot node
 		{"Default 50% when not set - third node", 0, 2, 4, false},
 	}
 

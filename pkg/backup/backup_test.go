@@ -176,24 +176,24 @@ func TestScheduleConfig(t *testing.T) {
 func TestBackupStruct(t *testing.T) {
 	now := time.Now()
 	backup := Backup{
-		Name:               "test-backup",
-		Namespace:          "velero",
-		Status:             StatusCompleted,
-		Phase:              "Completed",
-		IncludedNamespaces: []string{"default"},
-		ExcludedNamespaces: []string{"kube-system"},
-		IncludedResources:  []string{"deployments"},
-		ExcludedResources:  []string{"secrets"},
-		Labels:             map[string]string{"env": "test"},
-		StorageLocation:    "default",
-		TTL:                "720h",
-		StartTimestamp:     now,
+		Name:                "test-backup",
+		Namespace:           "velero",
+		Status:              StatusCompleted,
+		Phase:               "Completed",
+		IncludedNamespaces:  []string{"default"},
+		ExcludedNamespaces:  []string{"kube-system"},
+		IncludedResources:   []string{"deployments"},
+		ExcludedResources:   []string{"secrets"},
+		Labels:              map[string]string{"env": "test"},
+		StorageLocation:     "default",
+		TTL:                 "720h",
+		StartTimestamp:      now,
 		CompletionTimestamp: now.Add(5 * time.Minute),
-		Expiration:         now.Add(720 * time.Hour),
-		TotalItems:         100,
-		ItemsBackedUp:      100,
-		Errors:             0,
-		Warnings:           2,
+		Expiration:          now.Add(720 * time.Hour),
+		TotalItems:          100,
+		ItemsBackedUp:       100,
+		Errors:              0,
+		Warnings:            2,
 	}
 
 	if backup.Name != "test-backup" {
@@ -213,20 +213,20 @@ func TestBackupStruct(t *testing.T) {
 func TestRestoreStruct(t *testing.T) {
 	now := time.Now()
 	restore := Restore{
-		Name:               "test-restore",
-		Namespace:          "velero",
-		BackupName:         "test-backup",
-		Status:             RestoreStatusCompleted,
-		Phase:              "Completed",
-		IncludedNamespaces: []string{"default"},
-		ExcludedNamespaces: []string{"kube-system"},
-		IncludedResources:  []string{"deployments"},
-		ExcludedResources:  []string{"secrets"},
-		RestorePVs:         true,
-		StartTimestamp:     now,
+		Name:                "test-restore",
+		Namespace:           "velero",
+		BackupName:          "test-backup",
+		Status:              RestoreStatusCompleted,
+		Phase:               "Completed",
+		IncludedNamespaces:  []string{"default"},
+		ExcludedNamespaces:  []string{"kube-system"},
+		IncludedResources:   []string{"deployments"},
+		ExcludedResources:   []string{"secrets"},
+		RestorePVs:          true,
+		StartTimestamp:      now,
 		CompletionTimestamp: now.Add(5 * time.Minute),
-		Errors:             0,
-		Warnings:           1,
+		Errors:              0,
+		Warnings:            1,
 	}
 
 	if restore.Name != "test-restore" {
@@ -532,7 +532,7 @@ func TestManagerKubeconfigPath(t *testing.T) {
 
 func TestBackupLabels(t *testing.T) {
 	backup := Backup{
-		Name:   "test-backup",
+		Name: "test-backup",
 		Labels: map[string]string{
 			"env":     "production",
 			"team":    "platform",
@@ -553,8 +553,8 @@ func TestBackupDuration(t *testing.T) {
 	end := start.Add(10 * time.Minute)
 
 	backup := Backup{
-		Name:               "test-backup",
-		StartTimestamp:     start,
+		Name:                "test-backup",
+		StartTimestamp:      start,
 		CompletionTimestamp: end,
 	}
 

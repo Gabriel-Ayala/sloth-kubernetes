@@ -1,16 +1,19 @@
 package orchestrator
+
 import (
-	"testing"
 	"github.com/chalkan3/sloth-kubernetes/pkg/config"
 	"github.com/pulumi/pulumi/sdk/v3/go/common/resource"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"testing"
 )
+
 // IntegrationMockProvider provides comprehensive mocking for integration tests
 type IntegrationMockProvider struct {
 	pulumi.ResourceState
 }
+
 func (m *IntegrationMockProvider) NewResource(args pulumi.MockResourceArgs) (string, resource.PropertyMap, error) {
 	outputs := args.Inputs.Copy()
 	switch args.TypeToken {
@@ -58,6 +61,7 @@ func (m *IntegrationMockProvider) NewResource(args pulumi.MockResourceArgs) (str
 func (m *IntegrationMockProvider) Call(args pulumi.MockCallArgs) (resource.PropertyMap, error) {
 	return args.Args, nil
 }
+
 // Helper function to create a complete multi-cloud cluster config
 func createMultiCloudConfig() *config.ClusterConfig {
 	return &config.ClusterConfig{
@@ -141,6 +145,7 @@ func createMultiCloudConfig() *config.ClusterConfig {
 		},
 	}
 }
+
 // Test 1: Complete orchestrator deployment flow
 func TestOrchestrator_CompleteDeploymentFlow(t *testing.T) {
 	err := pulumi.RunErr(func(ctx *pulumi.Context) error {
@@ -156,13 +161,14 @@ func TestOrchestrator_CompleteDeploymentFlow(t *testing.T) {
 	}, pulumi.WithMocks("test", "integration", &IntegrationMockProvider{}))
 	assert.NoError(t, err)
 }
+
 // Test 2: Provider initialization with multiple providers
 func TestOrchestrator_InitializeMultipleProviders(t *testing.T) {
 	tests := []struct {
-		name           string
-		config         *config.ClusterConfig
-		expectedCount  int
-		expectedError  bool
+		name          string
+		config        *config.ClusterConfig
+		expectedCount int
+		expectedError bool
 	}{
 		{
 			name: "DigitalOcean only",
@@ -246,6 +252,7 @@ func TestOrchestrator_InitializeMultipleProviders(t *testing.T) {
 		})
 	}
 }
+
 // Test 3: SSH key generation flow
 func TestOrchestrator_GenerateSSHKeys(t *testing.T) {
 	err := pulumi.RunErr(func(ctx *pulumi.Context) error {
@@ -261,6 +268,7 @@ func TestOrchestrator_GenerateSSHKeys(t *testing.T) {
 	}, pulumi.WithMocks("test", "integration", &IntegrationMockProvider{}))
 	assert.NoError(t, err)
 }
+
 // Test 4: Network creation flow
 func TestOrchestrator_CreateNetworking(t *testing.T) {
 	err := pulumi.RunErr(func(ctx *pulumi.Context) error {
@@ -276,6 +284,7 @@ func TestOrchestrator_CreateNetworking(t *testing.T) {
 	}, pulumi.WithMocks("test", "integration", &IntegrationMockProvider{}))
 	assert.NoError(t, err)
 }
+
 // Test 5: Node deployment with pools
 func TestOrchestrator_DeployNodesWithPools(t *testing.T) {
 	err := pulumi.RunErr(func(ctx *pulumi.Context) error {
@@ -293,6 +302,7 @@ func TestOrchestrator_DeployNodesWithPools(t *testing.T) {
 	// Test runs without panicking
 	assert.NoError(t, err)
 }
+
 // Test 6: Node distribution verification
 func TestOrchestrator_VerifyNodeDistribution(t *testing.T) {
 	tests := []struct {
@@ -338,7 +348,7 @@ func TestOrchestrator_VerifyNodeDistribution(t *testing.T) {
 				cfg := &config.ClusterConfig{
 					Providers: config.ProvidersConfig{
 						DigitalOcean: &config.DigitalOceanProvider{
-							Token:   "test-token",
+							Token: "test-token",
 						},
 					},
 					NodePools: tt.nodePools,
@@ -352,6 +362,7 @@ func TestOrchestrator_VerifyNodeDistribution(t *testing.T) {
 		})
 	}
 }
+
 // Test 7: DNS configuration scenarios
 func TestOrchestrator_ConfigureDNS(t *testing.T) {
 	tests := []struct {
@@ -362,14 +373,14 @@ func TestOrchestrator_ConfigureDNS(t *testing.T) {
 		{
 			name: "Custom domain",
 			dnsConfig: config.DNSConfig{
-				Domain:  "example.com",
+				Domain: "example.com",
 			},
 			expectDomain: "example.com",
 		},
 		{
 			name: "Default domain",
 			dnsConfig: config.DNSConfig{
-				Domain:  "",
+				Domain: "",
 			},
 			expectDomain: "chalkan3.com.br",
 		},
@@ -380,7 +391,7 @@ func TestOrchestrator_ConfigureDNS(t *testing.T) {
 				cfg := &config.ClusterConfig{
 					Providers: config.ProvidersConfig{
 						DigitalOcean: &config.DigitalOceanProvider{
-							Token:   "test-token",
+							Token: "test-token",
 						},
 					},
 					Network: config.NetworkConfig{
@@ -398,12 +409,13 @@ func TestOrchestrator_ConfigureDNS(t *testing.T) {
 		})
 	}
 }
+
 // Test 8: WireGuard configuration flow
 func TestOrchestrator_ConfigureWireGuard(t *testing.T) {
 	tests := []struct {
-		name             string
-		wireGuardConfig  *config.WireGuardConfig
-		shouldConfigure  bool
+		name            string
+		wireGuardConfig *config.WireGuardConfig
+		shouldConfigure bool
 	}{
 		{
 			name: "WireGuard enabled",
@@ -461,6 +473,7 @@ func TestOrchestrator_ConfigureWireGuard(t *testing.T) {
 		})
 	}
 }
+
 // Test 9: Firewall configuration
 func TestOrchestrator_ConfigureFirewalls(t *testing.T) {
 	err := pulumi.RunErr(func(ctx *pulumi.Context) error {
@@ -476,6 +489,7 @@ func TestOrchestrator_ConfigureFirewalls(t *testing.T) {
 	}, pulumi.WithMocks("test", "integration", &IntegrationMockProvider{}))
 	assert.NoError(t, err)
 }
+
 // Test 10: Export outputs
 func TestOrchestrator_ExportOutputs(t *testing.T) {
 	err := pulumi.RunErr(func(ctx *pulumi.Context) error {
@@ -489,6 +503,7 @@ func TestOrchestrator_ExportOutputs(t *testing.T) {
 	}, pulumi.WithMocks("test", "integration", &IntegrationMockProvider{}))
 	assert.NoError(t, err)
 }
+
 // Test 11: Get nodes by provider
 func TestOrchestrator_GetNodesByProvider(t *testing.T) {
 	err := pulumi.RunErr(func(ctx *pulumi.Context) error {
@@ -502,6 +517,7 @@ func TestOrchestrator_GetNodesByProvider(t *testing.T) {
 	}, pulumi.WithMocks("test", "integration", &IntegrationMockProvider{}))
 	assert.NoError(t, err)
 }
+
 // Test 12: Get node by name
 func TestOrchestrator_GetNodeByName(t *testing.T) {
 	err := pulumi.RunErr(func(ctx *pulumi.Context) error {
@@ -515,6 +531,7 @@ func TestOrchestrator_GetNodeByName(t *testing.T) {
 	}, pulumi.WithMocks("test", "integration", &IntegrationMockProvider{}))
 	assert.NoError(t, err)
 }
+
 // Test 13: Get master nodes
 func TestOrchestrator_GetMasterNodes(t *testing.T) {
 	err := pulumi.RunErr(func(ctx *pulumi.Context) error {
@@ -528,6 +545,7 @@ func TestOrchestrator_GetMasterNodes(t *testing.T) {
 	}, pulumi.WithMocks("test", "integration", &IntegrationMockProvider{}))
 	assert.NoError(t, err)
 }
+
 // Test 14: Get worker nodes
 func TestOrchestrator_GetWorkerNodes(t *testing.T) {
 	err := pulumi.RunErr(func(ctx *pulumi.Context) error {
@@ -541,6 +559,7 @@ func TestOrchestrator_GetWorkerNodes(t *testing.T) {
 	}, pulumi.WithMocks("test", "integration", &IntegrationMockProvider{}))
 	assert.NoError(t, err)
 }
+
 // Test 15: Cleanup operations
 func TestOrchestrator_Cleanup(t *testing.T) {
 	err := pulumi.RunErr(func(ctx *pulumi.Context) error {
@@ -555,6 +574,7 @@ func TestOrchestrator_Cleanup(t *testing.T) {
 	}, pulumi.WithMocks("test", "integration", &IntegrationMockProvider{}))
 	assert.NoError(t, err)
 }
+
 // Test 16: Load balancer installation
 func TestOrchestrator_InstallLoadBalancers(t *testing.T) {
 	err := pulumi.RunErr(func(ctx *pulumi.Context) error {
@@ -581,6 +601,7 @@ func TestOrchestrator_InstallLoadBalancers(t *testing.T) {
 	}, pulumi.WithMocks("test", "integration", &IntegrationMockProvider{}))
 	assert.NoError(t, err)
 }
+
 // Test 17: Storage installation
 func TestOrchestrator_InstallStorage(t *testing.T) {
 	err := pulumi.RunErr(func(ctx *pulumi.Context) error {
@@ -602,6 +623,7 @@ func TestOrchestrator_InstallStorage(t *testing.T) {
 	}, pulumi.WithMocks("test", "integration", &IntegrationMockProvider{}))
 	assert.NoError(t, err)
 }
+
 // Test 18: Complete deployment phases in order
 func TestOrchestrator_DeploymentPhasesOrder(t *testing.T) {
 	err := pulumi.RunErr(func(ctx *pulumi.Context) error {
@@ -628,6 +650,7 @@ func TestOrchestrator_DeploymentPhasesOrder(t *testing.T) {
 	}, pulumi.WithMocks("test", "integration", &IntegrationMockProvider{}))
 	assert.NoError(t, err)
 }
+
 // Test 19: Multi-provider node pool distribution
 func TestOrchestrator_MultiProviderNodePools(t *testing.T) {
 	tests := []struct {
@@ -684,10 +707,10 @@ func TestOrchestrator_MultiProviderNodePools(t *testing.T) {
 				cfg := &config.ClusterConfig{
 					Providers: config.ProvidersConfig{
 						DigitalOcean: &config.DigitalOceanProvider{
-							Token:   "test-token",
+							Token: "test-token",
 						},
 						Linode: &config.LinodeProvider{
-							Token:   "test-token",
+							Token: "test-token",
 						},
 					},
 					NodePools: tt.nodePools,
@@ -705,6 +728,7 @@ func TestOrchestrator_MultiProviderNodePools(t *testing.T) {
 		})
 	}
 }
+
 // Test 20: Error handling - No providers configured
 func TestOrchestrator_ErrorHandling_NoProviders(t *testing.T) {
 	err := pulumi.RunErr(func(ctx *pulumi.Context) error {
@@ -721,6 +745,7 @@ func TestOrchestrator_ErrorHandling_NoProviders(t *testing.T) {
 	}, pulumi.WithMocks("test", "integration", &IntegrationMockProvider{}))
 	assert.NoError(t, err)
 }
+
 // Test 21: Concurrent node deployment safety
 func TestOrchestrator_ConcurrentNodeDeploymentSafety(t *testing.T) {
 	err := pulumi.RunErr(func(ctx *pulumi.Context) error {
@@ -734,6 +759,7 @@ func TestOrchestrator_ConcurrentNodeDeploymentSafety(t *testing.T) {
 	}, pulumi.WithMocks("test", "integration", &IntegrationMockProvider{}))
 	assert.NoError(t, err)
 }
+
 // Test 22: VPN verification before RKE
 func TestOrchestrator_VPNVerificationBeforeRKE(t *testing.T) {
 	err := pulumi.RunErr(func(ctx *pulumi.Context) error {
@@ -748,6 +774,7 @@ func TestOrchestrator_VPNVerificationBeforeRKE(t *testing.T) {
 	}, pulumi.WithMocks("test", "integration", &IntegrationMockProvider{}))
 	assert.NoError(t, err)
 }
+
 // Test 23: Orchestrator configuration validation
 func TestOrchestrator_ConfigurationValidation(t *testing.T) {
 	tests := []struct {
@@ -765,7 +792,7 @@ func TestOrchestrator_ConfigurationValidation(t *testing.T) {
 			config: &config.ClusterConfig{
 				Providers: config.ProvidersConfig{
 					DigitalOcean: &config.DigitalOceanProvider{
-						Token:   "test",
+						Token: "test",
 					},
 				},
 			},
@@ -784,6 +811,7 @@ func TestOrchestrator_ConfigurationValidation(t *testing.T) {
 		})
 	}
 }
+
 // Test 24: Addons installation flow
 func TestOrchestrator_InstallAddons(t *testing.T) {
 	err := pulumi.RunErr(func(ctx *pulumi.Context) error {
@@ -797,6 +825,7 @@ func TestOrchestrator_InstallAddons(t *testing.T) {
 	}, pulumi.WithMocks("test", "integration", &IntegrationMockProvider{}))
 	assert.NoError(t, err)
 }
+
 // Test 25: Orchestrator state management
 func TestOrchestrator_StateManagement(t *testing.T) {
 	err := pulumi.RunErr(func(ctx *pulumi.Context) error {

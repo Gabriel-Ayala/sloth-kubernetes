@@ -343,7 +343,7 @@ func TestGetStandardDependencyChecks_CommandsSafe(t *testing.T) {
 		"rm -rf",
 		"dd if=",
 		"mkfs",
-		":(){:|:&};:",  // fork bomb
+		":(){:|:&};:", // fork bomb
 		"curl | bash",
 		"wget | sh",
 	}

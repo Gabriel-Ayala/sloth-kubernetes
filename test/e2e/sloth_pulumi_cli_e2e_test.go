@@ -202,12 +202,12 @@ func (s *SlothPulumiCLITestSuite) createStackWithAutomationAPI() error {
 			Runtime: workspace.NewProjectRuntimeInfo("go", nil),
 		}),
 		auto.EnvVars(map[string]string{
-			"PULUMI_BACKEND_URL":        s.backendURL,
-			"PULUMI_CONFIG_PASSPHRASE":  s.config.Passphrase,
-			"AWS_REGION":                s.config.Region,
-			"AWS_ACCESS_KEY_ID":         os.Getenv("AWS_ACCESS_KEY_ID"),
-			"AWS_SECRET_ACCESS_KEY":     os.Getenv("AWS_SECRET_ACCESS_KEY"),
-			"AWS_SESSION_TOKEN":         os.Getenv("AWS_SESSION_TOKEN"),
+			"PULUMI_BACKEND_URL":       s.backendURL,
+			"PULUMI_CONFIG_PASSPHRASE": s.config.Passphrase,
+			"AWS_REGION":               s.config.Region,
+			"AWS_ACCESS_KEY_ID":        os.Getenv("AWS_ACCESS_KEY_ID"),
+			"AWS_SECRET_ACCESS_KEY":    os.Getenv("AWS_SECRET_ACCESS_KEY"),
+			"AWS_SESSION_TOKEN":        os.Getenv("AWS_SESSION_TOKEN"),
 		}),
 		auto.SecretsProvider("passphrase"),
 	}
@@ -232,12 +232,12 @@ func (s *SlothPulumiCLITestSuite) createStackWithAutomationAPI() error {
 			return nil
 		},
 		auto.EnvVars(map[string]string{
-			"PULUMI_BACKEND_URL":        s.backendURL,
-			"PULUMI_CONFIG_PASSPHRASE":  s.config.Passphrase,
-			"AWS_REGION":                s.config.Region,
-			"AWS_ACCESS_KEY_ID":         os.Getenv("AWS_ACCESS_KEY_ID"),
-			"AWS_SECRET_ACCESS_KEY":     os.Getenv("AWS_SECRET_ACCESS_KEY"),
-			"AWS_SESSION_TOKEN":         os.Getenv("AWS_SESSION_TOKEN"),
+			"PULUMI_BACKEND_URL":       s.backendURL,
+			"PULUMI_CONFIG_PASSPHRASE": s.config.Passphrase,
+			"AWS_REGION":               s.config.Region,
+			"AWS_ACCESS_KEY_ID":        os.Getenv("AWS_ACCESS_KEY_ID"),
+			"AWS_SECRET_ACCESS_KEY":    os.Getenv("AWS_SECRET_ACCESS_KEY"),
+			"AWS_SESSION_TOKEN":        os.Getenv("AWS_SESSION_TOKEN"),
 		}),
 		auto.SecretsProvider("passphrase"),
 	)

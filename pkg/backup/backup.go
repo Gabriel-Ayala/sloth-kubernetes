@@ -17,75 +17,75 @@ import (
 type BackupStatus string
 
 const (
-	StatusNew           BackupStatus = "New"
-	StatusInProgress    BackupStatus = "InProgress"
-	StatusCompleted     BackupStatus = "Completed"
-	StatusFailed        BackupStatus = "Failed"
+	StatusNew             BackupStatus = "New"
+	StatusInProgress      BackupStatus = "InProgress"
+	StatusCompleted       BackupStatus = "Completed"
+	StatusFailed          BackupStatus = "Failed"
 	StatusPartiallyFailed BackupStatus = "PartiallyFailed"
-	StatusDeleting      BackupStatus = "Deleting"
+	StatusDeleting        BackupStatus = "Deleting"
 )
 
 // RestoreStatus represents the status of a restore
 type RestoreStatus string
 
 const (
-	RestoreStatusNew           RestoreStatus = "New"
-	RestoreStatusInProgress    RestoreStatus = "InProgress"
-	RestoreStatusCompleted     RestoreStatus = "Completed"
-	RestoreStatusFailed        RestoreStatus = "Failed"
+	RestoreStatusNew             RestoreStatus = "New"
+	RestoreStatusInProgress      RestoreStatus = "InProgress"
+	RestoreStatusCompleted       RestoreStatus = "Completed"
+	RestoreStatusFailed          RestoreStatus = "Failed"
 	RestoreStatusPartiallyFailed RestoreStatus = "PartiallyFailed"
 )
 
 // Backup represents a Velero backup
 type Backup struct {
-	Name               string            `json:"name"`
-	Namespace          string            `json:"namespace"`
-	Status             BackupStatus      `json:"status"`
-	Phase              string            `json:"phase"`
-	IncludedNamespaces []string          `json:"includedNamespaces"`
-	ExcludedNamespaces []string          `json:"excludedNamespaces"`
-	IncludedResources  []string          `json:"includedResources"`
-	ExcludedResources  []string          `json:"excludedResources"`
-	Labels             map[string]string `json:"labels"`
-	StorageLocation    string            `json:"storageLocation"`
-	TTL                string            `json:"ttl"`
-	StartTimestamp     time.Time         `json:"startTimestamp"`
-	CompletionTimestamp time.Time        `json:"completionTimestamp"`
-	Expiration         time.Time         `json:"expiration"`
-	TotalItems         int               `json:"totalItems"`
-	ItemsBackedUp      int               `json:"itemsBackedUp"`
-	Errors             int               `json:"errors"`
-	Warnings           int               `json:"warnings"`
+	Name                string            `json:"name"`
+	Namespace           string            `json:"namespace"`
+	Status              BackupStatus      `json:"status"`
+	Phase               string            `json:"phase"`
+	IncludedNamespaces  []string          `json:"includedNamespaces"`
+	ExcludedNamespaces  []string          `json:"excludedNamespaces"`
+	IncludedResources   []string          `json:"includedResources"`
+	ExcludedResources   []string          `json:"excludedResources"`
+	Labels              map[string]string `json:"labels"`
+	StorageLocation     string            `json:"storageLocation"`
+	TTL                 string            `json:"ttl"`
+	StartTimestamp      time.Time         `json:"startTimestamp"`
+	CompletionTimestamp time.Time         `json:"completionTimestamp"`
+	Expiration          time.Time         `json:"expiration"`
+	TotalItems          int               `json:"totalItems"`
+	ItemsBackedUp       int               `json:"itemsBackedUp"`
+	Errors              int               `json:"errors"`
+	Warnings            int               `json:"warnings"`
 }
 
 // Restore represents a Velero restore
 type Restore struct {
-	Name               string            `json:"name"`
-	Namespace          string            `json:"namespace"`
-	BackupName         string            `json:"backupName"`
-	Status             RestoreStatus     `json:"status"`
-	Phase              string            `json:"phase"`
-	IncludedNamespaces []string          `json:"includedNamespaces"`
-	ExcludedNamespaces []string          `json:"excludedNamespaces"`
-	IncludedResources  []string          `json:"includedResources"`
-	ExcludedResources  []string          `json:"excludedResources"`
-	RestorePVs         bool              `json:"restorePVs"`
-	StartTimestamp     time.Time         `json:"startTimestamp"`
-	CompletionTimestamp time.Time        `json:"completionTimestamp"`
-	Errors             int               `json:"errors"`
-	Warnings           int               `json:"warnings"`
+	Name                string        `json:"name"`
+	Namespace           string        `json:"namespace"`
+	BackupName          string        `json:"backupName"`
+	Status              RestoreStatus `json:"status"`
+	Phase               string        `json:"phase"`
+	IncludedNamespaces  []string      `json:"includedNamespaces"`
+	ExcludedNamespaces  []string      `json:"excludedNamespaces"`
+	IncludedResources   []string      `json:"includedResources"`
+	ExcludedResources   []string      `json:"excludedResources"`
+	RestorePVs          bool          `json:"restorePVs"`
+	StartTimestamp      time.Time     `json:"startTimestamp"`
+	CompletionTimestamp time.Time     `json:"completionTimestamp"`
+	Errors              int           `json:"errors"`
+	Warnings            int           `json:"warnings"`
 }
 
 // Schedule represents a Velero backup schedule
 type Schedule struct {
-	Name               string            `json:"name"`
-	Namespace          string            `json:"namespace"`
-	Schedule           string            `json:"schedule"`
-	IncludedNamespaces []string          `json:"includedNamespaces"`
-	ExcludedNamespaces []string          `json:"excludedNamespaces"`
-	TTL                string            `json:"ttl"`
-	LastBackup         time.Time         `json:"lastBackup"`
-	Paused             bool              `json:"paused"`
+	Name               string    `json:"name"`
+	Namespace          string    `json:"namespace"`
+	Schedule           string    `json:"schedule"`
+	IncludedNamespaces []string  `json:"includedNamespaces"`
+	ExcludedNamespaces []string  `json:"excludedNamespaces"`
+	TTL                string    `json:"ttl"`
+	LastBackup         time.Time `json:"lastBackup"`
+	Paused             bool      `json:"paused"`
 }
 
 // BackupLocation represents a backup storage location
@@ -139,10 +139,10 @@ type ScheduleConfig struct {
 
 // Manager handles backup operations
 type Manager struct {
-	kubeconfig    string
-	namespace     string
+	kubeconfig      string
+	namespace       string
 	veleroInstalled bool
-	verbose       bool
+	verbose         bool
 }
 
 // NewManager creates a new backup manager
@@ -284,8 +284,8 @@ func (m *Manager) ListBackups() ([]Backup, error) {
 	var result struct {
 		Items []struct {
 			Metadata struct {
-				Name      string    `json:"name"`
-				Namespace string    `json:"namespace"`
+				Name              string    `json:"name"`
+				Namespace         string    `json:"namespace"`
 				CreationTimestamp time.Time `json:"creationTimestamp"`
 			} `json:"metadata"`
 			Spec struct {
@@ -295,12 +295,12 @@ func (m *Manager) ListBackups() ([]Backup, error) {
 				StorageLocation    string   `json:"storageLocation"`
 			} `json:"spec"`
 			Status struct {
-				Phase             string    `json:"phase"`
-				StartTimestamp    time.Time `json:"startTimestamp"`
+				Phase               string    `json:"phase"`
+				StartTimestamp      time.Time `json:"startTimestamp"`
 				CompletionTimestamp time.Time `json:"completionTimestamp"`
-				Expiration        time.Time `json:"expiration"`
-				Errors            int       `json:"errors"`
-				Warnings          int       `json:"warnings"`
+				Expiration          time.Time `json:"expiration"`
+				Errors              int       `json:"errors"`
+				Warnings            int       `json:"warnings"`
 			} `json:"status"`
 		} `json:"items"`
 	}
@@ -308,19 +308,19 @@ func (m *Manager) ListBackups() ([]Backup, error) {
 	if err := json.Unmarshal([]byte(output), &result); err == nil {
 		for _, item := range result.Items {
 			backups = append(backups, Backup{
-				Name:               item.Metadata.Name,
-				Namespace:          item.Metadata.Namespace,
-				Phase:              item.Status.Phase,
-				Status:             BackupStatus(item.Status.Phase),
-				IncludedNamespaces: item.Spec.IncludedNamespaces,
-				ExcludedNamespaces: item.Spec.ExcludedNamespaces,
-				StorageLocation:    item.Spec.StorageLocation,
-				TTL:                item.Spec.TTL,
-				StartTimestamp:     item.Status.StartTimestamp,
+				Name:                item.Metadata.Name,
+				Namespace:           item.Metadata.Namespace,
+				Phase:               item.Status.Phase,
+				Status:              BackupStatus(item.Status.Phase),
+				IncludedNamespaces:  item.Spec.IncludedNamespaces,
+				ExcludedNamespaces:  item.Spec.ExcludedNamespaces,
+				StorageLocation:     item.Spec.StorageLocation,
+				TTL:                 item.Spec.TTL,
+				StartTimestamp:      item.Status.StartTimestamp,
 				CompletionTimestamp: item.Status.CompletionTimestamp,
-				Expiration:         item.Status.Expiration,
-				Errors:             item.Status.Errors,
-				Warnings:           item.Status.Warnings,
+				Expiration:          item.Status.Expiration,
+				Errors:              item.Status.Errors,
+				Warnings:            item.Status.Warnings,
 			})
 		}
 	}
@@ -414,11 +414,11 @@ func (m *Manager) ListRestores() ([]Restore, error) {
 				RestorePVs         bool     `json:"restorePVs"`
 			} `json:"spec"`
 			Status struct {
-				Phase             string    `json:"phase"`
-				StartTimestamp    time.Time `json:"startTimestamp"`
+				Phase               string    `json:"phase"`
+				StartTimestamp      time.Time `json:"startTimestamp"`
 				CompletionTimestamp time.Time `json:"completionTimestamp"`
-				Errors            int       `json:"errors"`
-				Warnings          int       `json:"warnings"`
+				Errors              int       `json:"errors"`
+				Warnings            int       `json:"warnings"`
 			} `json:"status"`
 		} `json:"items"`
 	}
@@ -426,18 +426,18 @@ func (m *Manager) ListRestores() ([]Restore, error) {
 	if err := json.Unmarshal([]byte(output), &result); err == nil {
 		for _, item := range result.Items {
 			restores = append(restores, Restore{
-				Name:               item.Metadata.Name,
-				Namespace:          item.Metadata.Namespace,
-				BackupName:         item.Spec.BackupName,
-				Phase:              item.Status.Phase,
-				Status:             RestoreStatus(item.Status.Phase),
-				IncludedNamespaces: item.Spec.IncludedNamespaces,
-				ExcludedNamespaces: item.Spec.ExcludedNamespaces,
-				RestorePVs:         item.Spec.RestorePVs,
-				StartTimestamp:     item.Status.StartTimestamp,
+				Name:                item.Metadata.Name,
+				Namespace:           item.Metadata.Namespace,
+				BackupName:          item.Spec.BackupName,
+				Phase:               item.Status.Phase,
+				Status:              RestoreStatus(item.Status.Phase),
+				IncludedNamespaces:  item.Spec.IncludedNamespaces,
+				ExcludedNamespaces:  item.Spec.ExcludedNamespaces,
+				RestorePVs:          item.Spec.RestorePVs,
+				StartTimestamp:      item.Status.StartTimestamp,
 				CompletionTimestamp: item.Status.CompletionTimestamp,
-				Errors:             item.Status.Errors,
-				Warnings:           item.Status.Warnings,
+				Errors:              item.Status.Errors,
+				Warnings:            item.Status.Warnings,
 			})
 		}
 	}

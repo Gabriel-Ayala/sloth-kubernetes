@@ -1,3 +1,4 @@
+//go:build e2e
 // +build e2e
 
 // Package e2e provides comprehensive end-to-end tests for Salt Master/Minion integration

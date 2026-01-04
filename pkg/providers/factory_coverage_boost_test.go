@@ -71,10 +71,10 @@ func TestProviderFactory_GetProvider(t *testing.T) {
 	factory := NewProviderFactory()
 
 	tests := []struct {
-		name          string
-		providerName  string
-		expectError   bool
-		expectedName  string
+		name         string
+		providerName string
+		expectError  bool
+		expectedName string
 	}{
 		{
 			name:         "DigitalOcean provider",
@@ -135,11 +135,11 @@ func TestProviderFactory_GetEnabledProviders(t *testing.T) {
 	factory := NewProviderFactory()
 
 	tests := []struct {
-		name           string
-		config         *config.ClusterConfig
-		expectedCount  int
-		expectError    bool
-		expectedNames  []string
+		name          string
+		config        *config.ClusterConfig
+		expectedCount int
+		expectError   bool
+		expectedNames []string
 	}{
 		{
 			name: "DigitalOcean only",

@@ -212,8 +212,8 @@ func (m *Manager) scaleDown(ctx context.Context, count int) error {
 
 	// Emit pre-scale event
 	m.emitEvent("autoscaling_scale_down_start", map[string]interface{}{
-		"current_nodes":    currentCount,
-		"nodes_to_remove":  count,
+		"current_nodes":   currentCount,
+		"nodes_to_remove": count,
 	})
 
 	// Perform scale down

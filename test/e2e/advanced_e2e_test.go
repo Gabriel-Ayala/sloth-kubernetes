@@ -1,3 +1,4 @@
+//go:build e2e
 // +build e2e
 
 // Package e2e provides advanced end-to-end tests for complex scenarios
@@ -85,7 +86,7 @@ func TestE2E_AWS_CompleteClusterSimulation(t *testing.T) {
 					},
 				},
 				DNS: config.DNSConfig{
-					Domain:  "e2e-test.local",
+					Domain: "e2e-test.local",
 				},
 			},
 			Kubernetes: config.KubernetesConfig{

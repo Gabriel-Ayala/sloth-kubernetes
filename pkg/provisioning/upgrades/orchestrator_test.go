@@ -7,8 +7,8 @@ import (
 	"time"
 
 	"github.com/chalkan3/sloth-kubernetes/pkg/config"
-	"github.com/chalkan3/sloth-kubernetes/pkg/provisioning"
 	"github.com/chalkan3/sloth-kubernetes/pkg/providers"
+	"github.com/chalkan3/sloth-kubernetes/pkg/provisioning"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -82,10 +82,10 @@ func (m *MockNodeUpgrader) Upgrade(ctx context.Context, node *providers.NodeOutp
 
 // MockNodeProvisioner implements NodeProvisioner for testing
 type MockNodeProvisioner struct {
-	provisionError     error
-	decommissionError  error
-	provisionCalls     int
-	decommissionCalls  int
+	provisionError    error
+	decommissionError error
+	provisionCalls    int
+	decommissionCalls int
 }
 
 func (m *MockNodeProvisioner) ProvisionNode(ctx context.Context, template *providers.NodeOutput, version string) (*providers.NodeOutput, error) {
@@ -518,12 +518,12 @@ func TestRollingStrategy_GetBatchSize(t *testing.T) {
 		maxUnavailable int
 		expected       int
 	}{
-		{10, 2, 2},     // Normal case
-		{10, 0, 1},     // Zero max unavailable defaults to 1
-		{10, -1, 1},    // Negative max unavailable defaults to 1
-		{10, 5, 3},     // Capped at 25% of total
-		{4, 2, 1},      // 25% of 4 = 1
-		{100, 50, 25},  // Capped at 25% of total (103/4=25)
+		{10, 2, 2},    // Normal case
+		{10, 0, 1},    // Zero max unavailable defaults to 1
+		{10, -1, 1},   // Negative max unavailable defaults to 1
+		{10, 5, 3},    // Capped at 25% of total
+		{4, 2, 1},     // 25% of 4 = 1
+		{100, 50, 25}, // Capped at 25% of total (103/4=25)
 	}
 
 	for _, tt := range tests {

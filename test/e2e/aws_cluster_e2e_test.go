@@ -1,3 +1,4 @@
+//go:build e2e
 // +build e2e
 
 // Package e2e provides end-to-end tests that test the REAL application
@@ -145,7 +146,7 @@ func TestE2E_AWSProvider_VPCCreation(t *testing.T) {
 			},
 			Providers: config.ProvidersConfig{
 				AWS: &config.AWSProvider{
-					Region:  cfg.AWSRegion,
+					Region: cfg.AWSRegion,
 					VPC: &config.VPCConfig{
 						Create: true,
 						Name:   "e2e-test-vpc",
@@ -241,7 +242,7 @@ func TestE2E_AWSProvider_NodeDeployment(t *testing.T) {
 		},
 		Providers: config.ProvidersConfig{
 			AWS: &config.AWSProvider{
-				Region:  cfg.AWSRegion,
+				Region: cfg.AWSRegion,
 				VPC: &config.VPCConfig{
 					Create: true,
 					CIDR:   "10.100.0.0/16",
@@ -340,7 +341,7 @@ func TestE2E_AWSProvider_FullClusterOrchestrator(t *testing.T) {
 		},
 		Providers: config.ProvidersConfig{
 			AWS: &config.AWSProvider{
-				Region:  cfg.AWSRegion,
+				Region: cfg.AWSRegion,
 				VPC: &config.VPCConfig{
 					Create: true,
 					CIDR:   "10.100.0.0/16",
@@ -533,7 +534,7 @@ func TestE2E_Preview_FullCluster(t *testing.T) {
 		},
 		Providers: config.ProvidersConfig{
 			AWS: &config.AWSProvider{
-				Region:  cfg.AWSRegion,
+				Region: cfg.AWSRegion,
 				VPC: &config.VPCConfig{
 					Create: true,
 					CIDR:   "10.100.0.0/16",

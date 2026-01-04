@@ -49,12 +49,12 @@ func TestStrategyRegistry_Get(t *testing.T) {
 
 func TestCPUBasedStrategy_ShouldScaleUp(t *testing.T) {
 	tests := []struct {
-		name        string
-		cpu         float64
-		targetCPU   int
-		enabled     bool
-		wantScale   bool
-		wantNodes   int
+		name      string
+		cpu       float64
+		targetCPU int
+		enabled   bool
+		wantScale bool
+		wantNodes int
 	}{
 		{
 			name:      "High CPU triggers scale up",
@@ -112,11 +112,11 @@ func TestCPUBasedStrategy_ShouldScaleUp(t *testing.T) {
 
 func TestCPUBasedStrategy_ShouldScaleDown(t *testing.T) {
 	tests := []struct {
-		name        string
-		cpu         float64
-		targetCPU   int
-		enabled     bool
-		wantScale   bool
+		name      string
+		cpu       float64
+		targetCPU int
+		enabled   bool
+		wantScale bool
 	}{
 		{
 			name:      "Low CPU triggers scale down",

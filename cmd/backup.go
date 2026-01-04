@@ -30,18 +30,18 @@ var (
 	backupDryRun          bool
 
 	// Restore flags
-	restoreFromBackup     string
-	restorePVs            bool
-	restorePreserveNP     bool
+	restoreFromBackup string
+	restorePVs        bool
+	restorePreserveNP bool
 
 	// Schedule flags
-	scheduleExpression    string
+	scheduleExpression string
 
 	// Install flags
-	installProvider       string
-	installBucket         string
-	installRegion         string
-	installSecretFile     string
+	installProvider   string
+	installBucket     string
+	installRegion     string
+	installSecretFile string
 )
 
 var backupCmd = &cobra.Command{

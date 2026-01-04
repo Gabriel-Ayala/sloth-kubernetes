@@ -326,10 +326,10 @@ func TestOrchestrator_AIMLWorkloadCluster(t *testing.T) {
 					Size:     "p3.8xlarge",
 					Roles:    []string{"worker"},
 					Labels: map[string]string{
-						"workload":       "ml-training",
-						"gpu":            "nvidia-v100",
-						"gpu-count":      "4",
-						"accelerator":    "gpu",
+						"workload":    "ml-training",
+						"gpu":         "nvidia-v100",
+						"gpu-count":   "4",
+						"accelerator": "gpu",
 					},
 					Taints: []config.TaintConfig{
 						{
@@ -592,8 +592,8 @@ func TestOrchestrator_CostOptimizationPlatform(t *testing.T) {
 					Roles:        []string{"worker"},
 					SpotInstance: true,
 					Labels: map[string]string{
-						"cost-tier":  "spot",
-						"workload":   "batch",
+						"cost-tier":     "spot",
+						"workload":      "batch",
 						"interruptible": "true",
 					},
 				},
@@ -625,9 +625,9 @@ func TestOrchestrator_CostOptimizationPlatform(t *testing.T) {
 				Type:    "rke2",
 				Version: "v1.28.0",
 				AutoScaling: config.AutoScalingConfig{
-					Enabled:  true,
-					MinNodes: 8,
-					MaxNodes: 28,
+					Enabled:   true,
+					MinNodes:  8,
+					MaxNodes:  28,
 					TargetCPU: 70,
 				},
 			},
@@ -733,8 +733,8 @@ func TestOrchestrator_DataLakePlatform(t *testing.T) {
 					Roles:       []string{"worker"},
 					AutoScaling: true,
 					Labels: map[string]string{
-						"spark-role": "worker",
-						"workload":   "spark",
+						"spark-role":      "worker",
+						"workload":        "spark",
 						"data-processing": "true",
 					},
 				},

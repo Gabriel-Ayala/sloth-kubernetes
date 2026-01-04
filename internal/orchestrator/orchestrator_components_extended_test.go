@@ -272,9 +272,9 @@ func TestNewNodeHealthCheckComponent_VariousScenarios(t *testing.T) {
 // Test IngressControllerComponent with various configurations
 func TestNewIngressControllerComponent_VariousConfigurations(t *testing.T) {
 	configurations := []struct {
-		name        string
-		controller  string
-		replicas    int
+		name       string
+		controller string
+		replicas   int
 	}{
 		{"Nginx_SingleReplica", "ingress-nginx", 1},
 		{"Nginx_TwoReplicas", "ingress-nginx", 2},
@@ -303,9 +303,9 @@ func TestNewIngressControllerComponent_VariousConfigurations(t *testing.T) {
 // Test IngressClassComponent with different classes
 func TestNewIngressClassComponent_DifferentClasses(t *testing.T) {
 	classes := []struct {
-		name       string
-		className  string
-		isDefault  bool
+		name      string
+		className string
+		isDefault bool
 	}{
 		{"Nginx_Default", "nginx", true},
 		{"Nginx_NonDefault", "nginx", false},

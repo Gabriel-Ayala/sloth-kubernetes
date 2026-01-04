@@ -36,19 +36,19 @@ type AddonsConfig struct {
 
 // SaltConfig defines Salt Master/Minion configuration for cluster management
 type SaltConfig struct {
-	Enabled       bool   `yaml:"enabled" json:"enabled"`                               // Enable Salt installation
-	MasterNode    string `yaml:"masterNode,omitempty" json:"masterNode,omitempty"`     // Which node to install Salt Master (default: first master)
-	APIEnabled    bool   `yaml:"apiEnabled" json:"apiEnabled"`                         // Enable Salt API (default: true)
-	APIPort       int    `yaml:"apiPort,omitempty" json:"apiPort,omitempty"`           // Salt API port (default: 8000)
-	APIUsername   string `yaml:"apiUsername,omitempty" json:"apiUsername,omitempty"`   // Salt API username (default: saltapi)
-	APIPassword   string `yaml:"apiPassword,omitempty" json:"apiPassword,omitempty"`   // Salt API password (auto-generated if empty)
-	SecureAuth    bool   `yaml:"secureAuth" json:"secureAuth"`                         // Use hash-based secure authentication (default: true)
-	AutoJoin      bool   `yaml:"autoJoin" json:"autoJoin"`                             // Automatically join all nodes as minions (default: true)
-	AuditLogging  bool   `yaml:"auditLogging" json:"auditLogging"`                     // Enable authentication audit logging (default: true)
-	StateRoots    string `yaml:"stateRoots,omitempty" json:"stateRoots,omitempty"`     // Path to Salt state files
-	PillarRoots   string `yaml:"pillarRoots,omitempty" json:"pillarRoots,omitempty"`   // Path to Salt pillar files
-	GitOpsRepo    string `yaml:"gitopsRepo,omitempty" json:"gitopsRepo,omitempty"`     // Git repo for Salt states (optional)
-	GitOpsBranch  string `yaml:"gitopsBranch,omitempty" json:"gitopsBranch,omitempty"` // Git branch for Salt states (default: main)
+	Enabled      bool   `yaml:"enabled" json:"enabled"`                               // Enable Salt installation
+	MasterNode   string `yaml:"masterNode,omitempty" json:"masterNode,omitempty"`     // Which node to install Salt Master (default: first master)
+	APIEnabled   bool   `yaml:"apiEnabled" json:"apiEnabled"`                         // Enable Salt API (default: true)
+	APIPort      int    `yaml:"apiPort,omitempty" json:"apiPort,omitempty"`           // Salt API port (default: 8000)
+	APIUsername  string `yaml:"apiUsername,omitempty" json:"apiUsername,omitempty"`   // Salt API username (default: saltapi)
+	APIPassword  string `yaml:"apiPassword,omitempty" json:"apiPassword,omitempty"`   // Salt API password (auto-generated if empty)
+	SecureAuth   bool   `yaml:"secureAuth" json:"secureAuth"`                         // Use hash-based secure authentication (default: true)
+	AutoJoin     bool   `yaml:"autoJoin" json:"autoJoin"`                             // Automatically join all nodes as minions (default: true)
+	AuditLogging bool   `yaml:"auditLogging" json:"auditLogging"`                     // Enable authentication audit logging (default: true)
+	StateRoots   string `yaml:"stateRoots,omitempty" json:"stateRoots,omitempty"`     // Path to Salt state files
+	PillarRoots  string `yaml:"pillarRoots,omitempty" json:"pillarRoots,omitempty"`   // Path to Salt pillar files
+	GitOpsRepo   string `yaml:"gitopsRepo,omitempty" json:"gitopsRepo,omitempty"`     // Git repo for Salt states (optional)
+	GitOpsBranch string `yaml:"gitopsBranch,omitempty" json:"gitopsBranch,omitempty"` // Git branch for Salt states (default: main)
 }
 
 // ArgoCDConfig defines ArgoCD GitOps configuration
@@ -303,10 +303,10 @@ type NodePool struct {
 	Custom       map[string]interface{} `yaml:"custom" json:"custom"`
 
 	// Advanced configurations
-	AutoScalingConfig *AutoScalingConfig  `yaml:"autoscalingConfig,omitempty" json:"autoscalingConfig,omitempty"`
-	SpotConfig        *SpotConfig         `yaml:"spotConfig,omitempty" json:"spotConfig,omitempty"`
-	Distribution      []ZoneDistribution  `yaml:"distribution,omitempty" json:"distribution,omitempty"`
-	CustomImage       *CustomImageConfig  `yaml:"customImage,omitempty" json:"customImage,omitempty"`
+	AutoScalingConfig *AutoScalingConfig `yaml:"autoscalingConfig,omitempty" json:"autoscalingConfig,omitempty"`
+	SpotConfig        *SpotConfig        `yaml:"spotConfig,omitempty" json:"spotConfig,omitempty"`
+	Distribution      []ZoneDistribution `yaml:"distribution,omitempty" json:"distribution,omitempty"`
+	CustomImage       *CustomImageConfig `yaml:"customImage,omitempty" json:"customImage,omitempty"`
 }
 
 // KubernetesConfig for Kubernetes-specific settings
@@ -550,11 +550,11 @@ type AutoScalingConfig struct {
 // SpotConfig defines spot/preemptible instance configuration
 type SpotConfig struct {
 	Enabled          bool    `yaml:"enabled" json:"enabled"`
-	MaxPrice         string  `yaml:"maxPrice" json:"maxPrice"`                   // Max price per hour (e.g., "0.05")
-	FallbackOnDemand bool    `yaml:"fallbackOnDemand" json:"fallbackOnDemand"`   // Fallback to on-demand if spot unavailable
-	SpotPercentage   int     `yaml:"spotPercentage" json:"spotPercentage"`       // Percentage of nodes as spot (0-100)
-	InterruptionMode string  `yaml:"interruptionMode" json:"interruptionMode"`   // terminate, stop, hibernate
-	MaxSpotPrice     float64 `yaml:"maxSpotPrice" json:"maxSpotPrice"`           // Max spot price as float
+	MaxPrice         string  `yaml:"maxPrice" json:"maxPrice"`                 // Max price per hour (e.g., "0.05")
+	FallbackOnDemand bool    `yaml:"fallbackOnDemand" json:"fallbackOnDemand"` // Fallback to on-demand if spot unavailable
+	SpotPercentage   int     `yaml:"spotPercentage" json:"spotPercentage"`     // Percentage of nodes as spot (0-100)
+	InterruptionMode string  `yaml:"interruptionMode" json:"interruptionMode"` // terminate, stop, hibernate
+	MaxSpotPrice     float64 `yaml:"maxSpotPrice" json:"maxSpotPrice"`         // Max spot price as float
 }
 
 // ZoneDistribution defines node distribution across zones
@@ -617,13 +617,13 @@ type HookAction struct {
 
 // CostControlConfig defines cost management settings
 type CostControlConfig struct {
-	Estimate           bool              `yaml:"estimate" json:"estimate"`                     // Enable cost estimation
-	MonthlyBudget      float64           `yaml:"monthlyBudget" json:"monthlyBudget"`           // Monthly budget limit
-	AlertThreshold     int               `yaml:"alertThreshold" json:"alertThreshold"`         // Alert when reaching % of budget
-	NotifyEmail        string            `yaml:"notifyEmail" json:"notifyEmail"`               // Email for budget alerts
-	RightSizing        bool              `yaml:"rightSizing" json:"rightSizing"`               // Enable right-sizing recommendations
-	UnusedResourcesAlert bool            `yaml:"unusedResourcesAlert" json:"unusedResourcesAlert"` // Alert on unused resources
-	CostTags           map[string]string `yaml:"costTags" json:"costTags"`                     // Tags for cost allocation
+	Estimate             bool              `yaml:"estimate" json:"estimate"`                         // Enable cost estimation
+	MonthlyBudget        float64           `yaml:"monthlyBudget" json:"monthlyBudget"`               // Monthly budget limit
+	AlertThreshold       int               `yaml:"alertThreshold" json:"alertThreshold"`             // Alert when reaching % of budget
+	NotifyEmail          string            `yaml:"notifyEmail" json:"notifyEmail"`                   // Email for budget alerts
+	RightSizing          bool              `yaml:"rightSizing" json:"rightSizing"`                   // Enable right-sizing recommendations
+	UnusedResourcesAlert bool              `yaml:"unusedResourcesAlert" json:"unusedResourcesAlert"` // Alert on unused resources
+	CostTags             map[string]string `yaml:"costTags" json:"costTags"`                         // Tags for cost allocation
 }
 
 // BackupStorageConfig defines backup storage settings

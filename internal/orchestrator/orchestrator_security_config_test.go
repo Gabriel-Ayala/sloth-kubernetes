@@ -301,9 +301,9 @@ func TestOrchestrator_TLSConfiguration(t *testing.T) {
 			{
 				Name: "master-1",
 				Labels: map[string]string{
-					"role":       "master",
-					"tls":        "enabled",
-					"cert-mgr":   "true",
+					"role":     "master",
+					"tls":      "enabled",
+					"cert-mgr": "true",
 				},
 			},
 		}

@@ -152,16 +152,16 @@ func TestOrchestrator_SecureSecretsConfiguration(t *testing.T) {
 			},
 			Security: config.SecurityConfig{
 				Secrets: config.SecretsConfig{
-					Provider:   "vault",
-					Encryption: true,
-					KeyManagement: "kms",
+					Provider:        "vault",
+					Encryption:      true,
+					KeyManagement:   "kms",
 					ExternalSecrets: true,
 				},
 				TLS: config.TLSConfig{
-					Enabled:         true,
-					CertManager:    true,
-					Provider:       "letsencrypt",
-					Email:          "admin@example.com",
+					Enabled:     true,
+					CertManager: true,
+					Provider:    "letsencrypt",
+					Email:       "admin@example.com",
 				},
 			},
 		}
@@ -318,13 +318,12 @@ func TestOrchestrator_AutoScalingConfiguration(t *testing.T) {
 				Type:    "rke2",
 				Version: "v1.28.0",
 				AutoScaling: config.AutoScalingConfig{
-					Enabled:           true,
-					MinNodes:          3,
-					MaxNodes:          10,
-					TargetCPU:    70,
-					ScaleDown:    "5m",
-					ScaleUp:      "1m",
-					
+					Enabled:   true,
+					MinNodes:  3,
+					MaxNodes:  10,
+					TargetCPU: 70,
+					ScaleDown: "5m",
+					ScaleUp:   "1m",
 				},
 			},
 		}

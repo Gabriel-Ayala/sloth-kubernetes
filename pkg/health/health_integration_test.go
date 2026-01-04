@@ -382,8 +382,8 @@ func TestNodeStatusIntegration(t *testing.T) {
 		// Simulate different health states
 		checker.statuses["healthy-node"].IsHealthy = true
 		checker.statuses["healthy-node"].Services = map[string]bool{
-			"docker":   true,
-			"kubelet":  true,
+			"docker":     true,
+			"kubelet":    true,
 			"kubernetes": true,
 		}
 

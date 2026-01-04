@@ -32,7 +32,7 @@ func TestOrchestrator_PerformanceOptimizationConfiguration(t *testing.T) {
 					Size:     "c-32", // CPU-optimized
 					Roles:    []string{"worker"},
 					Labels: map[string]string{
-						"performance": "high",
+						"performance":   "high",
 						"cpu-optimized": "true",
 					},
 				},
@@ -134,9 +134,9 @@ func TestOrchestrator_HybridMultiCloudDeployment(t *testing.T) {
 					Region:  "us-east",
 				},
 				AWS: &config.AWSProvider{
-					Enabled:   true,
-					Region:    "us-east-1",
-					AccessKeyID: "aws-key",
+					Enabled:         true,
+					Region:          "us-east-1",
+					AccessKeyID:     "aws-key",
 					SecretAccessKey: "aws-secret",
 				},
 			},
@@ -253,7 +253,7 @@ func TestOrchestrator_DatabaseIntegrationConfiguration(t *testing.T) {
 						Name:        "fast-ssd",
 						Provisioner: "dobs.csi.digitalocean.com",
 						Parameters: map[string]string{
-							"type": "pd-ssd",
+							"type":   "pd-ssd",
 							"fsType": "ext4",
 						},
 					},
@@ -470,9 +470,9 @@ func TestOrchestrator_VolumeSnapshotConfiguration(t *testing.T) {
 						Name:        "snapshot-enabled",
 						Provisioner: "dobs.csi.digitalocean.com",
 						Parameters: map[string]string{
-							"snapshot-enabled": "true",
+							"snapshot-enabled":  "true",
 							"snapshot-schedule": "daily",
-							"retention-days": "30",
+							"retention-days":    "30",
 						},
 					},
 				},

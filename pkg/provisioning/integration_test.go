@@ -8,9 +8,9 @@ import (
 	"time"
 
 	"github.com/chalkan3/sloth-kubernetes/pkg/config"
+	"github.com/chalkan3/sloth-kubernetes/pkg/providers"
 	"github.com/chalkan3/sloth-kubernetes/pkg/provisioning/distribution"
 	"github.com/chalkan3/sloth-kubernetes/pkg/provisioning/spot"
-	"github.com/chalkan3/sloth-kubernetes/pkg/providers"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

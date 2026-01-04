@@ -18,14 +18,14 @@ import (
 
 // MockBackupStorage implements BackupStorage for testing
 type MockBackupStorage struct {
-	name            string
-	data            map[string][]byte
-	uploadError     error
-	downloadError   error
-	deleteError     error
-	uploadCalls     int
-	downloadCalls   int
-	deleteCalls     int
+	name          string
+	data          map[string][]byte
+	uploadError   error
+	downloadError error
+	deleteError   error
+	uploadCalls   int
+	downloadCalls int
+	deleteCalls   int
 }
 
 func NewMockBackupStorage(name string) *MockBackupStorage {

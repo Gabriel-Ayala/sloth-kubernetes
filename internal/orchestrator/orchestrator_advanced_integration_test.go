@@ -393,9 +393,6 @@ func TestOrchestrator_NetworkIsolation(t *testing.T) {
 	}
 }
 
-
-
-
 // Test 11: Cluster metadata validation
 func TestOrchestrator_ClusterMetadata(t *testing.T) {
 	err := pulumi.RunErr(func(ctx *pulumi.Context) error {

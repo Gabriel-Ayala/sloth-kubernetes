@@ -12,12 +12,12 @@ import (
 	"time"
 
 	"github.com/chalkan3/sloth-kubernetes/pkg/config"
+	"github.com/chalkan3/sloth-kubernetes/pkg/providers"
 	"github.com/chalkan3/sloth-kubernetes/pkg/provisioning"
 	"github.com/chalkan3/sloth-kubernetes/pkg/provisioning/backup"
 	"github.com/chalkan3/sloth-kubernetes/pkg/provisioning/hooks"
 	"github.com/chalkan3/sloth-kubernetes/pkg/provisioning/taints"
 	"github.com/chalkan3/sloth-kubernetes/pkg/provisioning/upgrades"
-	"github.com/chalkan3/sloth-kubernetes/pkg/providers"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -137,8 +137,8 @@ func (s *K8sAPISimulator) maybeError() error {
 // GetMetrics returns API metrics
 func (s *K8sAPISimulator) GetMetrics() map[string]int64 {
 	return map[string]int64{
-		"total_requests":   atomic.LoadInt64(&s.totalRequests),
-		"failed_requests":  atomic.LoadInt64(&s.failedReqs),
+		"total_requests":     atomic.LoadInt64(&s.totalRequests),
+		"failed_requests":    atomic.LoadInt64(&s.failedReqs),
 		"throttled_requests": atomic.LoadInt64(&s.throttledReqs),
 	}
 }
@@ -431,9 +431,9 @@ func (c *EtcdBackupComponent) Restore(ctx context.Context, data []byte) error {
 
 // VolumeBackupComponent simulates PV backup
 type VolumeBackupComponent struct {
-	volumes    []string
-	dataSize   int
-	latency    time.Duration
+	volumes  []string
+	dataSize int
+	latency  time.Duration
 }
 
 func NewVolumeBackupComponent(volumes []string) *VolumeBackupComponent {

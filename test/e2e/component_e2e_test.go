@@ -1,3 +1,4 @@
+//go:build e2e
 // +build e2e
 
 // Package e2e provides comprehensive end-to-end tests for individual components
@@ -727,11 +728,11 @@ func TestE2E_WireGuardConfiguration(t *testing.T) {
 
 	// Test WireGuard IP assignment patterns
 	testCases := []struct {
-		name          string
-		nodeType      string
-		nodeIndex     int
-		expectedIP    string
-		description   string
+		name        string
+		nodeType    string
+		nodeIndex   int
+		expectedIP  string
+		description string
 	}{
 		{"Bastion", "bastion", 0, "10.8.0.5", "Bastion always gets .5"},
 		{"Master 1", "master", 0, "10.8.0.10", "First master gets .10"},

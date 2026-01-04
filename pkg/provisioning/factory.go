@@ -18,16 +18,16 @@ type Manager struct {
 	config *config.ClusterConfig
 
 	// Components
-	autoScaler      AutoScaler
-	spotManager     SpotManager
-	distributor     Distributor
-	upgrader        Upgrader
-	backupManager   BackupManagerInterface
-	hookEngine      HookEngineInterface
-	costEstimator   CostEstimatorInterface
-	taintManager    TaintManagerInterface
-	privateCluster  PrivateClusterManagerInterface
-	imageManager    ImageManagerInterface
+	autoScaler     AutoScaler
+	spotManager    SpotManager
+	distributor    Distributor
+	upgrader       Upgrader
+	backupManager  BackupManagerInterface
+	hookEngine     HookEngineInterface
+	costEstimator  CostEstimatorInterface
+	taintManager   TaintManagerInterface
+	privateCluster PrivateClusterManagerInterface
+	imageManager   ImageManagerInterface
 
 	// Event system
 	eventEmitter *EventEmitterImpl
@@ -461,10 +461,10 @@ func (c *DefaultMetricsCollector) GetCustomMetric(ctx context.Context, name stri
 
 // LifecycleManager manages provisioning lifecycle
 type LifecycleManager struct {
-	manager      *Manager
-	isStarted    bool
-	stopFuncs    []func()
-	mu           sync.Mutex
+	manager   *Manager
+	isStarted bool
+	stopFuncs []func()
+	mu        sync.Mutex
 }
 
 // NewLifecycleManager creates a new lifecycle manager

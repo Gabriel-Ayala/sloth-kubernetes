@@ -534,10 +534,10 @@ func TestBastionComponent_MaxSessions(t *testing.T) {
 
 func TestBastionComponent_Features(t *testing.T) {
 	features := []struct {
-		name          string
-		vpnOnly       bool
-		auditLog      bool
-		mfa           bool
+		name     string
+		vpnOnly  bool
+		auditLog bool
+		mfa      bool
 	}{
 		{"Basic", false, false, false},
 		{"VPNOnly", true, false, false},

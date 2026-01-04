@@ -257,10 +257,10 @@ func (s *SpreadStrategy) Calculate(totalNodes int, zones []string, weights map[s
 
 // Distributor manages node distribution across zones
 type Distributor struct {
-	strategy      provisioning.DistributionStrategy
-	registry      *StrategyRegistry
-	eventEmitter  provisioning.EventEmitter
-	mu            sync.RWMutex
+	strategy     provisioning.DistributionStrategy
+	registry     *StrategyRegistry
+	eventEmitter provisioning.EventEmitter
+	mu           sync.RWMutex
 }
 
 // DistributorConfig holds distributor configuration

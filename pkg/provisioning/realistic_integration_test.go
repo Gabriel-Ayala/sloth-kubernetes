@@ -10,9 +10,9 @@ import (
 	"time"
 
 	"github.com/chalkan3/sloth-kubernetes/pkg/config"
+	"github.com/chalkan3/sloth-kubernetes/pkg/providers"
 	"github.com/chalkan3/sloth-kubernetes/pkg/provisioning/distribution"
 	"github.com/chalkan3/sloth-kubernetes/pkg/provisioning/spot"
-	"github.com/chalkan3/sloth-kubernetes/pkg/providers"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -25,32 +25,32 @@ import (
 type InstanceState string
 
 const (
-	StatePending      InstanceState = "pending"
-	StateRunning      InstanceState = "running"
-	StateStopping     InstanceState = "stopping"
-	StateStopped      InstanceState = "stopped"
-	StateTerminating  InstanceState = "terminating"
-	StateTerminated   InstanceState = "terminated"
+	StatePending     InstanceState = "pending"
+	StateRunning     InstanceState = "running"
+	StateStopping    InstanceState = "stopping"
+	StateStopped     InstanceState = "stopped"
+	StateTerminating InstanceState = "terminating"
+	StateTerminated  InstanceState = "terminated"
 )
 
 // AWSSimulatorConfig configures the simulator behavior
 type AWSSimulatorConfig struct {
 	// Latency simulation
-	MinAPILatency     time.Duration
-	MaxAPILatency     time.Duration
-	InstanceBootTime  time.Duration
+	MinAPILatency    time.Duration
+	MaxAPILatency    time.Duration
+	InstanceBootTime time.Duration
 
 	// Rate limiting
 	MaxRequestsPerSec int
 	BurstLimit        int
 
 	// Capacity simulation
-	InitialCapacity   map[string]int  // zone -> available capacity
-	SpotCapacityRatio float64         // % of capacity available for spot
+	InitialCapacity   map[string]int // zone -> available capacity
+	SpotCapacityRatio float64        // % of capacity available for spot
 
 	// Pricing simulation
-	BasePrices        map[string]float64 // zone -> base spot price
-	PriceVolatility   float64            // 0-1, how much prices fluctuate
+	BasePrices          map[string]float64 // zone -> base spot price
+	PriceVolatility     float64            // 0-1, how much prices fluctuate
 	PriceUpdateInterval time.Duration
 
 	// Failure simulation
@@ -86,33 +86,33 @@ func DefaultAWSSimulatorConfig() *AWSSimulatorConfig {
 
 // RealisticAWSSimulator simulates AWS EC2 behavior
 type RealisticAWSSimulator struct {
-	mu              sync.RWMutex
-	config          *AWSSimulatorConfig
-	instances       map[string]*SimulatedInstance
-	spotPrices      map[string]float64
-	spotCapacity    map[string]int
+	mu               sync.RWMutex
+	config           *AWSSimulatorConfig
+	instances        map[string]*SimulatedInstance
+	spotPrices       map[string]float64
+	spotCapacity     map[string]int
 	onDemandCapacity map[string]int
 
 	// Rate limiting
-	requestCount    int64
-	requestWindow   time.Time
-	rateLimitMu     sync.Mutex
+	requestCount  int64
+	requestWindow time.Time
+	rateLimitMu   sync.Mutex
 
 	// Metrics
-	totalRequests   int64
-	failedRequests  int64
-	throttledReqs   int64
+	totalRequests  int64
+	failedRequests int64
+	throttledReqs  int64
 
 	// Event channels
-	interruptionCh  chan *SpotInterruptionEvent
-	stateChangeCh   chan *InstanceStateChange
+	interruptionCh chan *SpotInterruptionEvent
+	stateChangeCh  chan *InstanceStateChange
 
 	// Random source (seeded for reproducibility in tests)
-	rng             *rand.Rand
+	rng *rand.Rand
 
 	// Lifecycle management
-	stopCh          chan struct{}
-	wg              sync.WaitGroup
+	stopCh chan struct{}
+	wg     sync.WaitGroup
 }
 
 // SimulatedInstance represents an EC2 instance with full lifecycle
@@ -137,10 +137,10 @@ type SimulatedInstance struct {
 
 // SpotInterruptionEvent represents a spot interruption notification
 type SpotInterruptionEvent struct {
-	InstanceID     string
-	InterruptTime  time.Time
-	Action         string // "terminate", "stop", "hibernate"
-	WarningTime    time.Duration // AWS gives 2-minute warning
+	InstanceID    string
+	InterruptTime time.Time
+	Action        string        // "terminate", "stop", "hibernate"
+	WarningTime   time.Duration // AWS gives 2-minute warning
 }
 
 // InstanceStateChange represents an instance state transition
@@ -519,9 +519,9 @@ func (s *RealisticAWSSimulator) GetSpotPrice(zone string) float64 {
 // GetMetrics returns simulator metrics
 func (s *RealisticAWSSimulator) GetMetrics() SimulatorMetrics {
 	return SimulatorMetrics{
-		TotalRequests:   atomic.LoadInt64(&s.totalRequests),
-		FailedRequests:  atomic.LoadInt64(&s.failedRequests),
-		ThrottledReqs:   atomic.LoadInt64(&s.throttledReqs),
+		TotalRequests:    atomic.LoadInt64(&s.totalRequests),
+		FailedRequests:   atomic.LoadInt64(&s.failedRequests),
+		ThrottledReqs:    atomic.LoadInt64(&s.throttledReqs),
 		RunningInstances: s.countInstancesByState(StateRunning),
 		PendingInstances: s.countInstancesByState(StatePending),
 	}
@@ -638,9 +638,9 @@ func (a *RealisticSpotAdapter) HandleInterruption(ctx context.Context, nodeID st
 // TestRealistic_InstanceLifecycle tests the full instance lifecycle
 func TestRealistic_InstanceLifecycle(t *testing.T) {
 	sim := NewRealisticAWSSimulator(&AWSSimulatorConfig{
-		MinAPILatency:    5 * time.Millisecond,
-		MaxAPILatency:    20 * time.Millisecond,
-		InstanceBootTime: 100 * time.Millisecond, // Fast for tests
+		MinAPILatency:     5 * time.Millisecond,
+		MaxAPILatency:     20 * time.Millisecond,
+		InstanceBootTime:  100 * time.Millisecond, // Fast for tests
 		MaxRequestsPerSec: 1000,
 		InitialCapacity: map[string]int{
 			"us-east-1a": 10,
@@ -862,8 +862,8 @@ func TestRealistic_CapacityExhaustion(t *testing.T) {
 // TestRealistic_SpotPriceRejection tests max price enforcement
 func TestRealistic_SpotPriceRejection(t *testing.T) {
 	sim := NewRealisticAWSSimulator(&AWSSimulatorConfig{
-		MinAPILatency:    1 * time.Millisecond,
-		MaxAPILatency:    5 * time.Millisecond,
+		MinAPILatency:     1 * time.Millisecond,
+		MaxAPILatency:     5 * time.Millisecond,
 		MaxRequestsPerSec: 1000,
 		InitialCapacity: map[string]int{
 			"us-east-1a": 10,
@@ -1159,10 +1159,10 @@ func TestRealistic_SpotInterruptionRecovery(t *testing.T) {
 			"us-east-1a": 10,
 			"us-east-1b": 10,
 		},
-		SpotCapacityRatio:   1.0,
-		BasePrices:          map[string]float64{"us-east-1a": 0.03, "us-east-1b": 0.04},
-		SpotInterruptRate:   0, // Manual interruption for this test
-		APIErrorRate:        0,
+		SpotCapacityRatio: 1.0,
+		BasePrices:        map[string]float64{"us-east-1a": 0.03, "us-east-1b": 0.04},
+		SpotInterruptRate: 0, // Manual interruption for this test
+		APIErrorRate:      0,
 	})
 
 	ctx := context.Background()

@@ -26,29 +26,29 @@ type RealisticMetricsCollector struct {
 	mu sync.RWMutex
 
 	// Simulated metrics
-	cpuUsage      float64
-	memoryUsage   float64
-	podCount      int
-	pendingPods   int
-	nodeCount     int
-	requestRate   float64
+	cpuUsage    float64
+	memoryUsage float64
+	podCount    int
+	pendingPods int
+	nodeCount   int
+	requestRate float64
 
 	// Behavior config
-	latency       time.Duration
-	errorRate     float64
-	volatility    float64
+	latency    time.Duration
+	errorRate  float64
+	volatility float64
 
 	// History for trend analysis
-	cpuHistory    []float64
-	memHistory    []float64
+	cpuHistory []float64
+	memHistory []float64
 
 	rng *rand.Rand
 }
 
 func NewRealisticMetricsCollector() *RealisticMetricsCollector {
 	return &RealisticMetricsCollector{
-		cpuUsage:    50.0,  // 50% CPU
-		memoryUsage: 60.0,  // 60% Memory
+		cpuUsage:    50.0, // 50% CPU
+		memoryUsage: 60.0, // 60% Memory
 		podCount:    100,
 		pendingPods: 0,
 		nodeCount:   5,
@@ -212,9 +212,9 @@ func maxInt(a, b int) int {
 type RealisticNodeScaler struct {
 	mu sync.RWMutex
 
-	nodes         map[string]*ScalerNode
-	currentCount  int
-	desiredCount  int
+	nodes        map[string]*ScalerNode
+	currentCount int
+	desiredCount int
 
 	// Timing simulation
 	provisionTime time.Duration
@@ -237,26 +237,26 @@ type RealisticNodeScaler struct {
 }
 
 type ScalerNode struct {
-	ID          string
-	Name        string
-	State       string // "provisioning", "running", "terminating", "terminated"
-	CreatedAt   time.Time
-	ReadyAt     time.Time
-	Age         time.Duration
+	ID        string
+	Name      string
+	State     string // "provisioning", "running", "terminating", "terminated"
+	CreatedAt time.Time
+	ReadyAt   time.Time
+	Age       time.Duration
 }
 
 func NewRealisticNodeScaler(initialCount int) *RealisticNodeScaler {
 	scaler := &RealisticNodeScaler{
-		nodes:            make(map[string]*ScalerNode),
-		currentCount:     initialCount,
-		desiredCount:     initialCount,
-		provisionTime:    100 * time.Millisecond, // Fast for tests
-		deleteTime:       50 * time.Millisecond,
+		nodes:             make(map[string]*ScalerNode),
+		currentCount:      initialCount,
+		desiredCount:      initialCount,
+		provisionTime:     100 * time.Millisecond, // Fast for tests
+		deleteTime:        50 * time.Millisecond,
 		provisionFailRate: 0.05,
-		deleteFailRate:   0.02,
-		providerCapacity: 100,
-		providerName:     "aws",
-		rng:              rand.New(rand.NewSource(time.Now().UnixNano())),
+		deleteFailRate:    0.02,
+		providerCapacity:  100,
+		providerName:      "aws",
+		rng:               rand.New(rand.NewSource(time.Now().UnixNano())),
 	}
 
 	// Create initial nodes
@@ -422,27 +422,27 @@ func NewRealisticPriceProvider() *RealisticPriceProvider {
 	return &RealisticPriceProvider{
 		instancePrices: map[string]map[string]float64{
 			"us-east-1": {
-				"t3.micro":   0.0104,
-				"t3.small":   0.0208,
-				"t3.medium":  0.0416,
-				"t3.large":   0.0832,
-				"m5.large":   0.096,
-				"m5.xlarge":  0.192,
-				"c5.large":   0.085,
-				"c5.xlarge":  0.17,
+				"t3.micro":  0.0104,
+				"t3.small":  0.0208,
+				"t3.medium": 0.0416,
+				"t3.large":  0.0832,
+				"m5.large":  0.096,
+				"m5.xlarge": 0.192,
+				"c5.large":  0.085,
+				"c5.xlarge": 0.17,
 			},
 			"us-west-2": {
-				"t3.micro":   0.0104,
-				"t3.small":   0.0208,
-				"t3.medium":  0.0416,
-				"t3.large":   0.0832,
-				"m5.large":   0.096,
+				"t3.micro":  0.0104,
+				"t3.small":  0.0208,
+				"t3.medium": 0.0416,
+				"t3.large":  0.0832,
+				"m5.large":  0.096,
 			},
 			"eu-west-1": {
-				"t3.micro":   0.0114,
-				"t3.small":   0.0228,
-				"t3.medium":  0.0456,
-				"m5.large":   0.107,
+				"t3.micro":  0.0114,
+				"t3.small":  0.0228,
+				"t3.medium": 0.0456,
+				"m5.large":  0.107,
 			},
 		},
 		spotPrices: map[string]map[string]float64{
@@ -767,7 +767,7 @@ func (s *RealisticCPUStrategy) ShouldScaleUp(ctx context.Context, metrics provis
 
 	if cpu > s.scaleUpThreshold {
 		// Scale up by 2 nodes or proportionally
-		nodesToAdd := int((cpu - s.scaleUpThreshold) / 10) + 1
+		nodesToAdd := int((cpu-s.scaleUpThreshold)/10) + 1
 		if nodesToAdd > 3 {
 			nodesToAdd = 3
 		}
@@ -784,7 +784,7 @@ func (s *RealisticCPUStrategy) ShouldScaleDown(ctx context.Context, metrics prov
 	}
 
 	if cpu < s.scaleDownThreshold {
-		nodesToRemove := int((s.scaleDownThreshold - cpu) / 15) + 1
+		nodesToRemove := int((s.scaleDownThreshold-cpu)/15) + 1
 		if nodesToRemove > 2 {
 			nodesToRemove = 2
 		}
@@ -1032,10 +1032,10 @@ func TestRealistic_Distribution_MultiAZSpread(t *testing.T) {
 		nodes    int
 		expected string
 	}{
-		{4, "1,1,1,1"},    // Perfect spread
-		{8, "2,2,2,2"},    // Even distribution
-		{10, "3,3,2,2"},   // Uneven, favor first zones
-		{3, "1,1,1,0"},    // Less nodes than zones
+		{4, "1,1,1,1"},  // Perfect spread
+		{8, "2,2,2,2"},  // Even distribution
+		{10, "3,3,2,2"}, // Uneven, favor first zones
+		{3, "1,1,1,0"},  // Less nodes than zones
 	}
 
 	for _, tc := range testCases {
@@ -1063,9 +1063,9 @@ func TestRealistic_Distribution_WeightedAllocation(t *testing.T) {
 
 	// Simulate zones with different capacities/preferences
 	distributions := []config.ZoneDistribution{
-		{Zone: "us-east-1a", Count: 50},  // 50% weight
-		{Zone: "us-east-1b", Count: 30},  // 30% weight
-		{Zone: "us-east-1c", Count: 20},  // 20% weight
+		{Zone: "us-east-1a", Count: 50}, // 50% weight
+		{Zone: "us-east-1b", Count: 30}, // 30% weight
+		{Zone: "us-east-1c", Count: 20}, // 20% weight
 	}
 
 	totalNodes := 20

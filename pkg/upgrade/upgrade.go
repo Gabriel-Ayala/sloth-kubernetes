@@ -72,10 +72,10 @@ type NodeUpgradePlan struct {
 type UpgradeStrategy string
 
 const (
-	StrategyRolling    UpgradeStrategy = "rolling"
-	StrategyBlueGreen  UpgradeStrategy = "blue-green"
-	StrategyCanary     UpgradeStrategy = "canary"
-	StrategyInPlace    UpgradeStrategy = "in-place"
+	StrategyRolling   UpgradeStrategy = "rolling"
+	StrategyBlueGreen UpgradeStrategy = "blue-green"
+	StrategyCanary    UpgradeStrategy = "canary"
+	StrategyInPlace   UpgradeStrategy = "in-place"
 )
 
 // PreCheck represents a pre-upgrade check

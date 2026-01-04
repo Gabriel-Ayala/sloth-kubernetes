@@ -31,10 +31,10 @@ func TestOrchestrator_MultiTierApplicationDeployment(t *testing.T) {
 					Size:     "s-2vcpu-4gb",
 					Roles:    []string{"worker"},
 					Labels: map[string]string{
-						"tier":        "frontend",
-						"app-layer":   "presentation",
-						"scaling":     "auto",
-						"cache":       "enabled",
+						"tier":      "frontend",
+						"app-layer": "presentation",
+						"scaling":   "auto",
+						"cache":     "enabled",
 					},
 				},
 				"backend": {
@@ -44,9 +44,9 @@ func TestOrchestrator_MultiTierApplicationDeployment(t *testing.T) {
 					Size:     "c-4", // CPU-optimized
 					Roles:    []string{"worker"},
 					Labels: map[string]string{
-						"tier":        "backend",
-						"app-layer":   "business-logic",
-						"api":         "enabled",
+						"tier":      "backend",
+						"app-layer": "business-logic",
+						"api":       "enabled",
 					},
 				},
 				"database": {
@@ -350,9 +350,9 @@ func TestOrchestrator_IoTDeviceManagementCluster(t *testing.T) {
 					Size:     "c-4",
 					Roles:    []string{"worker"},
 					Labels: map[string]string{
-						"component":  "processing",
-						"stream":     "kafka",
-						"real-time":  "true",
+						"component": "processing",
+						"stream":    "kafka",
+						"real-time": "true",
 					},
 				},
 			},
@@ -459,8 +459,8 @@ func TestOrchestrator_DataAnalyticsCluster(t *testing.T) {
 						Name:        "high-performance",
 						Provisioner: "dobs.csi.digitalocean.com",
 						Parameters: map[string]string{
-							"type":  "ssd",
-							"iops":  "10000",
+							"type": "ssd",
+							"iops": "10000",
 						},
 					},
 				},
@@ -510,9 +510,9 @@ func TestOrchestrator_MicroservicesMeshConfiguration(t *testing.T) {
 					Size:     "s-2vcpu-4gb",
 					Roles:    []string{"worker"},
 					Labels: map[string]string{
-						"mesh":        "istio",
-						"sidecar":     "enabled",
-						"tracing":     "enabled",
+						"mesh":          "istio",
+						"sidecar":       "enabled",
+						"tracing":       "enabled",
 						"observability": "full",
 					},
 				},
@@ -566,9 +566,9 @@ func TestOrchestrator_BatchProcessingWorkload(t *testing.T) {
 					Size:     "c-4",
 					Roles:    []string{"worker"},
 					Labels: map[string]string{
-						"workload":     "batch",
-						"priority":     "low",
-						"preemptible":  "true",
+						"workload":       "batch",
+						"priority":       "low",
+						"preemptible":    "true",
 						"cost-optimized": "true",
 					},
 				},

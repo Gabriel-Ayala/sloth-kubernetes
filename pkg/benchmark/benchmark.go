@@ -70,16 +70,16 @@ type BenchmarkReport struct {
 
 // BenchmarkSummary summarizes the benchmark results
 type BenchmarkSummary struct {
-	TotalBenchmarks    int
-	PassedBenchmarks   int
-	FailedBenchmarks   int
-	OverallScore       float64
-	NetworkScore       float64
-	StorageScore       float64
-	CPUScore           float64
-	MemoryScore        float64
-	Grade              string
-	Recommendations    []string
+	TotalBenchmarks  int
+	PassedBenchmarks int
+	FailedBenchmarks int
+	OverallScore     float64
+	NetworkScore     float64
+	StorageScore     float64
+	CPUScore         float64
+	MemoryScore      float64
+	Grade            string
+	Recommendations  []string
 }
 
 // BenchmarkComparison compares with reference values
@@ -681,20 +681,20 @@ func (m *Manager) normalizeScore(result BenchmarkResult) float64 {
 		perfect float64
 		inverse bool // true if lower is better
 	}{
-		"Pod-to-Pod Latency":      {good: 1.0, perfect: 0.3, inverse: true},
-		"DNS Resolution Latency":  {good: 5.0, perfect: 1.0, inverse: true},
-		"Network Throughput":      {good: 5.0, perfect: 10.0, inverse: false},
-		"CNI Performance":         {good: 80.0, perfect: 100.0, inverse: false},
-		"Storage IOPS":            {good: 2000.0, perfect: 5000.0, inverse: false},
-		"Sequential I/O":          {good: 150.0, perfect: 400.0, inverse: false},
-		"Random I/O":              {good: 30.0, perfect: 100.0, inverse: false},
-		"PVC Provisioning Time":   {good: 10.0, perfect: 2.0, inverse: true},
-		"CPU Efficiency":          {good: 50.0, perfect: 90.0, inverse: false},
-		"Pod Scheduling Latency":  {good: 200.0, perfect: 30.0, inverse: true},
-		"API Server Latency":      {good: 50.0, perfect: 5.0, inverse: true},
-		"Memory Utilization":      {good: 80.0, perfect: 50.0, inverse: true},
-		"Memory Bandwidth":        {good: 10.0, perfect: 40.0, inverse: false},
-		"Etcd Memory Usage":       {good: 500.0, perfect: 100.0, inverse: true},
+		"Pod-to-Pod Latency":     {good: 1.0, perfect: 0.3, inverse: true},
+		"DNS Resolution Latency": {good: 5.0, perfect: 1.0, inverse: true},
+		"Network Throughput":     {good: 5.0, perfect: 10.0, inverse: false},
+		"CNI Performance":        {good: 80.0, perfect: 100.0, inverse: false},
+		"Storage IOPS":           {good: 2000.0, perfect: 5000.0, inverse: false},
+		"Sequential I/O":         {good: 150.0, perfect: 400.0, inverse: false},
+		"Random I/O":             {good: 30.0, perfect: 100.0, inverse: false},
+		"PVC Provisioning Time":  {good: 10.0, perfect: 2.0, inverse: true},
+		"CPU Efficiency":         {good: 50.0, perfect: 90.0, inverse: false},
+		"Pod Scheduling Latency": {good: 200.0, perfect: 30.0, inverse: true},
+		"API Server Latency":     {good: 50.0, perfect: 5.0, inverse: true},
+		"Memory Utilization":     {good: 80.0, perfect: 50.0, inverse: true},
+		"Memory Bandwidth":       {good: 10.0, perfect: 40.0, inverse: false},
+		"Etcd Memory Usage":      {good: 500.0, perfect: 100.0, inverse: true},
 	}
 
 	ref, ok := references[result.Name]

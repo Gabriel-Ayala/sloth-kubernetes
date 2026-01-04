@@ -973,10 +973,10 @@ func TestTTLParsing(t *testing.T) {
 		expected time.Duration
 		isValid  bool
 	}{
-		{"720h", 720 * time.Hour, true},    // 30 days
-		{"168h", 168 * time.Hour, true},    // 7 days
-		{"24h", 24 * time.Hour, true},      // 1 day
-		{"2160h", 2160 * time.Hour, true},  // 90 days
+		{"720h", 720 * time.Hour, true},   // 30 days
+		{"168h", 168 * time.Hour, true},   // 7 days
+		{"24h", 24 * time.Hour, true},     // 1 day
+		{"2160h", 2160 * time.Hour, true}, // 90 days
 		{"1h", 1 * time.Hour, true},
 		{"30m", 30 * time.Minute, true},
 		{"invalid", 0, false},

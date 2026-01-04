@@ -330,30 +330,30 @@ func NewAWSPriceProvider() *AWSPriceProvider {
 				"c5.2xlarge": 0.34,
 			},
 			"us-west-2": {
-				"t3.micro":   0.0104,
-				"t3.small":   0.0208,
-				"t3.medium":  0.0416,
-				"t3.large":   0.0832,
-				"t3.xlarge":  0.1664,
-				"m5.large":   0.096,
-				"m5.xlarge":  0.192,
+				"t3.micro":  0.0104,
+				"t3.small":  0.0208,
+				"t3.medium": 0.0416,
+				"t3.large":  0.0832,
+				"t3.xlarge": 0.1664,
+				"m5.large":  0.096,
+				"m5.xlarge": 0.192,
 			},
 			"eu-west-1": {
-				"t3.micro":   0.0114,
-				"t3.small":   0.0228,
-				"t3.medium":  0.0456,
-				"t3.large":   0.0912,
-				"m5.large":   0.107,
+				"t3.micro":  0.0114,
+				"t3.small":  0.0228,
+				"t3.medium": 0.0456,
+				"t3.large":  0.0912,
+				"m5.large":  0.107,
 			},
 		},
 		spotDiscounts: map[string]float64{
-			"t3.micro":   0.70, // 70% off
-			"t3.small":   0.65,
-			"t3.medium":  0.60,
-			"t3.large":   0.65,
-			"m5.large":   0.60,
-			"m5.xlarge":  0.55,
-			"c5.large":   0.65,
+			"t3.micro":  0.70, // 70% off
+			"t3.small":  0.65,
+			"t3.medium": 0.60,
+			"t3.large":  0.65,
+			"m5.large":  0.60,
+			"m5.xlarge": 0.55,
+			"c5.large":  0.65,
 		},
 	}
 }
@@ -427,9 +427,9 @@ func NewGCPPriceProvider() *GCPPriceProvider {
 	return &GCPPriceProvider{
 		instancePrices: map[string]map[string]float64{
 			"us-central1": {
-				"e2-micro":    0.0084,
-				"e2-small":    0.0168,
-				"e2-medium":   0.0335,
+				"e2-micro":      0.0084,
+				"e2-small":      0.0168,
+				"e2-medium":     0.0335,
 				"e2-standard-2": 0.067,
 				"e2-standard-4": 0.134,
 				"n1-standard-1": 0.0475,
@@ -489,17 +489,17 @@ type DigitalOceanPriceProvider struct {
 func NewDigitalOceanPriceProvider() *DigitalOceanPriceProvider {
 	return &DigitalOceanPriceProvider{
 		dropletPrices: map[string]float64{
-			"s-1vcpu-1gb":    0.007,
-			"s-1vcpu-2gb":    0.014,
-			"s-2vcpu-2gb":    0.021,
-			"s-2vcpu-4gb":    0.028,
-			"s-4vcpu-8gb":    0.056,
-			"s-6vcpu-16gb":   0.111,
-			"s-8vcpu-32gb":   0.167,
-			"g-2vcpu-8gb":    0.089,
-			"g-4vcpu-16gb":   0.179,
-			"c-2":            0.050,
-			"c-4":            0.100,
+			"s-1vcpu-1gb":  0.007,
+			"s-1vcpu-2gb":  0.014,
+			"s-2vcpu-2gb":  0.021,
+			"s-2vcpu-4gb":  0.028,
+			"s-4vcpu-8gb":  0.056,
+			"s-6vcpu-16gb": 0.111,
+			"s-8vcpu-32gb": 0.167,
+			"g-2vcpu-8gb":  0.089,
+			"g-4vcpu-16gb": 0.179,
+			"c-2":          0.050,
+			"c-4":          0.100,
 		},
 	}
 }

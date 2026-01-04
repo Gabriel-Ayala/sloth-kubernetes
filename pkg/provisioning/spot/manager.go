@@ -8,8 +8,8 @@ import (
 	"time"
 
 	"github.com/chalkan3/sloth-kubernetes/pkg/config"
-	"github.com/chalkan3/sloth-kubernetes/pkg/provisioning"
 	"github.com/chalkan3/sloth-kubernetes/pkg/providers"
+	"github.com/chalkan3/sloth-kubernetes/pkg/provisioning"
 )
 
 // =============================================================================
@@ -18,9 +18,9 @@ import (
 
 // Manager manages spot instances across providers
 type Manager struct {
-	providers     map[string]ProviderAdapter
-	strategy      Strategy
-	eventEmitter  provisioning.EventEmitter
+	providers    map[string]ProviderAdapter
+	strategy     Strategy
+	eventEmitter provisioning.EventEmitter
 
 	// Interruption handling
 	interruptionHandlers []InterruptionHandler
@@ -86,16 +86,16 @@ func (m *Manager) CreateSpotInstance(
 
 		// Return nil to indicate on-demand should be used
 		return nil, &SpotUnavailableError{
-			InstanceType: nodeConfig.Size,
-			Zone:         nodeConfig.Zone,
+			InstanceType:       nodeConfig.Size,
+			Zone:               nodeConfig.Zone,
 			FallbackToOnDemand: true,
 		}
 	}
 
 	if !available {
 		return nil, &SpotUnavailableError{
-			InstanceType: nodeConfig.Size,
-			Zone:         nodeConfig.Zone,
+			InstanceType:       nodeConfig.Size,
+			Zone:               nodeConfig.Zone,
 			FallbackToOnDemand: false,
 		}
 	}

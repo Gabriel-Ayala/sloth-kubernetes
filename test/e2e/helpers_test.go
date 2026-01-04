@@ -1,3 +1,4 @@
+//go:build e2e
 // +build e2e
 
 // Package e2e provides test helpers and utilities
@@ -696,15 +697,15 @@ func SkipIfShortTest(t *testing.T) {
 
 // TestReport holds test execution report data
 type TestReport struct {
-	TestName    string
-	StartTime   time.Time
-	EndTime     time.Time
-	Duration    time.Duration
-	Status      string
-	Phases      []PhaseReport
-	Errors      []string
-	Warnings    []string
-	Metrics     map[string]interface{}
+	TestName  string
+	StartTime time.Time
+	EndTime   time.Time
+	Duration  time.Duration
+	Status    string
+	Phases    []PhaseReport
+	Errors    []string
+	Warnings  []string
+	Metrics   map[string]interface{}
 }
 
 // PhaseReport holds phase execution data

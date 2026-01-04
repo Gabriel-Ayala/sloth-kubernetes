@@ -585,10 +585,11 @@ func TestValidateNodePools_AzureProvider(t *testing.T) {
 	err := ValidateNodePools(cfg)
 	assert.NoError(t, err)
 }
+
 // Tests for ValidateAPITokensWithProviders
 func TestValidateAPITokensWithProviders_DigitalOcean(t *testing.T) {
 	t.Skip("Skipping - requires real DigitalOcean API access")
-	
+
 	cfg := &config.ClusterConfig{
 		Providers: config.ProvidersConfig{
 			DigitalOcean: &config.DigitalOceanProvider{
@@ -605,7 +606,7 @@ func TestValidateAPITokensWithProviders_DigitalOcean(t *testing.T) {
 
 func TestValidateAPITokensWithProviders_Linode(t *testing.T) {
 	t.Skip("Skipping - requires real Linode API access")
-	
+
 	cfg := &config.ClusterConfig{
 		Providers: config.ProvidersConfig{
 			Linode: &config.LinodeProvider{
@@ -622,7 +623,7 @@ func TestValidateAPITokensWithProviders_Linode(t *testing.T) {
 
 func TestValidateAPITokensWithProviders_MultipleProviders(t *testing.T) {
 	t.Skip("Skipping - requires real API access")
-	
+
 	cfg := &config.ClusterConfig{
 		Providers: config.ProvidersConfig{
 			DigitalOcean: &config.DigitalOceanProvider{
@@ -672,7 +673,7 @@ func TestValidateAPITokensWithProviders_DisabledProvider(t *testing.T) {
 
 func TestValidateAPITokensWithProviders_TokenFromEnv(t *testing.T) {
 	t.Skip("Skipping - requires real API access")
-	
+
 	// Set invalid token in env
 	os.Setenv("DIGITALOCEAN_TOKEN", "invalid-env-token")
 	defer os.Unsetenv("DIGITALOCEAN_TOKEN")
@@ -694,7 +695,7 @@ func TestValidateAPITokensWithProviders_TokenFromEnv(t *testing.T) {
 // Tests for validateDigitalOceanToken
 func TestValidateDigitalOceanToken_Invalid(t *testing.T) {
 	t.Skip("Skipping - requires real DigitalOcean API access")
-	
+
 	err := validateDigitalOceanToken("invalid-token-12345")
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "invalid token or API error")
@@ -702,7 +703,7 @@ func TestValidateDigitalOceanToken_Invalid(t *testing.T) {
 
 func TestValidateDigitalOceanToken_Empty(t *testing.T) {
 	t.Skip("Skipping - requires real DigitalOcean API access")
-	
+
 	err := validateDigitalOceanToken("")
 	assert.Error(t, err)
 }
@@ -710,7 +711,7 @@ func TestValidateDigitalOceanToken_Empty(t *testing.T) {
 // Tests for validateLinodeToken
 func TestValidateLinodeToken_Invalid(t *testing.T) {
 	t.Skip("Skipping - requires real Linode API access")
-	
+
 	err := validateLinodeToken("invalid-token-12345")
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "invalid token or API error")
@@ -718,7 +719,7 @@ func TestValidateLinodeToken_Invalid(t *testing.T) {
 
 func TestValidateLinodeToken_Empty(t *testing.T) {
 	t.Skip("Skipping - requires real Linode API access")
-	
+
 	err := validateLinodeToken("")
 	assert.Error(t, err)
 }

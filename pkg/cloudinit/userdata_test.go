@@ -278,7 +278,7 @@ func TestUserDataHostnameFormats(t *testing.T) {
 
 func TestUserDataSaltMasterIPFormats(t *testing.T) {
 	tests := []struct {
-		name    string
+		name     string
 		masterIP string
 	}{
 		{"IPv4_Private", "10.0.0.1"},

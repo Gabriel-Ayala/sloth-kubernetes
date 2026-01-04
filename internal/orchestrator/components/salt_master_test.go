@@ -122,8 +122,8 @@ func TestGetNodeType(t *testing.T) {
 		{"node-0", "node"},
 		{"bastion", "node"},
 		{"custom-name", "node"},
-		{"mast", "node"},   // too short
-		{"work", "node"},   // too short
+		{"mast", "node"}, // too short
+		{"work", "node"}, // too short
 		{"masternode", "master"},
 		{"workernode", "worker"},
 	}

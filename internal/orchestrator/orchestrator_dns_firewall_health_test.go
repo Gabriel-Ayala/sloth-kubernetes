@@ -10,14 +10,15 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
 // Test 1: DNS configuration with multiple nodes
 func TestOrchestrator_DNSWithMultipleNodes(t *testing.T) {
 	err := pulumi.RunErr(func(ctx *pulumi.Context) error {
 		cfg := &config.ClusterConfig{
 			Providers: config.ProvidersConfig{
 				DigitalOcean: &config.DigitalOceanProvider{
-					
-					Token:   "test-token",
+
+					Token: "test-token",
 				},
 			},
 			Network: config.NetworkConfig{
@@ -56,6 +57,7 @@ func TestOrchestrator_DNSWithMultipleNodes(t *testing.T) {
 	}, pulumi.WithMocks("test", "dns-multi", &IntegrationMockProvider{}))
 	assert.NoError(t, err)
 }
+
 // Test 2: DNS with custom domain scenarios
 func TestOrchestrator_DNSCustomDomains(t *testing.T) {
 	tests := []struct {
@@ -85,14 +87,14 @@ func TestOrchestrator_DNSCustomDomains(t *testing.T) {
 				cfg := &config.ClusterConfig{
 					Providers: config.ProvidersConfig{
 						DigitalOcean: &config.DigitalOceanProvider{
-							
-							Token:   "test-token",
+
+							Token: "test-token",
 						},
 					},
 					Network: config.NetworkConfig{
 						DNS: config.DNSConfig{
-							
-							Domain:  tt.domain,
+
+							Domain: tt.domain,
 						},
 					},
 				}
@@ -105,6 +107,7 @@ func TestOrchestrator_DNSCustomDomains(t *testing.T) {
 		})
 	}
 }
+
 // Test 3: Firewall configuration for different node types
 func TestOrchestrator_FirewallConfigurationForNodeTypes(t *testing.T) {
 	err := pulumi.RunErr(func(ctx *pulumi.Context) error {
@@ -150,6 +153,7 @@ func TestOrchestrator_FirewallConfigurationForNodeTypes(t *testing.T) {
 	}, pulumi.WithMocks("test", "firewall-types", &IntegrationMockProvider{}))
 	assert.NoError(t, err)
 }
+
 // Test 4: Firewall with multiple providers
 func TestOrchestrator_FirewallWithMultipleProviders(t *testing.T) {
 	err := pulumi.RunErr(func(ctx *pulumi.Context) error {
@@ -196,6 +200,7 @@ func TestOrchestrator_FirewallWithMultipleProviders(t *testing.T) {
 	}, pulumi.WithMocks("test", "firewall-multi", &IntegrationMockProvider{}))
 	assert.NoError(t, err)
 }
+
 // Test 5: Health check initialization
 func TestOrchestrator_HealthCheckInitialization(t *testing.T) {
 	err := pulumi.RunErr(func(ctx *pulumi.Context) error {
@@ -208,6 +213,7 @@ func TestOrchestrator_HealthCheckInitialization(t *testing.T) {
 	}, pulumi.WithMocks("test", "health-init", &IntegrationMockProvider{}))
 	assert.NoError(t, err)
 }
+
 // Test 6: Node verification with master/worker distribution
 func TestOrchestrator_NodeVerificationMasterWorkerDistribution(t *testing.T) {
 	tests := []struct {
@@ -258,8 +264,8 @@ func TestOrchestrator_NodeVerificationMasterWorkerDistribution(t *testing.T) {
 				cfg := &config.ClusterConfig{
 					Providers: config.ProvidersConfig{
 						DigitalOcean: &config.DigitalOceanProvider{
-							
-							Token:   "test-token",
+
+							Token: "test-token",
 						},
 					},
 					NodePools: nodePools,
@@ -277,6 +283,7 @@ func TestOrchestrator_NodeVerificationMasterWorkerDistribution(t *testing.T) {
 		})
 	}
 }
+
 // Test 7: VPN connectivity matrix verification
 func TestOrchestrator_VPNConnectivityMatrixVerification(t *testing.T) {
 	err := pulumi.RunErr(func(ctx *pulumi.Context) error {
@@ -319,6 +326,7 @@ func TestOrchestrator_VPNConnectivityMatrixVerification(t *testing.T) {
 	}, pulumi.WithMocks("test", "vpn-matrix", &IntegrationMockProvider{}))
 	assert.NoError(t, err)
 }
+
 // Test 8: Export outputs with complete cluster state
 func TestOrchestrator_ExportOutputsWithCompleteState(t *testing.T) {
 	err := pulumi.RunErr(func(ctx *pulumi.Context) error {
@@ -349,6 +357,7 @@ func TestOrchestrator_ExportOutputsWithCompleteState(t *testing.T) {
 	}, pulumi.WithMocks("test", "export-complete", &IntegrationMockProvider{}))
 	assert.NoError(t, err)
 }
+
 // Test 9: Node retrieval methods with populated nodes
 func TestOrchestrator_NodeRetrievalMethodsWithNodes(t *testing.T) {
 	err := pulumi.RunErr(func(ctx *pulumi.Context) error {
@@ -394,6 +403,7 @@ func TestOrchestrator_NodeRetrievalMethodsWithNodes(t *testing.T) {
 	}, pulumi.WithMocks("test", "node-retrieval", &IntegrationMockProvider{}))
 	assert.NoError(t, err)
 }
+
 // Test 10: Orchestrator with AWS provider (GCP not available in this build)
 func TestOrchestrator_WithAWSAndGCPProviders(t *testing.T) {
 	// Create temporary SSH key files for the test
@@ -435,6 +445,7 @@ func TestOrchestrator_WithAWSAndGCPProviders(t *testing.T) {
 	}, pulumi.WithMocks("test", "aws-provider", &IntegrationMockProvider{}))
 	assert.NoError(t, err)
 }
+
 // Test 11: WireGuard configuration with multiple node pools
 func TestOrchestrator_WireGuardWithMultipleNodePools(t *testing.T) {
 	err := pulumi.RunErr(func(ctx *pulumi.Context) error {
@@ -493,20 +504,21 @@ func TestOrchestrator_WireGuardWithMultipleNodePools(t *testing.T) {
 	}, pulumi.WithMocks("test", "wireguard-pools", &IntegrationMockProvider{}))
 	assert.NoError(t, err)
 }
+
 // Test 12: DNS record creation for different node types
 func TestOrchestrator_DNSRecordCreationForDifferentNodeTypes(t *testing.T) {
 	err := pulumi.RunErr(func(ctx *pulumi.Context) error {
 		cfg := &config.ClusterConfig{
 			Providers: config.ProvidersConfig{
 				DigitalOcean: &config.DigitalOceanProvider{
-					
-					Token:   "test-token",
+
+					Token: "test-token",
 				},
 			},
 			Network: config.NetworkConfig{
 				DNS: config.DNSConfig{
-					
-					Domain:  "kubernetes.local",
+
+					Domain: "kubernetes.local",
 				},
 			},
 		}
@@ -539,6 +551,7 @@ func TestOrchestrator_DNSRecordCreationForDifferentNodeTypes(t *testing.T) {
 	}, pulumi.WithMocks("test", "dns-node-types", &IntegrationMockProvider{}))
 	assert.NoError(t, err)
 }
+
 // Test 13: Firewall rules for specific ports and protocols
 func TestOrchestrator_FirewallRulesForSpecificPortsAndProtocols(t *testing.T) {
 	tests := []struct {
@@ -608,6 +621,7 @@ func TestOrchestrator_FirewallRulesForSpecificPortsAndProtocols(t *testing.T) {
 		})
 	}
 }
+
 // Test 14: Orchestrator state after each phase
 func TestOrchestrator_StateAfterEachPhase(t *testing.T) {
 	err := pulumi.RunErr(func(ctx *pulumi.Context) error {
@@ -633,6 +647,7 @@ func TestOrchestrator_StateAfterEachPhase(t *testing.T) {
 	}, pulumi.WithMocks("test", "state-phases", &IntegrationMockProvider{}))
 	assert.NoError(t, err)
 }
+
 // Test 15: Node distribution with edge cases
 func TestOrchestrator_NodeDistributionEdgeCases(t *testing.T) {
 	tests := []struct {
@@ -683,8 +698,8 @@ func TestOrchestrator_NodeDistributionEdgeCases(t *testing.T) {
 				cfg := &config.ClusterConfig{
 					Providers: config.ProvidersConfig{
 						DigitalOcean: &config.DigitalOceanProvider{
-							
-							Token:   "test-token",
+
+							Token: "test-token",
 						},
 					},
 					NodePools: tt.nodePools,
@@ -703,6 +718,7 @@ func TestOrchestrator_NodeDistributionEdgeCases(t *testing.T) {
 		})
 	}
 }
+
 // Test 16: Ingress installation prerequisites
 func TestOrchestrator_IngressInstallationPrerequisites(t *testing.T) {
 	err := pulumi.RunErr(func(ctx *pulumi.Context) error {
@@ -739,6 +755,7 @@ func TestOrchestrator_IngressInstallationPrerequisites(t *testing.T) {
 	}, pulumi.WithMocks("test", "ingress-prereq", &IntegrationMockProvider{}))
 	assert.NoError(t, err)
 }
+
 // Test 17: Cleanup with multiple providers
 func TestOrchestrator_CleanupWithMultipleProviders(t *testing.T) {
 	err := pulumi.RunErr(func(ctx *pulumi.Context) error {
@@ -771,6 +788,7 @@ func TestOrchestrator_CleanupWithMultipleProviders(t *testing.T) {
 	}, pulumi.WithMocks("test", "cleanup-multi", &IntegrationMockProvider{}))
 	assert.NoError(t, err)
 }
+
 // Test 18: Network CIDR validation
 func TestOrchestrator_NetworkCIDRValidation(t *testing.T) {
 	tests := []struct {
@@ -830,6 +848,7 @@ func TestOrchestrator_NetworkCIDRValidation(t *testing.T) {
 		})
 	}
 }
+
 // Test 19: Metadata export in outputs
 func TestOrchestrator_MetadataExportInOutputs(t *testing.T) {
 	err := pulumi.RunErr(func(ctx *pulumi.Context) error {
@@ -839,14 +858,14 @@ func TestOrchestrator_MetadataExportInOutputs(t *testing.T) {
 				Environment: "production",
 				Version:     "2.0.0",
 				Labels: map[string]string{
-					"team": "platform",
+					"team":        "platform",
 					"cost-center": "engineering",
 				},
 			},
 			Providers: config.ProvidersConfig{
 				DigitalOcean: &config.DigitalOceanProvider{
-					
-					Token:   "test-token",
+
+					Token: "test-token",
 				},
 			},
 		}
@@ -861,6 +880,7 @@ func TestOrchestrator_MetadataExportInOutputs(t *testing.T) {
 	}, pulumi.WithMocks("test", "metadata-export", &IntegrationMockProvider{}))
 	assert.NoError(t, err)
 }
+
 // Test 20: Complex multi-region multi-cloud setup
 func TestOrchestrator_ComplexMultiRegionMultiCloud(t *testing.T) {
 	err := pulumi.RunErr(func(ctx *pulumi.Context) error {

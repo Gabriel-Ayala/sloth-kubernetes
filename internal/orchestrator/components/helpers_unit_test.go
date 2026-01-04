@@ -191,7 +191,7 @@ func TestGetSSHUserForProvider_CaseSensitivity(t *testing.T) {
 		expectedUser string
 	}{
 		{"Lowercase azure", "azure", "azureuser"},
-		{"Uppercase AZURE", "AZURE", "root"}, // Should default to root for unknown
+		{"Uppercase AZURE", "AZURE", "root"},  // Should default to root for unknown
 		{"Mixed case Azure", "Azure", "root"}, // Should default to root for unknown
 		{"Lowercase aws", "aws", "ubuntu"},
 		{"Uppercase AWS", "AWS", "root"}, // Should default to root for unknown
@@ -299,14 +299,14 @@ func TestGetSSHUserForProvider_ConsistencyAcrossFunctions(t *testing.T) {
 // TestGetSudoPrefixForUser_CorrespondsToSSHUser tests that sudo prefix matches SSH user expectations
 func TestGetSudoPrefixForUser_CorrespondsToSSHUser(t *testing.T) {
 	testCases := []struct {
-		provider    string
+		provider       string
 		shouldHaveSudo bool
 	}{
-		{"azure", true},      // azureuser needs sudo
-		{"aws", true},        // ubuntu needs sudo
-		{"gcp", true},        // ubuntu needs sudo
+		{"azure", true},         // azureuser needs sudo
+		{"aws", true},           // ubuntu needs sudo
+		{"gcp", true},           // ubuntu needs sudo
 		{"digitalocean", false}, // root doesn't need sudo
-		{"linode", false},    // root doesn't need sudo
+		{"linode", false},       // root doesn't need sudo
 	}
 
 	for _, tc := range testCases {

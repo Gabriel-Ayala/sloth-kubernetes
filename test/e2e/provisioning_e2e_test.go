@@ -1,3 +1,4 @@
+//go:build e2e
 // +build e2e
 
 // Package e2e provides end-to-end tests for provisioning components
@@ -79,9 +80,9 @@ func (m *testMetricsCollector) GetCustomMetric(ctx context.Context, name string)
 
 // testNodeScaler tracks scaling operations
 type testNodeScaler struct {
-	currentCount  int
-	desiredCount  int
-	scaleUpCalls  []int
+	currentCount   int
+	desiredCount   int
+	scaleUpCalls   []int
 	scaleDownCalls []int
 }
 
@@ -124,11 +125,11 @@ func TestE2E_AutoScaling_ScaleUpDecision(t *testing.T) {
 	}
 
 	autoscalingCfg := &config.AutoScalingConfig{
-		Enabled:    true,
-		MinNodes:   2,
-		MaxNodes:   10,
-		Cooldown:   1, // 1 second cooldown for testing
-		TargetCPU:  80,
+		Enabled:      true,
+		MinNodes:     2,
+		MaxNodes:     10,
+		Cooldown:     1, // 1 second cooldown for testing
+		TargetCPU:    80,
 		TargetMemory: 80,
 	}
 
@@ -228,9 +229,9 @@ func TestE2E_AutoScaling_StrategyRegistry(t *testing.T) {
 
 // s3BackupStorage implements BackupStorage using real S3
 type s3BackupStorage struct {
-	client     *s3.Client
-	bucket     string
-	prefix     string
+	client *s3.Client
+	bucket string
+	prefix string
 }
 
 func newS3BackupStorage(ctx context.Context, bucket, prefix string) (*s3BackupStorage, error) {

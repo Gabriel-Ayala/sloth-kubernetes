@@ -15,10 +15,10 @@ var (
 	autoApprove bool
 
 	// Version information - set by main.go
-	Version   = "dev"
-	Commit    = "none"
-	Date      = "unknown"
-	BuiltBy   = "unknown"
+	Version = "dev"
+	Commit  = "none"
+	Date    = "unknown"
+	BuiltBy = "unknown"
 )
 
 // SetVersionInfo sets the version information from main.go

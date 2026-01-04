@@ -1,3 +1,4 @@
+//go:build integration
 // +build integration
 
 package providers_test
@@ -35,15 +36,15 @@ const (
 
 // TestResources tracks created resources for cleanup
 type TestResources struct {
-	VPCIDs            []string
-	SubnetIDs         []string
-	SecurityGroupIDs  []string
+	VPCIDs             []string
+	SubnetIDs          []string
+	SecurityGroupIDs   []string
 	InternetGatewayIDs []string
-	InstanceIDs       []string
-	KeyPairNames      []string
-	SpotRequestIDs    []string
-	LoadBalancerARNs  []string
-	TargetGroupARNs   []string
+	InstanceIDs        []string
+	KeyPairNames       []string
+	SpotRequestIDs     []string
+	LoadBalancerARNs   []string
+	TargetGroupARNs    []string
 }
 
 // AWSTestSuite holds AWS clients for integration tests
@@ -961,11 +962,11 @@ func TestIntegration_AWS_LoadBalancer(t *testing.T) {
 	}
 
 	tg, err := suite.elbClient.CreateTargetGroup(ctx, &elasticloadbalancingv2.CreateTargetGroupInput{
-		Name:       aws.String(tgName),
-		Port:       aws.Int32(6443),
-		Protocol:   elbtypes.ProtocolEnumTcp,
-		VpcId:      vpc.Vpc.VpcId,
-		TargetType: elbtypes.TargetTypeEnumInstance,
+		Name:                       aws.String(tgName),
+		Port:                       aws.Int32(6443),
+		Protocol:                   elbtypes.ProtocolEnumTcp,
+		VpcId:                      vpc.Vpc.VpcId,
+		TargetType:                 elbtypes.TargetTypeEnumInstance,
 		HealthCheckProtocol:        elbtypes.ProtocolEnumTcp,
 		HealthCheckPort:            aws.String("6443"),
 		HealthCheckIntervalSeconds: aws.Int32(30),
