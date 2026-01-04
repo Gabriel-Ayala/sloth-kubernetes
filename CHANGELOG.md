@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.4.1](https://github.com/chalkan3/sloth-kubernetes/compare/v0.4.0...v0.4.1) (2026-01-04)
+
+
+### Bug Fixes
+
+* resolve CI pipeline failures and test issues ([ab78da1](https://github.com/chalkan3/sloth-kubernetes/commit/ab78da1346a728fc2317a31e34a9ac5f6e9c6635))
+* resolve CI pipeline failures and test issues ([92736ec](https://github.com/chalkan3/sloth-kubernetes/commit/92736eca9b508cb3ec952b090293888516f6d939))
+
 ## [0.4.0](https://github.com/chalkan3/sloth-kubernetes/compare/v0.3.0...v0.4.0) (2026-01-04)
 
 
