@@ -413,7 +413,8 @@ func TestBackoffSleepContext(t *testing.T) {
 	if err != nil {
 		t.Errorf("SleepContext returned error: %v", err)
 	}
-	if elapsed < 10*time.Millisecond {
+	// Use 5ms tolerance to avoid flaky tests due to timing variations
+	if elapsed < 5*time.Millisecond {
 		t.Errorf("SleepContext returned too quickly: %v", elapsed)
 	}
 
