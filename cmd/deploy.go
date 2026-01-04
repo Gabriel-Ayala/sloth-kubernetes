@@ -45,17 +45,17 @@ var deployCmd = &cobra.Command{
 Stack-based deployment allows you to manage multiple clusters independently.
 Each stack maintains its own state file, enabling cluster updates and parallel deployments.`,
 	Example: `  # Deploy a cluster with stack name
-  sloth-kubernetes deploy my-cluster --config production.yaml
+  sloth-kubernetes deploy my-cluster --config production.lisp
 
   # Deploy production and staging clusters
-  sloth-kubernetes deploy production --config prod.yaml
-  sloth-kubernetes deploy staging --config staging.yaml
+  sloth-kubernetes deploy production --config prod.lisp
+  sloth-kubernetes deploy staging --config staging.lisp
 
   # Update an existing cluster
-  sloth-kubernetes deploy production --config prod.yaml
+  sloth-kubernetes deploy production --config prod.lisp
 
   # Preview without applying
-  sloth-kubernetes deploy my-cluster --config test.yaml --dry-run`,
+  sloth-kubernetes deploy my-cluster --config test.lisp --dry-run`,
 	RunE: runDeploy,
 }
 
@@ -233,7 +233,7 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 		// Phase 2: Create cluster orchestrator FIRST (to generate SSH keys)
 		ctx.Log.Info("📊 Phase 2: WireGuard VPN Server Creation", nil)
 		ctx.Log.Info("📊 Phase 3: Kubernetes Cluster Creation", nil)
-		clusterOrch, err := orchestrator.NewSimpleRealOrchestratorComponent(ctx, "kubernetes-cluster", cfg)
+		clusterOrch, err := orchestrator.NewSimpleRealOrchestratorComponent(ctx, "kubernetes-cluster", cfg, lispManifestContent, previousDeploymentMeta)
 		if err != nil {
 			return fmt.Errorf("failed to create orchestrator: %w", err)
 		}
@@ -334,6 +334,17 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to refresh stack: %w", err)
 	}
 
+	// Fetch previous deployment metadata for scale tracking
+	outputs, err := stack.Outputs(ctx)
+	if err == nil {
+		if metaOutput, ok := outputs["deploymentMeta"]; ok && metaOutput.Value != nil {
+			if metaStr, ok := metaOutput.Value.(string); ok {
+				previousDeploymentMeta = metaStr
+				printInfo("📊 Found previous deployment metadata (tracking scale operations)")
+			}
+		}
+	}
+
 	if dryRun {
 		// Preview mode
 		fmt.Println()
@@ -372,6 +383,12 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
+// lispManifestContent stores the raw Lisp file content for Pulumi state storage
+var lispManifestContent string
+
+// previousDeploymentMeta stores the previous deployment metadata for scale tracking
+var previousDeploymentMeta string
+
 func loadConfiguration() (*config.ClusterConfig, error) {
 	var cfg *config.ClusterConfig
 	var err error
@@ -379,6 +396,14 @@ func loadConfiguration() (*config.ClusterConfig, error) {
 	// Try to load from config file first
 	if cfgFile != "" {
 		fmt.Printf("🔍 DEBUG [cmd/deploy.go]: Loading config from file: %s\n", cfgFile)
+
+		// Read raw Lisp content for storage in Pulumi state
+		rawContent, readErr := os.ReadFile(cfgFile)
+		if readErr != nil {
+			return nil, fmt.Errorf("failed to read config file: %w", readErr)
+		}
+		lispManifestContent = string(rawContent)
+
 		cfg, err = config.LoadFromLisp(cfgFile)
 		if err != nil {
 			return nil, fmt.Errorf("failed to load config file: %w", err)
@@ -831,7 +856,7 @@ func printPreviewSummary(prev auto.PreviewResult) {
 	color.Yellow("⚠️  This was a DRY-RUN. No actual changes were made.")
 	fmt.Println()
 	color.Green("To apply these changes, run without --dry-run flag:")
-	fmt.Printf("  kubernetes-create deploy --config <your-config>.yaml\n")
+	fmt.Printf("  kubernetes-create deploy --config <your-config>.lisp\n")
 	fmt.Println()
 }
 

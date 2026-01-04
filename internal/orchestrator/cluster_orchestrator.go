@@ -1,12 +1,41 @@
 package orchestrator
 
 import (
+	"encoding/json"
 	"fmt"
+	"time"
 
 	"github.com/chalkan3/sloth-kubernetes/internal/orchestrator/components"
 	"github.com/chalkan3/sloth-kubernetes/pkg/config"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 )
+
+// DeploymentMetadata contains timestamps and tracking info for scale operations
+type DeploymentMetadata struct {
+	// Timestamps
+	CreatedAt      string `json:"createdAt"`      // First deployment timestamp
+	UpdatedAt      string `json:"updatedAt"`      // Last update timestamp
+	LastDeployedAt string `json:"lastDeployedAt"` // Current deployment timestamp
+
+	// Deployment tracking
+	DeploymentID    string `json:"deploymentId"`    // Unique ID for this deployment
+	DeploymentCount int    `json:"deploymentCount"` // Number of times deployed/updated
+
+	// Scale operation tracking
+	LastScaleOperation string `json:"lastScaleOperation,omitempty"` // "scale-up", "scale-down", "initial"
+	PreviousNodeCount  int    `json:"previousNodeCount"`            // Node count before this operation
+	CurrentNodeCount   int    `json:"currentNodeCount"`             // Current node count
+
+	// Node pool changes
+	NodePoolsAdded   []string `json:"nodePoolsAdded,omitempty"`   // Pools added in this deployment
+	NodePoolsRemoved []string `json:"nodePoolsRemoved,omitempty"` // Pools removed in this deployment
+	NodePoolsScaled  []string `json:"nodePoolsScaled,omitempty"`  // Pools with count changes
+
+	// Version info
+	SlothVersion   string `json:"slothVersion"`   // Sloth-kubernetes version
+	PulumiVersion  string `json:"pulumiVersion"`  // Pulumi version used
+	ConfigChecksum string `json:"configChecksum"` // SHA256 of config for change detection
+}
 
 // SimpleRealOrchestratorComponent orchestrates REAL cluster with WireGuard, RKE2, and DNS
 type SimpleRealOrchestratorComponent struct {
@@ -18,10 +47,19 @@ type SimpleRealOrchestratorComponent struct {
 	SSHPublicKey  pulumi.StringOutput `pulumi:"sshPublicKey"`
 	APIEndpoint   pulumi.StringOutput `pulumi:"apiEndpoint"`
 	Status        pulumi.StringOutput `pulumi:"status"`
+
+	// Manifest storage for config regeneration
+	ConfigJSON   pulumi.StringOutput `pulumi:"configJson"`
+	LispManifest pulumi.StringOutput `pulumi:"lispManifest"`
+
+	// Deployment metadata for scale tracking
+	DeploymentMeta pulumi.StringOutput `pulumi:"deploymentMeta"`
 }
 
 // NewSimpleRealOrchestratorComponent creates a simple orchestrator with REAL implementations only
-func NewSimpleRealOrchestratorComponent(ctx *pulumi.Context, name string, cfg *config.ClusterConfig, opts ...pulumi.ResourceOption) (*SimpleRealOrchestratorComponent, error) {
+// lispManifest is the raw Lisp configuration file content for storage in Pulumi state
+// previousMeta is the previous deployment metadata (empty string for initial deployment)
+func NewSimpleRealOrchestratorComponent(ctx *pulumi.Context, name string, cfg *config.ClusterConfig, lispManifest string, previousMeta string, opts ...pulumi.ResourceOption) (*SimpleRealOrchestratorComponent, error) {
 	component := &SimpleRealOrchestratorComponent{}
 	err := ctx.RegisterComponentResource("kubernetes-create:orchestrator:SimpleReal", name, component, opts...)
 	if err != nil {
@@ -415,6 +453,31 @@ func NewSimpleRealOrchestratorComponent(ctx *pulumi.Context, name string, cfg *c
 	component.APIEndpoint = dnsComponent.APIEndpoint
 	component.Status = pulumi.String("✅ REAL Kubernetes cluster deployed successfully!").ToStringOutput()
 
+	// Store manifest for config regeneration (Pulumi state as database)
+	// Create a sanitized copy of config without sensitive data for JSON storage
+	sanitizedCfg := sanitizeConfigForStorage(cfg)
+	configJSON, err := json.MarshalIndent(sanitizedCfg, "", "  ")
+	if err != nil {
+		ctx.Log.Warn(fmt.Sprintf("Failed to serialize config to JSON: %v", err), nil)
+		configJSON = []byte("{}")
+	}
+	component.ConfigJSON = pulumi.String(string(configJSON)).ToStringOutput()
+	component.LispManifest = pulumi.String(lispManifest).ToStringOutput()
+
+	// Export manifests for retrieval
+	ctx.Export("configJson", pulumi.String(string(configJSON)))
+	ctx.Export("lispManifest", pulumi.String(lispManifest))
+
+	// Generate deployment metadata for scale tracking
+	deployMeta := generateDeploymentMetadata(cfg, previousMeta, len(realNodes), lispManifest)
+	deployMetaJSON, err := json.MarshalIndent(deployMeta, "", "  ")
+	if err != nil {
+		ctx.Log.Warn(fmt.Sprintf("Failed to serialize deployment metadata: %v", err), nil)
+		deployMetaJSON = []byte("{}")
+	}
+	component.DeploymentMeta = pulumi.String(string(deployMetaJSON)).ToStringOutput()
+	ctx.Export("deploymentMeta", pulumi.String(string(deployMetaJSON)))
+
 	// Export detailed node information as a structured map for CLI commands
 	nodesMap := pulumi.Map{}
 	for i, node := range realNodes {
@@ -433,6 +496,9 @@ func NewSimpleRealOrchestratorComponent(ctx *pulumi.Context, name string, cfg *c
 	}
 	ctx.Export("nodes", nodesMap)
 	ctx.Export("node_count", pulumi.Int(len(realNodes)))
+
+	// Export kubeconfig for kubectl access
+	ctx.Export("kubeConfig", pulumi.ToSecret(kubeConfig))
 
 	// Export bastion information if enabled
 	if bastionComponent != nil {
@@ -481,12 +547,15 @@ func NewSimpleRealOrchestratorComponent(ctx *pulumi.Context, name string, cfg *c
 	}
 
 	if err := ctx.RegisterResourceOutputs(component, pulumi.Map{
-		"clusterName":   component.ClusterName,
-		"kubeConfig":    component.KubeConfig,
-		"sshPrivateKey": component.SSHPrivateKey,
-		"sshPublicKey":  component.SSHPublicKey,
-		"apiEndpoint":   component.APIEndpoint,
-		"status":        component.Status,
+		"clusterName":    component.ClusterName,
+		"kubeConfig":     component.KubeConfig,
+		"sshPrivateKey":  component.SSHPrivateKey,
+		"sshPublicKey":   component.SSHPublicKey,
+		"apiEndpoint":    component.APIEndpoint,
+		"status":         component.Status,
+		"configJson":     component.ConfigJSON,
+		"lispManifest":   component.LispManifest,
+		"deploymentMeta": component.DeploymentMeta,
 	}); err != nil {
 		return nil, err
 	}
@@ -494,4 +563,115 @@ func NewSimpleRealOrchestratorComponent(ctx *pulumi.Context, name string, cfg *c
 	ctx.Log.Info("🎉 REAL Kubernetes cluster deployment COMPLETE!", nil)
 
 	return component, nil
+}
+
+// sanitizeConfigForStorage creates a copy of the config with sensitive data removed
+// This is stored in Pulumi state for config regeneration
+func sanitizeConfigForStorage(cfg *config.ClusterConfig) *config.ClusterConfig {
+	// Create a deep copy by marshaling and unmarshaling
+	data, err := json.Marshal(cfg)
+	if err != nil {
+		return cfg // Return original if copy fails
+	}
+
+	var sanitized config.ClusterConfig
+	if err := json.Unmarshal(data, &sanitized); err != nil {
+		return cfg
+	}
+
+	// Remove sensitive provider tokens
+	if sanitized.Providers.DigitalOcean != nil {
+		sanitized.Providers.DigitalOcean.Token = "${DIGITALOCEAN_TOKEN}"
+	}
+	if sanitized.Providers.Linode != nil {
+		sanitized.Providers.Linode.Token = "${LINODE_TOKEN}"
+		sanitized.Providers.Linode.RootPassword = "${LINODE_ROOT_PASSWORD}"
+	}
+	if sanitized.Providers.AWS != nil {
+		sanitized.Providers.AWS.AccessKeyID = "${AWS_ACCESS_KEY_ID}"
+		sanitized.Providers.AWS.SecretAccessKey = "${AWS_SECRET_ACCESS_KEY}"
+	}
+	if sanitized.Providers.Azure != nil {
+		sanitized.Providers.Azure.ClientID = "${AZURE_CLIENT_ID}"
+		sanitized.Providers.Azure.ClientSecret = "${AZURE_CLIENT_SECRET}"
+		sanitized.Providers.Azure.TenantID = "${AZURE_TENANT_ID}"
+		sanitized.Providers.Azure.SubscriptionID = "${AZURE_SUBSCRIPTION_ID}"
+	}
+	if sanitized.Providers.GCP != nil {
+		sanitized.Providers.GCP.Credentials = "${GCP_CREDENTIALS}"
+	}
+
+	return &sanitized
+}
+
+// generateDeploymentMetadata creates metadata for tracking scale operations
+func generateDeploymentMetadata(cfg *config.ClusterConfig, previousMetaJSON string, currentNodeCount int, lispManifest string) *DeploymentMetadata {
+	now := time.Now().UTC().Format(time.RFC3339)
+
+	meta := &DeploymentMetadata{
+		LastDeployedAt:   now,
+		UpdatedAt:        now,
+		CurrentNodeCount: currentNodeCount,
+		SlothVersion:     "1.0.0", // TODO: get from version constant
+		PulumiVersion:    "3.x",   // Pulumi SDK version
+		ConfigChecksum:   generateChecksum(lispManifest),
+	}
+
+	// Parse previous metadata if exists
+	var prevMeta DeploymentMetadata
+	if previousMetaJSON != "" {
+		if err := json.Unmarshal([]byte(previousMetaJSON), &prevMeta); err == nil {
+			// Preserve creation timestamp
+			meta.CreatedAt = prevMeta.CreatedAt
+			meta.DeploymentCount = prevMeta.DeploymentCount + 1
+			meta.PreviousNodeCount = prevMeta.CurrentNodeCount
+			meta.DeploymentID = fmt.Sprintf("deploy-%d-%s", meta.DeploymentCount, now[:10])
+
+			// Determine scale operation type
+			if currentNodeCount > prevMeta.CurrentNodeCount {
+				meta.LastScaleOperation = "scale-up"
+			} else if currentNodeCount < prevMeta.CurrentNodeCount {
+				meta.LastScaleOperation = "scale-down"
+			} else {
+				meta.LastScaleOperation = "update"
+			}
+
+			// Track node pool changes
+			meta.NodePoolsAdded, meta.NodePoolsRemoved, meta.NodePoolsScaled = detectPoolChanges(cfg, &prevMeta)
+		}
+	}
+
+	// Initial deployment
+	if meta.CreatedAt == "" {
+		meta.CreatedAt = now
+		meta.DeploymentCount = 1
+		meta.DeploymentID = fmt.Sprintf("deploy-1-%s", now[:10])
+		meta.LastScaleOperation = "initial"
+		meta.PreviousNodeCount = 0
+
+		// All pools are "added" on initial deployment
+		for poolName := range cfg.NodePools {
+			meta.NodePoolsAdded = append(meta.NodePoolsAdded, poolName)
+		}
+	}
+
+	return meta
+}
+
+// generateChecksum creates a simple checksum for change detection
+func generateChecksum(content string) string {
+	// Simple hash for change detection (not cryptographic)
+	var hash uint64
+	for i, c := range content {
+		hash = hash*31 + uint64(c) + uint64(i)
+	}
+	return fmt.Sprintf("%x", hash)
+}
+
+// detectPoolChanges compares current config with previous to find changes
+func detectPoolChanges(cfg *config.ClusterConfig, prevMeta *DeploymentMetadata) (added, removed, scaled []string) {
+	// This is a simplified version - in production you'd compare against stored pool configs
+	// For now, we just return empty slices since we don't have the previous pool configuration
+	// stored in metadata. This could be enhanced to store pool info in DeploymentMetadata.
+	return nil, nil, nil
 }

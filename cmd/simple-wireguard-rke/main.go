@@ -11,7 +11,7 @@ import (
 func main() {
 	pulumi.Run(func(ctx *pulumi.Context) error {
 		// Load config
-		loader := config.NewLoader("config/cluster-config.yaml")
+		loader := config.NewLoader("config/cluster-config.lisp")
 		clusterConfig, err := loader.Load()
 		if err != nil {
 			return fmt.Errorf("failed to load config: %w", err)
@@ -20,7 +20,8 @@ func main() {
 		ctx.Log.Info("Starting REAL Kubernetes cluster deployment: WireGuard + RKE2 + DNS", nil)
 
 		// Create SIMPLE orchestrator with ONLY REAL implementations (no mocks)
-		_, err = orchestrator.NewSimpleRealOrchestratorComponent(ctx, "kubernetes-cluster", clusterConfig)
+		// Pass empty strings for lispManifest and previousMeta since this is a standalone entry point
+		_, err = orchestrator.NewSimpleRealOrchestratorComponent(ctx, "kubernetes-cluster", clusterConfig, "", "")
 		if err != nil {
 			return fmt.Errorf("failed to create orchestrator: %w", err)
 		}
