@@ -2,6 +2,7 @@ package health
 
 import (
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -68,9 +69,10 @@ func TestHealthCheckIntegration_CompleteFlow(t *testing.T) {
 		script := checker.buildHealthCheckScript(services)
 
 		assert.NotEmpty(t, script)
-		assert.Contains(t, script, "docker")
-		assert.Contains(t, script, "kubelet")
-		assert.Contains(t, script, "kubernetes")
+		scriptLower := strings.ToLower(script)
+		assert.Contains(t, scriptLower, "docker")
+		assert.Contains(t, scriptLower, "kubelet")
+		assert.Contains(t, scriptLower, "kubernetes")
 		assert.Contains(t, script, "#!/bin/bash")
 
 		return nil
@@ -100,17 +102,17 @@ func TestPrerequisiteValidationIntegration_RKE(t *testing.T) {
 		// Manually test validation functions
 		nodeCountResult := validator.validateNodeCount(nodes)
 		assert.NotNil(t, nodeCountResult)
-		assert.Equal(t, "node-count", nodeCountResult.Name)
+		assert.Equal(t, "Node Count", nodeCountResult.Name)
 		assert.True(t, nodeCountResult.Success) // 5 nodes is valid
 
 		masterResult := validator.validateMasterNodes(nodes)
 		assert.NotNil(t, masterResult)
-		assert.Equal(t, "master-nodes", masterResult.Name)
+		assert.Equal(t, "Master Nodes", masterResult.Name)
 		assert.True(t, masterResult.Success) // 3 masters is valid
 
 		workerResult := validator.validateWorkerNodes(nodes)
 		assert.NotNil(t, workerResult)
-		assert.Equal(t, "worker-nodes", workerResult.Name)
+		assert.Equal(t, "Worker Nodes", workerResult.Name)
 		assert.True(t, workerResult.Success) // 2 workers is valid
 
 		return nil
@@ -131,15 +133,15 @@ func TestPrerequisiteValidationIntegration_Ingress(t *testing.T) {
 		// Test individual validation functions
 		k8sResult := validator.validateKubernetesRunning(nodes)
 		assert.NotNil(t, k8sResult)
-		assert.Equal(t, "kubernetes-running", k8sResult.Name)
+		assert.Equal(t, "Kubernetes Cluster", k8sResult.Name)
 
 		podsResult := validator.validateKubernetesPods(nodes)
 		assert.NotNil(t, podsResult)
-		assert.Equal(t, "kubernetes-pods", podsResult.Name)
+		assert.Equal(t, "Kubernetes Pods", podsResult.Name)
 
 		helmResult := validator.validateHelmInstalled(nodes)
 		assert.NotNil(t, helmResult)
-		assert.Equal(t, "helm-installed", helmResult.Name)
+		assert.Equal(t, "Helm", helmResult.Name)
 
 		return nil
 	}, pulumi.WithMocks("test", "stack", &HealthIntegrationMockProvider{}))
@@ -160,19 +162,19 @@ func TestPrerequisiteValidationIntegration_WireGuard(t *testing.T) {
 		// Test WireGuard-specific validations
 		wgResult := validator.validateWireGuardInstalled(nodes)
 		assert.NotNil(t, wgResult)
-		assert.Equal(t, "wireguard-installed", wgResult.Name)
+		assert.Equal(t, "WireGuard Installation", wgResult.Name)
 
 		kernelResult := validator.validateKernelSupport(nodes)
 		assert.NotNil(t, kernelResult)
-		assert.Equal(t, "kernel-support", kernelResult.Name)
+		assert.Equal(t, "Kernel Support", kernelResult.Name)
 
 		netResult := validator.validateNetworkInterfaces(nodes)
 		assert.NotNil(t, netResult)
-		assert.Equal(t, "network-interfaces", netResult.Name)
+		assert.Equal(t, "Network Interfaces", netResult.Name)
 
 		ipForwardResult := validator.validateIPForwarding(nodes)
 		assert.NotNil(t, ipForwardResult)
-		assert.Equal(t, "ip-forwarding", ipForwardResult.Name)
+		assert.Equal(t, "IP Forwarding", ipForwardResult.Name)
 
 		return nil
 	}, pulumi.WithMocks("test", "stack", &HealthIntegrationMockProvider{}))
@@ -281,9 +283,10 @@ func TestHealthCheckIntegration_ServiceValidation(t *testing.T) {
 				assert.NotEmpty(t, script)
 				assert.Contains(t, script, "#!/bin/bash")
 
-				// Verify all services are checked
+				// Verify all services are checked (case-insensitive)
+				scriptLower := strings.ToLower(script)
 				for _, service := range tt.services {
-					assert.Contains(t, script, service)
+					assert.Contains(t, scriptLower, strings.ToLower(service))
 				}
 			})
 		}

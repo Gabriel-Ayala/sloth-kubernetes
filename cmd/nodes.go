@@ -48,7 +48,7 @@ var addNodeCmd = &cobra.Command{
 	Short: "Add a new node to the cluster",
 	Long:  `Add a new node to an existing cluster by updating the stack`,
 	Example: `  # Add a node from config file
-  sloth-kubernetes nodes add production --config node.yaml
+  sloth-kubernetes nodes add production --config node.lisp
 
   # Add a node with inline parameters
   sloth-kubernetes nodes add production \
@@ -311,7 +311,7 @@ func runAddNode(cmd *cobra.Command, args []string) error {
 	// Get the config file path
 	configFile := cfgFile
 	if configFile == "" {
-		configFile = "./cluster-config.yaml"
+		configFile = "./cluster-config.lisp"
 	}
 
 	printInfo(fmt.Sprintf("📄 Reading configuration from: %s", configFile))
@@ -322,10 +322,10 @@ func runAddNode(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to read config file: %w", err)
 	}
 
-	// Parse YAML
+	// Parse config (Note: This needs to be updated to use Lisp parser)
 	var config map[string]interface{}
 	if err := yaml.Unmarshal(configData, &config); err != nil {
-		return fmt.Errorf("failed to parse config YAML: %w", err)
+		return fmt.Errorf("failed to parse config: %w", err)
 	}
 
 	// Find and update the node pool

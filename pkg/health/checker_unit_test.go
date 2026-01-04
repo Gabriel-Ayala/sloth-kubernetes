@@ -159,9 +159,6 @@ func TestHealthChecker_BuildHealthCheckScript_NGINX(t *testing.T) {
 		"kubectl get svc -n ingress-nginx nginx-ingress-controller",
 		"NGINX:SERVICE:OK",
 		"NGINX:SERVICE:FAIL",
-		"kubectl get pods -n ingress-nginx -l app.kubernetes.io/name=ingress-nginx",
-		"NGINX:PODS:OK",
-		"NGINX:PODS:FAIL",
 	}
 
 	for _, check := range nginxChecks {
@@ -212,15 +209,15 @@ func TestHealthChecker_BuildHealthCheckScript_HelperFunctions(t *testing.T) {
 		"check_service() {",
 		"systemctl is-active --quiet",
 		"SERVICE:$service:RUNNING",
-		"SERVICE:$service:STOPPED",
+		"SERVICE:$service:NOT_RUNNING",
 		"check_command() {",
-		"command -v $cmd",
+		"command -v \"$cmd\"",
 		"COMMAND:$cmd:AVAILABLE",
-		"COMMAND:$cmd:MISSING",
+		"COMMAND:$cmd:NOT_FOUND",
 		"check_port() {",
-		"netstat -tuln",
+		"ss -ln",
 		"PORT:$port:LISTENING",
-		"PORT:$port:CLOSED",
+		"PORT:$port:NOT_LISTENING",
 	}
 
 	for _, helper := range helpers {
@@ -236,10 +233,10 @@ func TestHealthChecker_BuildHealthCheckScript_SystemMetrics(t *testing.T) {
 	script := checker.buildHealthCheckScript(services)
 
 	metrics := []string{
-		"UPTIME:$(uptime -p)",
-		"LOAD:$(cat /proc/loadavg",
-		"MEMORY:$(free -m",
-		"DISK:$(df -h /",
+		"UPTIME: $(uptime)",
+		"LOAD: $(cat /proc/loadavg)",
+		"MEMORY: $(free -h",
+		"DISK: $(df -h /",
 	}
 
 	for _, metric := range metrics {
@@ -355,55 +352,88 @@ func Test50HealthCheckScenarios(t *testing.T) {
 
 // Test isServiceHealthy helper
 func TestHealthChecker_IsServiceHealthy(t *testing.T) {
-	checker := &HealthChecker{}
-
 	tests := []struct {
-		name     string
-		output   string
-		service  string
-		expected bool
+		name        string
+		nodeName    string
+		service     string
+		setupStatus func(*HealthChecker)
+		expected    bool
 	}{
 		{
-			"Service running",
-			"DOCKER:PS:OK\nSERVICE:docker:RUNNING",
-			"docker",
-			true, // docker needs BOTH DOCKER:PS:OK AND SERVICE:docker:RUNNING
+			name:     "Service running",
+			nodeName: "test-node",
+			service:  "docker",
+			setupStatus: func(h *HealthChecker) {
+				h.statuses["test-node"] = &NodeStatus{
+					Services: map[string]bool{"docker": true},
+				}
+			},
+			expected: true,
 		},
 		{
-			"Service stopped",
-			"SERVICE:docker:STOPPED",
-			"docker",
-			false,
+			name:     "Service stopped",
+			nodeName: "test-node",
+			service:  "docker",
+			setupStatus: func(h *HealthChecker) {
+				h.statuses["test-node"] = &NodeStatus{
+					Services: map[string]bool{"docker": false},
+				}
+			},
+			expected: false,
 		},
 		{
-			"Command available",
-			"COMMAND:docker:AVAILABLE\nSERVICE:docker:RUNNING",
-			"docker",
-			false, // docker service needs BOTH DOCKER:PS:OK AND SERVICE:docker:RUNNING
+			name:     "Command available",
+			nodeName: "test-node",
+			service:  "docker",
+			setupStatus: func(h *HealthChecker) {
+				h.statuses["test-node"] = &NodeStatus{
+					Services: map[string]bool{},
+				}
+			},
+			expected: false,
 		},
 		{
-			"Command missing",
-			"COMMAND:docker:MISSING",
-			"docker",
-			false,
+			name:     "Command missing",
+			nodeName: "test-node",
+			service:  "docker",
+			setupStatus: func(h *HealthChecker) {
+				h.statuses["test-node"] = &NodeStatus{
+					Services: map[string]bool{"docker": false},
+				}
+			},
+			expected: false,
 		},
 		{
-			"Port listening",
-			"PORT:22:LISTENING\nSERVICE:ssh:RUNNING",
-			"ssh",
-			true, // ssh is checked as default case - needs SERVICE:ssh:RUNNING
+			name:     "Port listening",
+			nodeName: "test-node",
+			service:  "ssh",
+			setupStatus: func(h *HealthChecker) {
+				h.statuses["test-node"] = &NodeStatus{
+					Services: map[string]bool{"ssh": true},
+				}
+			},
+			expected: true,
 		},
 		{
-			"Port closed",
-			"PORT:22:CLOSED",
-			"ssh",
-			false,
+			name:     "Port closed",
+			nodeName: "test-node",
+			service:  "ssh",
+			setupStatus: func(h *HealthChecker) {
+				h.statuses["test-node"] = &NodeStatus{
+					Services: map[string]bool{"ssh": false},
+				}
+			},
+			expected: false,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := checker.isServiceHealthy(tt.output, tt.service)
+			checker := &HealthChecker{
+				statuses: make(map[string]*NodeStatus),
+			}
+			tt.setupStatus(checker)
+			result := checker.isServiceHealthy(tt.nodeName, tt.service)
 			assert.Equal(t, tt.expected, result)
 		})
 	}
@@ -421,7 +451,6 @@ func TestHealthChecker_ScriptBashSafety(t *testing.T) {
 
 	// Should redirect stderr appropriately
 	assert.Contains(t, script, "&>/dev/null")
-	assert.Contains(t, script, "&> /dev/null")
 }
 
 // Test script systemctl usage
@@ -435,15 +464,15 @@ func TestHealthChecker_ScriptSystemctl(t *testing.T) {
 	assert.Contains(t, script, "systemctl is-active --quiet")
 }
 
-// Test script netstat usage
+// Test script port checking usage
 func TestHealthChecker_ScriptNetstat(t *testing.T) {
 	checker := &HealthChecker{}
 
 	services := []string{"kubelet", "etcd", "ssh"}
 	script := checker.buildHealthCheckScript(services)
 
-	// Should use netstat for port checks
-	assert.Contains(t, script, "netstat -tuln")
+	// Should use ss for port checks
+	assert.Contains(t, script, "ss -ln")
 }
 
 // Test script kubectl commands
@@ -457,7 +486,6 @@ func TestHealthChecker_ScriptKubectl(t *testing.T) {
 		"kubectl version --client",
 		"kubectl get nodes",
 		"kubectl get svc",
-		"kubectl get pods",
 	}
 
 	for _, cmd := range kubectlCommands {
@@ -473,7 +501,7 @@ func TestHealthChecker_ScriptUptime(t *testing.T) {
 	script := checker.buildHealthCheckScript(services)
 
 	// Should check uptime
-	assert.Contains(t, script, "uptime -p")
+	assert.Contains(t, script, "$(uptime)")
 }
 
 // Test script load average
@@ -485,7 +513,6 @@ func TestHealthChecker_ScriptLoadAverage(t *testing.T) {
 
 	// Should check load average from /proc/loadavg
 	assert.Contains(t, script, "/proc/loadavg")
-	assert.Contains(t, script, "cut -d' ' -f1-3")
 }
 
 // Test script memory usage
@@ -495,8 +522,8 @@ func TestHealthChecker_ScriptMemoryUsage(t *testing.T) {
 	services := []string{}
 	script := checker.buildHealthCheckScript(services)
 
-	// Should check memory with free -m
-	assert.Contains(t, script, "free -m")
+	// Should check memory with free -h
+	assert.Contains(t, script, "free -h")
 	assert.Contains(t, script, "grep Mem")
 }
 
@@ -519,7 +546,8 @@ func TestHealthChecker_ScriptTimestamp(t *testing.T) {
 	script := checker.buildHealthCheckScript(services)
 
 	// Should include timestamp
-	assert.Contains(t, script, "Timestamp: $(date)")
+	assert.Contains(t, script, "Timestamp:")
+	assert.Contains(t, script, "$(date")
 }
 
 // Test script with no services

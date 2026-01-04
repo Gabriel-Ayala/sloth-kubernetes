@@ -68,12 +68,16 @@ func createMultiCloudConfig() *config.ClusterConfig {
 		},
 		Providers: config.ProvidersConfig{
 			DigitalOcean: &config.DigitalOceanProvider{
+				Enabled: true,
 				Token:   "do-test-token",
 				Region:  "nyc3",
+				SSHKeys: []string{"test-ssh-key-fingerprint"},
 			},
 			Linode: &config.LinodeProvider{
-				Token:   "linode-test-token",
-				Region:  "us-east",
+				Enabled:        true,
+				Token:          "linode-test-token",
+				Region:         "us-east",
+				AuthorizedKeys: []string{"ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDtest"},
 			},
 		},
 		NodePools: map[string]config.NodePool{
@@ -93,17 +97,27 @@ func createMultiCloudConfig() *config.ClusterConfig {
 			},
 		},
 		Network: config.NetworkConfig{
+			CIDR:        "10.0.0.0/16",
 			PodCIDR:     "10.244.0.0/16",
 			ServiceCIDR: "10.96.0.0/12",
 			DNS: config.DNSConfig{
-				Domain:  "chalkan3.com.br",
+				Domain: "chalkan3.com.br",
 			},
 			WireGuard: &config.WireGuardConfig{
-				Enabled:  true,
-				Port:     51820,
-				Provider: "digitalocean",
-				Region:   "nyc3",
-				Size:     "s-1vcpu-1gb",
+				Enabled:         true,
+				Port:            51820,
+				Provider:        "digitalocean",
+				Region:          "nyc3",
+				Size:            "s-1vcpu-1gb",
+				ServerEndpoint:  "vpn.test.example.com",
+				ServerPublicKey: "test-wireguard-public-key-base64==",
+				AllowedIPs:      []string{"10.8.0.0/24", "10.0.0.0/16"},
+			},
+		},
+		Security: config.SecurityConfig{
+			SSHConfig: config.SSHConfig{
+				KeyPath:       "/tmp/test-ssh-key",
+				PublicKeyPath: "/tmp/test-ssh-key.pub",
 			},
 		},
 		Kubernetes: config.KubernetesConfig{
@@ -155,7 +169,9 @@ func TestOrchestrator_InitializeMultipleProviders(t *testing.T) {
 			config: &config.ClusterConfig{
 				Providers: config.ProvidersConfig{
 					DigitalOcean: &config.DigitalOceanProvider{
+						Enabled: true,
 						Token:   "do-token",
+						SSHKeys: []string{"test-ssh-key"},
 					},
 				},
 			},
@@ -167,10 +183,14 @@ func TestOrchestrator_InitializeMultipleProviders(t *testing.T) {
 			config: &config.ClusterConfig{
 				Providers: config.ProvidersConfig{
 					DigitalOcean: &config.DigitalOceanProvider{
+						Enabled: true,
 						Token:   "do-token",
+						SSHKeys: []string{"test-ssh-key"},
 					},
 					Linode: &config.LinodeProvider{
-						Token:   "linode-token",
+						Enabled:        true,
+						Token:          "linode-token",
+						AuthorizedKeys: []string{"ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDtest"},
 					},
 				},
 			},
@@ -182,10 +202,14 @@ func TestOrchestrator_InitializeMultipleProviders(t *testing.T) {
 			config: &config.ClusterConfig{
 				Providers: config.ProvidersConfig{
 					DigitalOcean: &config.DigitalOceanProvider{
+						Enabled: true,
 						Token:   "do-token",
+						SSHKeys: []string{"test-ssh-key"},
 					},
 					Linode: &config.LinodeProvider{
-						Token:   "linode-token",
+						Enabled:        true,
+						Token:          "linode-token",
+						AuthorizedKeys: []string{"ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDtest"},
 					},
 					Azure: &config.AzureProvider{
 						Enabled:        true,
@@ -384,17 +408,21 @@ func TestOrchestrator_ConfigureWireGuard(t *testing.T) {
 		{
 			name: "WireGuard enabled",
 			wireGuardConfig: &config.WireGuardConfig{
-				Enabled:  true,
-				Port:     51820,
-				Provider: "digitalocean",
-				Region:   "nyc3",
-				Size:     "s-1vcpu-1gb",
+				Enabled:         true,
+				Port:            51820,
+				Provider:        "digitalocean",
+				Region:          "nyc3",
+				Size:            "s-1vcpu-1gb",
+				ServerEndpoint:  "vpn.test.example.com",
+				ServerPublicKey: "test-wireguard-public-key-base64==",
+				AllowedIPs:      []string{"10.8.0.0/24", "10.0.0.0/16"},
 			},
 			shouldConfigure: true,
 		},
 		{
 			name: "WireGuard disabled",
 			wireGuardConfig: &config.WireGuardConfig{
+				Enabled: false,
 			},
 			shouldConfigure: false,
 		},
@@ -410,7 +438,9 @@ func TestOrchestrator_ConfigureWireGuard(t *testing.T) {
 				cfg := &config.ClusterConfig{
 					Providers: config.ProvidersConfig{
 						DigitalOcean: &config.DigitalOceanProvider{
+							Enabled: true,
 							Token:   "test-token",
+							SSHKeys: []string{"test-ssh-key"},
 						},
 					},
 					Network: config.NetworkConfig{
@@ -531,7 +561,9 @@ func TestOrchestrator_InstallLoadBalancers(t *testing.T) {
 		cfg := &config.ClusterConfig{
 			Providers: config.ProvidersConfig{
 				DigitalOcean: &config.DigitalOceanProvider{
+					Enabled: true,
 					Token:   "test-token",
+					SSHKeys: []string{"test-ssh-key"},
 				},
 			},
 			LoadBalancer: config.LoadBalancerConfig{
@@ -543,8 +575,8 @@ func TestOrchestrator_InstallLoadBalancers(t *testing.T) {
 		require.NoError(t, orch.initializeProviders())
 		// Test load balancer installation
 		err := orch.installLoadBalancers()
-		// This will fail with mock provider but tests the flow
-		assert.Error(t, err) // Expected because CreateLoadBalancer is not fully implemented in mock
+		// With mocked provider, load balancer creation succeeds
+		assert.NoError(t, err)
 		return nil
 	}, pulumi.WithMocks("test", "integration", &IntegrationMockProvider{}))
 	assert.NoError(t, err)
@@ -782,8 +814,9 @@ func TestOrchestrator_StateManagement(t *testing.T) {
 		assert.Nil(t, orch.dnsManager)
 		assert.Nil(t, orch.ingressManager)
 		assert.Nil(t, orch.rkeManager)
-		assert.Nil(t, orch.healthChecker)
-		assert.Nil(t, orch.validator)
+		// healthChecker and validator are now initialized in New()
+		assert.NotNil(t, orch.healthChecker)
+		assert.NotNil(t, orch.validator)
 		assert.Nil(t, orch.vpnChecker)
 		return nil
 	}, pulumi.WithMocks("test", "integration", &IntegrationMockProvider{}))

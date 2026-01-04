@@ -124,11 +124,10 @@ func TestConfigPath_Validation(t *testing.T) {
 		path  string
 		valid bool
 	}{
-		{"YAML file", "cluster.yaml", true},
-		{"YML file", "cluster.yml", true},
-		{"Relative path", "./config/cluster.yaml", true},
-		{"Absolute path", "/path/to/cluster.yaml", true},
-		{"Home dir", "~/cluster.yaml", true},
+		{"Lisp file", "cluster.lisp", true},
+		{"Relative path", "./config/cluster.lisp", true},
+		{"Absolute path", "/path/to/cluster.lisp", true},
+		{"Home dir", "~/cluster.lisp", true},
 		{"No extension", "cluster", false},
 		{"Wrong extension", "cluster.json", false},
 		{"Empty path", "", false},
@@ -136,8 +135,7 @@ func TestConfigPath_Validation(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			isValid := tt.path != "" &&
-				(strings.HasSuffix(tt.path, ".yaml") || strings.HasSuffix(tt.path, ".yml"))
+			isValid := tt.path != "" && strings.HasSuffix(tt.path, ".lisp")
 
 			if isValid != tt.valid {
 				t.Errorf("Expected valid=%v for path %q, got %v", tt.valid, tt.path, isValid)

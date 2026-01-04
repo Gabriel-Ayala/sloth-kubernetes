@@ -13,19 +13,32 @@ var (
 	stackName   string
 	verbose     bool
 	autoApprove bool
+
+	// Version information - set by main.go
+	Version   = "dev"
+	Commit    = "none"
+	Date      = "unknown"
+	BuiltBy   = "unknown"
 )
+
+// SetVersionInfo sets the version information from main.go
+func SetVersionInfo(version, commit, date, builtBy string) {
+	Version = version
+	Commit = commit
+	Date = date
+	BuiltBy = builtBy
+}
 
 // rootCmd represents the base command
 var rootCmd = &cobra.Command{
-	Use:   "sloth-kubernetes",
+	Use:   "sloth",
 	Short: "Multi-cloud Kubernetes cluster deployment tool",
 	Long: `Sloth Kubernetes is a CLI tool for deploying production-grade
-Kubernetes clusters across multiple cloud providers (DigitalOcean and Linode)
+Kubernetes clusters across multiple cloud providers (AWS, DigitalOcean, Linode, Azure)
 with RKE2, WireGuard VPN mesh, and automated configuration.
 
 This tool uses Pulumi Automation API internally - no Pulumi CLI required!
 Stack-based deployment enables managing multiple independent clusters.`,
-	Version: "1.0.0",
 }
 
 // Execute adds all child commands to the root command and sets flags appropriately.
@@ -41,10 +54,18 @@ func init() {
 	cobra.OnInitialize(initConfig)
 
 	// Global flags
-	rootCmd.PersistentFlags().StringVarP(&cfgFile, "config", "c", "", "Config file (default: ./cluster-config.yaml)")
+	rootCmd.PersistentFlags().StringVarP(&cfgFile, "config", "c", "", "Config file (default: ./cluster-config.lisp)")
 	rootCmd.PersistentFlags().StringVarP(&stackName, "stack", "s", "production", "Pulumi stack name")
 	rootCmd.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "Verbose output")
 	rootCmd.PersistentFlags().BoolVarP(&autoApprove, "yes", "y", false, "Auto-approve without prompting")
+
+	// Version template
+	rootCmd.SetVersionTemplate(fmt.Sprintf(`Sloth Kubernetes %s
+  Commit:    %s
+  Built:     %s
+  Built by:  %s
+`, Version, Commit, Date, BuiltBy))
+	rootCmd.Version = Version
 }
 
 func initConfig() {

@@ -56,7 +56,7 @@ automatically use the saved configuration.`,
   sloth-kubernetes salt login --stack cluster-prod
 
   # Login with custom config file
-  sloth-kubernetes salt login --config cluster.yaml
+  sloth-kubernetes salt login --config cluster.lisp
 
   # Skip connection verification
   sloth-kubernetes salt login --skip-verify`,

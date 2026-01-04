@@ -8,7 +8,7 @@ import (
 
 func TestDestroyCmd_Structure(t *testing.T) {
 	assert.NotNil(t, destroyCmd)
-	assert.Equal(t, "destroy", destroyCmd.Use)
+	assert.Equal(t, "destroy [stack-name]", destroyCmd.Use)
 	assert.NotEmpty(t, destroyCmd.Short)
 	assert.NotEmpty(t, destroyCmd.Long)
 	assert.NotEmpty(t, destroyCmd.Example)

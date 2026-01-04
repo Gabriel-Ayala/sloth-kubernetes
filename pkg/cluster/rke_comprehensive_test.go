@@ -308,10 +308,11 @@ func TestDeployCluster_NoMasterNode(t *testing.T) {
 
 		// Add only worker node (no master)
 		manager.AddNode(&providers.NodeOutput{
-			Name:     "worker-1",
-			PublicIP: pulumi.String("203.0.113.2").ToStringOutput(),
-			SSHUser:  "ubuntu",
-			Labels:   map[string]string{"role": "worker"},
+			Name:      "worker-1",
+			PublicIP:  pulumi.String("203.0.113.2").ToStringOutput(),
+			PrivateIP: pulumi.String("10.0.0.2").ToStringOutput(),
+			SSHUser:   "ubuntu",
+			Labels:    map[string]string{"role": "worker"},
 		})
 
 		err := manager.DeployCluster()

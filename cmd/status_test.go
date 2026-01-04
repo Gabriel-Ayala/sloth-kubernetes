@@ -9,7 +9,7 @@ import (
 // Test status command initialization
 func TestStatusCmd_Initialization(t *testing.T) {
 	assert.NotNil(t, statusCmd)
-	assert.Equal(t, "status", statusCmd.Use)
+	assert.Equal(t, "status [stack-name]", statusCmd.Use)
 	assert.NotEmpty(t, statusCmd.Short)
 	assert.NotEmpty(t, statusCmd.Long)
 	assert.NotEmpty(t, statusCmd.Example)
@@ -46,7 +46,7 @@ func TestStatusCmd_Description(t *testing.T) {
 		{"Long", "Provider information"},
 		{"Long", "Network configuration"},
 		{"Long", "Kubernetes cluster state"},
-		{"Example", "kubernetes-create status"},
+		{"Example", "sloth-kubernetes status"},
 	}
 
 	for _, tt := range tests {

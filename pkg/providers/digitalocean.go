@@ -255,7 +255,8 @@ func (p *DigitalOceanProvider) CreateFirewall(ctx *pulumi.Context, firewall *con
 	// Convert IDs to int array
 	dropletIds := make([]pulumi.IntOutput, len(nodeIds))
 	for i, id := range nodeIds {
-		dropletIds[i] = id.ApplyT(func(id pulumi.ID) int {
+		dropletIds[i] = id.ApplyT(func(idAny interface{}) int {
+			id := idAny.(pulumi.ID)
 			var idInt int
 			fmt.Sscanf(string(id), "%d", &idInt)
 			return idInt
@@ -364,16 +365,23 @@ func (p *DigitalOceanProvider) CreateLoadBalancer(ctx *pulumi.Context, lb *confi
 		}
 	}
 
-	// Create load balancer
-	loadBalancer, err := digitalocean.NewLoadBalancer(ctx, lb.Name, &digitalocean.LoadBalancerArgs{
+	// Create load balancer args
+	lbArgs := &digitalocean.LoadBalancerArgs{
 		Name:                pulumi.String(lb.Name),
 		Region:              pulumi.String(p.config.Region),
 		Size:                pulumi.String("lb-small"),
 		ForwardingRules:     forwardingRules,
 		DropletIds:          dropletIds,
-		VpcUuid:             p.vpc.ID(),
 		RedirectHttpToHttps: pulumi.Bool(true),
-	})
+	}
+
+	// Add VPC if available
+	if p.vpc != nil {
+		lbArgs.VpcUuid = p.vpc.ID()
+	}
+
+	// Create load balancer
+	loadBalancer, err := digitalocean.NewLoadBalancer(ctx, lb.Name, lbArgs)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create load balancer: %w", err)
 	}

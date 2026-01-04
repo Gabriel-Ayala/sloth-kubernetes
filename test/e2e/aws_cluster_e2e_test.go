@@ -145,7 +145,6 @@ func TestE2E_AWSProvider_VPCCreation(t *testing.T) {
 			},
 			Providers: config.ProvidersConfig{
 				AWS: &config.AWSProvider{
-					Enabled: true,
 					Region:  cfg.AWSRegion,
 					VPC: &config.VPCConfig{
 						Create: true,
@@ -242,7 +241,6 @@ func TestE2E_AWSProvider_NodeDeployment(t *testing.T) {
 		},
 		Providers: config.ProvidersConfig{
 			AWS: &config.AWSProvider{
-				Enabled: true,
 				Region:  cfg.AWSRegion,
 				VPC: &config.VPCConfig{
 					Create: true,
@@ -342,7 +340,6 @@ func TestE2E_AWSProvider_FullClusterOrchestrator(t *testing.T) {
 		},
 		Providers: config.ProvidersConfig{
 			AWS: &config.AWSProvider{
-				Enabled: true,
 				Region:  cfg.AWSRegion,
 				VPC: &config.VPCConfig{
 					Create: true,
@@ -536,7 +533,6 @@ func TestE2E_Preview_FullCluster(t *testing.T) {
 		},
 		Providers: config.ProvidersConfig{
 			AWS: &config.AWSProvider{
-				Enabled: true,
 				Region:  cfg.AWSRegion,
 				VPC: &config.VPCConfig{
 					Create: true,

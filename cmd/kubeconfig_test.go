@@ -8,7 +8,7 @@ import (
 
 func TestKubeconfigCmd_Structure(t *testing.T) {
 	assert.NotNil(t, kubeconfigCmd)
-	assert.Equal(t, "kubeconfig", kubeconfigCmd.Use)
+	assert.Equal(t, "kubeconfig [stack-name]", kubeconfigCmd.Use)
 	assert.NotEmpty(t, kubeconfigCmd.Short)
 	assert.NotEmpty(t, kubeconfigCmd.Long)
 	assert.NotEmpty(t, kubeconfigCmd.Example)
@@ -86,7 +86,7 @@ func TestKubeconfigCmd_FlagDefaults(t *testing.T) {
 func TestKubeconfigCmd_ExampleFormats(t *testing.T) {
 	examples := kubeconfigCmd.Example
 	// Should demonstrate various output formats
-	assert.Contains(t, examples, "kubernetes-create kubeconfig")
+	assert.Contains(t, examples, "sloth-kubernetes kubeconfig")
 	assert.Contains(t, examples, "-o")
 }
 

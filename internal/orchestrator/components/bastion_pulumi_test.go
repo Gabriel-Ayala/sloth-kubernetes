@@ -2,6 +2,7 @@ package components
 
 import (
 	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/chalkan3/sloth-kubernetes/pkg/config"
@@ -276,9 +277,9 @@ func TestNewBastionComponent_UnsupportedProvider(t *testing.T) {
 	err := pulumi.RunErr(func(ctx *pulumi.Context) error {
 		bastionConfig := &config.BastionConfig{
 			Enabled:  true,
-			Provider: "aws", // Unsupported provider
+			Provider: "unsupported-cloud", // Truly unsupported provider
 			Region:   "us-east-1",
-			Size:     "t2.micro",
+			Size:     "small",
 		}
 
 		sshKeyOutput := pulumi.String("ssh-rsa AAAAB3... test@example.com").ToStringOutput()
@@ -296,8 +297,13 @@ func TestNewBastionComponent_UnsupportedProvider(t *testing.T) {
 			linodeToken,
 		)
 
-		assert.Error(t, err, "Should return error for unsupported provider")
-		assert.Contains(t, err.Error(), "unsupported bastion provider", "Error should mention unsupported provider")
+		if err == nil {
+			t.Error("Should return error for unsupported provider")
+			return nil
+		}
+		if !strings.Contains(err.Error(), "unsupported bastion provider") {
+			t.Errorf("Error should mention unsupported provider, got: %v", err)
+		}
 
 		return nil
 	}, pulumi.WithMocks("project", "stack", bastionMocks(0)))

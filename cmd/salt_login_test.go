@@ -205,7 +205,7 @@ func TestSaveSaltConfig(t *testing.T) {
 				Password:   "saltapi123",
 				BastionIP:  "192.168.1.100",
 				StackName:  "dev",
-				ConfigFile: "cluster.yaml",
+				ConfigFile: "cluster.lisp",
 			},
 		},
 		{
@@ -216,7 +216,7 @@ func TestSaveSaltConfig(t *testing.T) {
 				Password:   "P@ssw0rd!#$%",
 				BastionIP:  "203.0.113.50",
 				StackName:  "production-cluster-001",
-				ConfigFile: "/path/to/cluster.yaml",
+				ConfigFile: "/path/to/cluster.lisp",
 			},
 		},
 		{
@@ -309,7 +309,7 @@ func TestLoadSaltConfig(t *testing.T) {
 				"password": "saltapi123",
 				"bastion_ip": "192.168.1.100",
 				"stack_name": "dev",
-				"config_file": "cluster.yaml"
+				"config_file": "cluster.lisp"
 			}`,
 			shouldError: false,
 			expected: &SaltConfig{
@@ -318,7 +318,7 @@ func TestLoadSaltConfig(t *testing.T) {
 				Password:   "saltapi123",
 				BastionIP:  "192.168.1.100",
 				StackName:  "dev",
-				ConfigFile: "cluster.yaml",
+				ConfigFile: "cluster.lisp",
 			},
 		},
 		{
@@ -609,7 +609,7 @@ func BenchmarkSaveSaltConfig(b *testing.B) {
 		Password:   "saltapi123",
 		BastionIP:  "192.168.1.100",
 		StackName:  "dev",
-		ConfigFile: "cluster.yaml",
+		ConfigFile: "cluster.lisp",
 	}
 
 	b.ResetTimer()
@@ -639,7 +639,7 @@ func BenchmarkLoadSaltConfig(b *testing.B) {
 		Password:   "saltapi123",
 		BastionIP:  "192.168.1.100",
 		StackName:  "dev",
-		ConfigFile: "cluster.yaml",
+		ConfigFile: "cluster.lisp",
 	}
 	if err := saveSaltConfig(config); err != nil {
 		b.Fatalf("Failed to save config: %v", err)

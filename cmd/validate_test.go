@@ -23,7 +23,7 @@ func TestValidateCmd_RunE(t *testing.T) {
 func TestValidateCmd_Examples(t *testing.T) {
 	examples := validateCmd.Example
 	assert.Contains(t, examples, "--config")
-	assert.Contains(t, examples, "cluster.yaml")
+	assert.Contains(t, examples, "cluster.lisp")
 	assert.Contains(t, examples, "--verbose")
 }
 
@@ -31,7 +31,7 @@ func TestValidateCmd_LongDescription(t *testing.T) {
 	long := validateCmd.Long
 	assert.Contains(t, long, "Validate")
 	assert.Contains(t, long, "configuration")
-	assert.Contains(t, long, "YAML")
+	assert.Contains(t, long, "Lisp")
 	assert.Contains(t, long, "metadata")
 	assert.Contains(t, long, "Provider")
 	assert.Contains(t, long, "Network")

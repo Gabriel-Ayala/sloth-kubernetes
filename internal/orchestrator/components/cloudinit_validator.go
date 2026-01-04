@@ -56,9 +56,6 @@ func NewCloudInitValidatorComponent(ctx *pulumi.Context, name string, nodes []*R
 		// Determine SSH user based on provider using helper function
 		sshUser := getSSHUserForProvider(node.Provider)
 
-		// Use the correct SSH user for the bastion based on its provider
-		bastionUser := getSSHUserForProvider(bastionComponent.Provider)
-
 		// Build connection args with ProxyJump if bastion is enabled
 		connArgs := remote.ConnectionArgs{
 			Host:           node.PublicIP,
@@ -67,6 +64,8 @@ func NewCloudInitValidatorComponent(ctx *pulumi.Context, name string, nodes []*R
 			DialErrorLimit: pulumi.Int(30),
 		}
 		if bastionComponent != nil {
+			// Use the correct SSH user for the bastion based on its provider
+			bastionUser := getSSHUserForProvider(bastionComponent.Provider)
 			connArgs.Proxy = &remote.ProxyConnectionArgs{
 				Host:       bastionComponent.PublicIP,
 				User:       bastionUser,

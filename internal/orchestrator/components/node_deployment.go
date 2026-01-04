@@ -719,6 +719,8 @@ func createAzureNode(ctx *pulumi.Context, name string, nodeConfig *config.NodeCo
 // AWS shared resources (created once, reused by all instances)
 var (
 	awsProvider      *aws.Provider
+	awsVpc           *ec2.Vpc
+	awsSubnet        *ec2.Subnet
 	awsSecurityGroup *ec2.SecurityGroup
 	awsKeyPair       *ec2.KeyPair
 )
@@ -748,10 +750,85 @@ func createAWSNode(ctx *pulumi.Context, name string, nodeConfig *config.NodeConf
 	}
 
 	// Create shared AWS infrastructure (only once for all instances)
+	if awsVpc == nil {
+		// Create VPC
+		vpcName := fmt.Sprintf("%s-vpc", ctx.Stack())
+		vpc, err := ec2.NewVpc(ctx, vpcName, &ec2.VpcArgs{
+			CidrBlock:          pulumi.String("10.0.0.0/16"),
+			EnableDnsHostnames: pulumi.Bool(true),
+			EnableDnsSupport:   pulumi.Bool(true),
+			Tags: pulumi.StringMap{
+				"Name": pulumi.String(vpcName),
+			},
+		}, pulumi.Provider(awsProvider))
+		if err != nil {
+			return fmt.Errorf("failed to create AWS VPC: %w", err)
+		}
+		awsVpc = vpc
+
+		// Create Internet Gateway
+		igwName := fmt.Sprintf("%s-igw", ctx.Stack())
+		igw, err := ec2.NewInternetGateway(ctx, igwName, &ec2.InternetGatewayArgs{
+			VpcId: vpc.ID(),
+			Tags: pulumi.StringMap{
+				"Name": pulumi.String(igwName),
+			},
+		}, pulumi.Provider(awsProvider))
+		if err != nil {
+			return fmt.Errorf("failed to create AWS Internet Gateway: %w", err)
+		}
+
+		// Create public subnet
+		subnetName := fmt.Sprintf("%s-subnet", ctx.Stack())
+		subnet, err := ec2.NewSubnet(ctx, subnetName, &ec2.SubnetArgs{
+			VpcId:               vpc.ID(),
+			CidrBlock:           pulumi.String("10.0.1.0/24"),
+			MapPublicIpOnLaunch: pulumi.Bool(true),
+			AvailabilityZone:    pulumi.String(fmt.Sprintf("%sa", region)),
+			Tags: pulumi.StringMap{
+				"Name": pulumi.String(subnetName),
+			},
+		}, pulumi.Provider(awsProvider))
+		if err != nil {
+			return fmt.Errorf("failed to create AWS subnet: %w", err)
+		}
+		awsSubnet = subnet
+
+		// Create route table with internet access
+		rtName := fmt.Sprintf("%s-rt", ctx.Stack())
+		rt, err := ec2.NewRouteTable(ctx, rtName, &ec2.RouteTableArgs{
+			VpcId: vpc.ID(),
+			Routes: ec2.RouteTableRouteArray{
+				&ec2.RouteTableRouteArgs{
+					CidrBlock: pulumi.String("0.0.0.0/0"),
+					GatewayId: igw.ID(),
+				},
+			},
+			Tags: pulumi.StringMap{
+				"Name": pulumi.String(rtName),
+			},
+		}, pulumi.Provider(awsProvider))
+		if err != nil {
+			return fmt.Errorf("failed to create AWS route table: %w", err)
+		}
+
+		// Associate route table with subnet
+		_, err = ec2.NewRouteTableAssociation(ctx, fmt.Sprintf("%s-rta", ctx.Stack()), &ec2.RouteTableAssociationArgs{
+			SubnetId:     subnet.ID(),
+			RouteTableId: rt.ID(),
+		}, pulumi.Provider(awsProvider))
+		if err != nil {
+			return fmt.Errorf("failed to associate route table: %w", err)
+		}
+
+		ctx.Log.Info("   ✅ AWS VPC infrastructure created (VPC, IGW, Subnet, Route Table)", nil)
+	}
+
 	if awsSecurityGroup == nil {
 		sgName := fmt.Sprintf("%s-sg", ctx.Stack())
 		sg, err := ec2.NewSecurityGroup(ctx, sgName, &ec2.SecurityGroupArgs{
 			Description: pulumi.String("Security group for Kubernetes cluster nodes"),
+			VpcId:       awsVpc.ID(),
 			Ingress: ec2.SecurityGroupIngressArray{
 				&ec2.SecurityGroupIngressArgs{
 					Description: pulumi.String("SSH"),
@@ -837,11 +914,12 @@ func createAWSNode(ctx *pulumi.Context, name string, nodeConfig *config.NodeConf
 	// Generate cloud-init user data
 	userData := cloudinit.GenerateUserDataWithHostnameAndSalt(nodeConfig.Name, saltMasterIP)
 
-	// Create EC2 instance
+	// Create EC2 instance in our VPC subnet
 	instance, err := ec2.NewInstance(ctx, name, &ec2.InstanceArgs{
 		Ami:                      pulumi.String(ami),
 		InstanceType:             pulumi.String(nodeConfig.Size),
 		KeyName:                  awsKeyPair.KeyName,
+		SubnetId:                 awsSubnet.ID(),
 		VpcSecurityGroupIds:      pulumi.StringArray{awsSecurityGroup.ID()},
 		AssociatePublicIpAddress: pulumi.Bool(true),
 		UserData:                 pulumi.String(userData),

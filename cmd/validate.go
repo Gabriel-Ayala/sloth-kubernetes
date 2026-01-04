@@ -14,10 +14,10 @@ import (
 var validateCmd = &cobra.Command{
 	Use:   "validate",
 	Short: "Validate cluster configuration file",
-	Long: `Validate that your cluster configuration YAML file is correct and ready for deployment.
+	Long: `Validate that your cluster configuration Lisp file is correct and ready for deployment.
 
 This command performs comprehensive validation including:
-  • YAML syntax and structure
+  • Lisp S-expression syntax and structure
   • Required fields and metadata
   • Node distribution (masters/workers)
   • Provider configuration and credentials
@@ -27,13 +27,13 @@ This command performs comprehensive validation including:
 
 Use this before 'deploy' to catch configuration errors early.`,
 	Example: `  # Validate configuration file
-  sloth-kubernetes validate --config cluster.yaml
+  sloth-kubernetes validate --config cluster.lisp
 
   # Validate with detailed output
-  sloth-kubernetes validate --config production.yaml --verbose
+  sloth-kubernetes validate --config production.lisp --verbose
 
   # Validate and show node distribution
-  sloth-kubernetes validate -c staging.yaml`,
+  sloth-kubernetes validate -c staging.lisp`,
 	RunE: runValidate,
 }
 
@@ -49,7 +49,7 @@ func runValidate(cmd *cobra.Command, args []string) error {
 	// Use default config file if not specified
 	configPath := cfgFile
 	if configPath == "" {
-		configPath = "./cluster-config.yaml"
+		configPath = "./cluster-config.lisp"
 	}
 
 	// Check if config file exists
@@ -80,7 +80,7 @@ func runValidate(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to parse configuration: %w", err)
 	}
 
-	color.Green("✅ YAML syntax is valid")
+	color.Green("✅ Lisp syntax is valid")
 	fmt.Println()
 
 	// Validate metadata

@@ -1,0 +1,135 @@
+# yaml-language-server: $schema=https://goreleaser.com/static/schema.json
+# vim: set ts=2 sw=2 tw=0 fo=cnqoj
+
+version: 2
+
+project_name: sloth-kubernetes
+
+before:
+  hooks:
+    - go mod tidy
+    - go mod download
+
+builds:
+  - id: sloth
+    binary: sloth
+    main: ./main.go
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    ignore:
+      - goos: windows
+        goarch: arm64
+    ldflags:
+      - -s -w
+      - -X main.version={{.Version}}
+      - -X main.commit={{.Commit}}
+      - -X main.date={{.Date}}
+      - -X main.builtBy=goreleaser
+    mod_timestamp: "{{ .CommitTimestamp }}"
+
+archives:
+  - id: default
+    formats:
+      - tar.gz
+      - zip
+    name_template: >-
+      {{ .ProjectName }}_
+      {{- .Version }}_
+      {{- .Os }}_
+      {{- if eq .Arch "amd64" }}x86_64
+      {{- else if eq .Arch "386" }}i386
+      {{- else }}{{ .Arch }}{{ end }}
+    files:
+      - README.md
+      - LICENSE*
+      - examples/*.lisp
+
+checksum:
+  name_template: "checksums.txt"
+  algorithm: sha256
+
+snapshot:
+  version_template: "{{ incpatch .Version }}-next"
+
+changelog:
+  sort: asc
+  use: github
+  groups:
+    - title: "New Features"
+      regexp: '^.*?feat(\([[:word:]]+\))??!?:.+$'
+      order: 0
+    - title: "Bug Fixes"
+      regexp: '^.*?fix(\([[:word:]]+\))??!?:.+$'
+      order: 1
+    - title: "Performance Improvements"
+      regexp: '^.*?perf(\([[:word:]]+\))??!?:.+$'
+      order: 2
+    - title: "Documentation"
+      regexp: '^.*?docs(\([[:word:]]+\))??!?:.+$'
+      order: 3
+    - title: "Other Changes"
+      order: 999
+  filters:
+    exclude:
+      - "^test:"
+      - "^chore:"
+      - "^ci:"
+      - "merge conflict"
+      - Merge pull request
+      - Merge remote-tracking branch
+      - Merge branch
+
+release:
+  github:
+    owner: chalkan3
+    name: sloth-kubernetes
+  draft: false
+  prerelease: auto
+  mode: replace
+  header: |
+    ## Sloth Kubernetes {{ .Tag }}
+
+    Multi-cloud Kubernetes cluster provisioning with WireGuard mesh networking.
+
+    ### Installation
+
+    **Linux (amd64):**
+    ```bash
+    curl -LO https://github.com/chalkan3/sloth-kubernetes/releases/download/{{ .Tag }}/sloth-kubernetes_{{ .Version }}_linux_x86_64.tar.gz
+    tar -xzf sloth-kubernetes_{{ .Version }}_linux_x86_64.tar.gz
+    sudo mv sloth /usr/local/bin/
+    ```
+
+    **macOS (Apple Silicon):**
+    ```bash
+    curl -LO https://github.com/chalkan3/sloth-kubernetes/releases/download/{{ .Tag }}/sloth-kubernetes_{{ .Version }}_darwin_arm64.tar.gz
+    tar -xzf sloth-kubernetes_{{ .Version }}_darwin_arm64.tar.gz
+    sudo mv sloth /usr/local/bin/
+    ```
+
+    **macOS (Intel):**
+    ```bash
+    curl -LO https://github.com/chalkan3/sloth-kubernetes/releases/download/{{ .Tag }}/sloth-kubernetes_{{ .Version }}_darwin_x86_64.tar.gz
+    tar -xzf sloth-kubernetes_{{ .Version }}_darwin_x86_64.tar.gz
+    sudo mv sloth /usr/local/bin/
+    ```
+
+    **Windows (amd64):**
+    ```powershell
+    Invoke-WebRequest -Uri "https://github.com/chalkan3/sloth-kubernetes/releases/download/{{ .Tag }}/sloth-kubernetes_{{ .Version }}_windows_x86_64.zip" -OutFile "sloth-kubernetes.zip"
+    Expand-Archive -Path "sloth-kubernetes.zip" -DestinationPath "."
+    ```
+
+  footer: |
+    ---
+    **Full Changelog**: https://github.com/chalkan3/sloth-kubernetes/compare/{{ .PreviousTag }}...{{ .Tag }}
+
+announce:
+  skip: true

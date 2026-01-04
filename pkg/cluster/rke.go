@@ -36,8 +36,11 @@ func (r *RKEManager) AddNode(node *providers.NodeOutput) {
 
 // GenerateClusterConfig generates RKE cluster.yml configuration
 func (r *RKEManager) GenerateClusterConfig() pulumi.StringOutput {
-	return pulumi.All(r.gatherNodeInfo()).ApplyT(func(args []interface{}) string {
-		nodes := args[0].([]map[string]interface{})
+	return pulumi.All(r.gatherNodeInfo()...).ApplyT(func(args []interface{}) string {
+		nodes := make([]map[string]interface{}, len(args))
+		for i, arg := range args {
+			nodes[i] = arg.(map[string]interface{})
+		}
 
 		clusterConfig := map[string]interface{}{
 			"cluster_name":       r.ctx.Stack(),

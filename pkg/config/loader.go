@@ -1,12 +1,14 @@
 package config
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"strings"
 
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 	pulumiconfig "github.com/pulumi/pulumi/sdk/v3/go/pulumi/config"
+	"gopkg.in/yaml.v3"
 )
 
 // Loader handles configuration loading and validation
@@ -423,4 +425,43 @@ func applyDefaults(config *ClusterConfig) {
 func ValidateConfig(cfg *ClusterConfig) error {
 	loader := &Loader{}
 	return loader.validate(cfg)
+}
+
+// setDefaults sets default values for the configuration
+func (l *Loader) setDefaults(config *ClusterConfig) error {
+	applyDefaults(config)
+	return nil
+}
+
+// SaveConfig saves the configuration to a file
+func (l *Loader) SaveConfig(path string) error {
+	if l.config == nil {
+		return fmt.Errorf("no configuration loaded")
+	}
+
+	ext := strings.ToLower(path[strings.LastIndex(path, "."):])
+
+	var data []byte
+	var err error
+
+	switch ext {
+	case ".yaml", ".yml":
+		data, err = yaml.Marshal(l.config)
+		if err != nil {
+			return fmt.Errorf("failed to marshal YAML: %w", err)
+		}
+	case ".json":
+		data, err = json.MarshalIndent(l.config, "", "  ")
+		if err != nil {
+			return fmt.Errorf("failed to marshal JSON: %w", err)
+		}
+	default:
+		return fmt.Errorf("unsupported format: %s", ext)
+	}
+
+	if err := os.WriteFile(path, data, 0644); err != nil {
+		return fmt.Errorf("failed to write file: %w", err)
+	}
+
+	return nil
 }

@@ -1,9 +1,12 @@
 package cmd
 
 import (
+	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 
+	"github.com/pulumi/pulumi/sdk/v3/go/auto"
 	"github.com/spf13/cobra"
 	kubectlcmd "k8s.io/kubectl/pkg/cmd"
 )
@@ -101,7 +104,65 @@ func getKubeconfigPath() string {
 
 // getKubeconfigFromStack attempts to retrieve kubeconfig from Pulumi stack
 func getKubeconfigFromStack() string {
-	// This will be implemented to fetch kubeconfig from stack outputs
-	// For now, return empty - users can use 'sloth-kubernetes kubeconfig get' first
-	return ""
+	ctx := context.Background()
+
+	// Try to create workspace and get kubeconfig from stack
+	workspace, err := createWorkspaceWithS3Support(ctx)
+	if err != nil {
+		return ""
+	}
+
+	// Try to find a stack to use
+	stacks, err := workspace.ListStacks(ctx)
+	if err != nil || len(stacks) == 0 {
+		return ""
+	}
+
+	// Use the first available stack or the one specified by stackName flag
+	targetStack := stackName
+	if targetStack == "" && len(stacks) > 0 {
+		targetStack = stacks[0].Name
+	}
+
+	// Select the stack
+	fullyQualifiedStackName := fmt.Sprintf("organization/sloth-kubernetes/%s", targetStack)
+	stack, err := auto.SelectStack(ctx, fullyQualifiedStackName, workspace)
+	if err != nil {
+		return ""
+	}
+
+	// Get outputs
+	outputs, err := stack.Outputs(ctx)
+	if err != nil {
+		return ""
+	}
+
+	// Get kubeconfig from outputs
+	kubeConfigOutput, ok := outputs["kubeConfig"]
+	if !ok {
+		return ""
+	}
+
+	kubeConfigStr := fmt.Sprintf("%v", kubeConfigOutput.Value)
+	if kubeConfigStr == "" || kubeConfigStr == "<nil>" {
+		return ""
+	}
+
+	// Save kubeconfig to a temporary file
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return ""
+	}
+
+	kubeconfigDir := filepath.Join(home, ".kube", "sloth-kubernetes")
+	if err := os.MkdirAll(kubeconfigDir, 0700); err != nil {
+		return ""
+	}
+
+	kubeconfigPath := filepath.Join(kubeconfigDir, fmt.Sprintf("%s.yaml", targetStack))
+	if err := os.WriteFile(kubeconfigPath, []byte(kubeConfigStr), 0600); err != nil {
+		return ""
+	}
+
+	return kubeconfigPath
 }

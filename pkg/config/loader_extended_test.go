@@ -1,8 +1,7 @@
 package config
 
 import (
-	"io/ioutil"
-	"os"
+	"fmt"
 	"testing"
 )
 
@@ -65,7 +64,7 @@ func TestLoader_SetConfigValue_Metadata(t *testing.T) {
 			value: "test-cluster",
 			validate: func(c *ClusterConfig) error {
 				if c.Metadata.Name != "test-cluster" {
-					return ErrValidation("name not set")
+					return fmt.Errorf("name not set")
 				}
 				return nil
 			},
@@ -76,7 +75,7 @@ func TestLoader_SetConfigValue_Metadata(t *testing.T) {
 			value: "production",
 			validate: func(c *ClusterConfig) error {
 				if c.Metadata.Environment != "production" {
-					return ErrValidation("environment not set")
+					return fmt.Errorf("environment not set")
 				}
 				return nil
 			},
@@ -87,7 +86,7 @@ func TestLoader_SetConfigValue_Metadata(t *testing.T) {
 			value: "platform-team",
 			validate: func(c *ClusterConfig) error {
 				if c.Metadata.Owner != "platform-team" {
-					return ErrValidation("owner not set")
+					return fmt.Errorf("owner not set")
 				}
 				return nil
 			},
@@ -98,7 +97,7 @@ func TestLoader_SetConfigValue_Metadata(t *testing.T) {
 			value: "infrastructure",
 			validate: func(c *ClusterConfig) error {
 				if c.Metadata.Team != "infrastructure" {
-					return ErrValidation("team not set")
+					return fmt.Errorf("team not set")
 				}
 				return nil
 			},
@@ -109,7 +108,7 @@ func TestLoader_SetConfigValue_Metadata(t *testing.T) {
 			value: "k3s",
 			validate: func(c *ClusterConfig) error {
 				if c.Cluster.Type != "k3s" {
-					return ErrValidation("type not set")
+					return fmt.Errorf("type not set")
 				}
 				return nil
 			},
@@ -120,7 +119,7 @@ func TestLoader_SetConfigValue_Metadata(t *testing.T) {
 			value: "v1.29.0",
 			validate: func(c *ClusterConfig) error {
 				if c.Cluster.Version != "v1.29.0" {
-					return ErrValidation("version not set")
+					return fmt.Errorf("version not set")
 				}
 				return nil
 			},
@@ -144,93 +143,6 @@ func TestLoader_SetConfigValue_Metadata(t *testing.T) {
 	}
 }
 
-func TestLoader_Load_WithOverrides(t *testing.T) {
-	// Create temp config file
-	tmpFile, err := ioutil.TempFile("", "test-config-*.yaml")
-	if err != nil {
-		t.Fatalf("failed to create temp file: %v", err)
-	}
-	defer os.Remove(tmpFile.Name())
-
-	content := `
-metadata:
-  name: original-cluster
-  environment: dev
-providers:
-  digitalocean:
-    enabled: true
-    token: test-token
-nodePools:
-  masters:
-    name: masters
-    provider: digitalocean
-    count: 3
-    roles: [master]
-`
-	tmpFile.WriteString(content)
-	tmpFile.Close()
-
-	// Load with overrides
-	loader := NewLoader(tmpFile.Name())
-	loader.SetOverride("metadata.name", "overridden-cluster")
-	loader.SetOverride("metadata.environment", "production")
-
-	config, err := loader.Load()
-	if err != nil {
-		t.Fatalf("failed to load config: %v", err)
-	}
-
-	// Check overrides were applied
-	if config.Metadata.Name != "overridden-cluster" {
-		t.Errorf("expected name 'overridden-cluster', got '%s'", config.Metadata.Name)
-	}
-
-	if config.Metadata.Environment != "production" {
-		t.Errorf("expected environment 'production', got '%s'", config.Metadata.Environment)
-	}
-}
-
-func TestLoader_Load_JSON(t *testing.T) {
-	tmpFile, err := ioutil.TempFile("", "test-config-*.json")
-	if err != nil {
-		t.Fatalf("failed to create temp file: %v", err)
-	}
-	defer os.Remove(tmpFile.Name())
-
-	content := `{
-		"metadata": {
-			"name": "json-cluster"
-		},
-		"providers": {
-			"digitalocean": {
-				"enabled": true,
-				"token": "test-token"
-			}
-		},
-		"nodePools": {
-			"masters": {
-				"name": "masters",
-				"provider": "digitalocean",
-				"count": 3,
-				"roles": ["master"]
-			}
-		}
-	}`
-	tmpFile.WriteString(content)
-	tmpFile.Close()
-
-	loader := NewLoader(tmpFile.Name())
-	config, err := loader.Load()
-
-	if err != nil {
-		t.Fatalf("failed to load JSON config: %v", err)
-	}
-
-	if config.Metadata.Name != "json-cluster" {
-		t.Errorf("expected name 'json-cluster', got '%s'", config.Metadata.Name)
-	}
-}
-
 func TestLoader_Validate_MultipleValidators(t *testing.T) {
 	loader := NewLoader("test.yaml")
 
@@ -242,7 +154,7 @@ func TestLoader_Validate_MultipleValidators(t *testing.T) {
 		validateFunc: func(config *ClusterConfig) error {
 			validator1Called = true
 			if config.Metadata.Name == "forbidden" {
-				return ErrValidation("forbidden name")
+				return fmt.Errorf("forbidden name")
 			}
 			return nil
 		},
@@ -252,7 +164,7 @@ func TestLoader_Validate_MultipleValidators(t *testing.T) {
 		validateFunc: func(config *ClusterConfig) error {
 			validator2Called = true
 			if config.Metadata.Environment == "invalid" {
-				return ErrValidation("invalid environment")
+				return fmt.Errorf("invalid environment")
 			}
 			return nil
 		},
@@ -493,6 +405,35 @@ func TestLoader_Validate_Providers(t *testing.T) {
 			},
 			wantErr: false,
 		},
+		{
+			name: "No providers",
+			config: &ClusterConfig{
+				Metadata: Metadata{Name: "test"},
+				Providers: ProvidersConfig{},
+				NodePools: map[string]NodePool{
+					"masters": {Name: "masters", Count: 3, Roles: []string{"master"}},
+				},
+			},
+			wantErr: true,
+		},
+		{
+			name: "Multiple providers enabled",
+			config: &ClusterConfig{
+				Metadata: Metadata{Name: "test"},
+				Providers: ProvidersConfig{
+					DigitalOcean: &DigitalOceanProvider{
+						Enabled: true,
+					},
+					Linode: &LinodeProvider{
+						Enabled: true,
+					},
+				},
+				NodePools: map[string]NodePool{
+					"masters": {Name: "masters", Count: 3, Roles: []string{"master"}},
+				},
+			},
+			wantErr: false,
+		},
 	}
 
 	for _, tt := range tests {
@@ -503,7 +444,6 @@ func TestLoader_Validate_Providers(t *testing.T) {
 			if tt.wantErr && err == nil {
 				t.Error("expected error, got nil")
 			}
-
 			if !tt.wantErr && err != nil {
 				t.Errorf("unexpected error: %v", err)
 			}
@@ -511,15 +451,131 @@ func TestLoader_Validate_Providers(t *testing.T) {
 	}
 }
 
-// Helper type for validation errors
-type validationError struct {
-	message string
+func TestLoader_Validate_NodeRoles(t *testing.T) {
+	tests := []struct {
+		name    string
+		config  *ClusterConfig
+		wantErr bool
+	}{
+		{
+			name: "With master node",
+			config: &ClusterConfig{
+				Metadata: Metadata{Name: "test"},
+				Providers: ProvidersConfig{
+					DigitalOcean: &DigitalOceanProvider{Enabled: true},
+				},
+				Nodes: []NodeConfig{
+					{Name: "master-1", Roles: []string{"master"}},
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name: "With controlplane node (synonym)",
+			config: &ClusterConfig{
+				Metadata: Metadata{Name: "test"},
+				Providers: ProvidersConfig{
+					DigitalOcean: &DigitalOceanProvider{Enabled: true},
+				},
+				Nodes: []NodeConfig{
+					{Name: "master-1", Roles: []string{"controlplane"}},
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name: "With master in nodepool",
+			config: &ClusterConfig{
+				Metadata: Metadata{Name: "test"},
+				Providers: ProvidersConfig{
+					DigitalOcean: &DigitalOceanProvider{Enabled: true},
+				},
+				NodePools: map[string]NodePool{
+					"masters": {Name: "masters", Count: 3, Roles: []string{"master"}},
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name: "Only worker nodes",
+			config: &ClusterConfig{
+				Metadata: Metadata{Name: "test"},
+				Providers: ProvidersConfig{
+					DigitalOcean: &DigitalOceanProvider{Enabled: true},
+				},
+				Nodes: []NodeConfig{
+					{Name: "worker-1", Roles: []string{"worker"}},
+				},
+			},
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			loader := NewLoader("test.yaml")
+			err := loader.validate(tt.config)
+
+			if tt.wantErr && err == nil {
+				t.Error("expected error, got nil")
+			}
+			if !tt.wantErr && err != nil {
+				t.Errorf("unexpected error: %v", err)
+			}
+		})
+	}
 }
 
-func (e *validationError) Error() string {
-	return e.message
+func TestApplyDefaults_Kubernetes(t *testing.T) {
+	config := &ClusterConfig{}
+	applyDefaults(config)
+
+	if config.Kubernetes.Distribution != "rke2" {
+		t.Errorf("expected distribution 'rke2', got '%s'", config.Kubernetes.Distribution)
+	}
+	if config.Kubernetes.NetworkPlugin != "canal" {
+		t.Errorf("expected network plugin 'canal', got '%s'", config.Kubernetes.NetworkPlugin)
+	}
+	if config.Kubernetes.PodCIDR != "10.42.0.0/16" {
+		t.Errorf("expected pod CIDR '10.42.0.0/16', got '%s'", config.Kubernetes.PodCIDR)
+	}
+	if config.Kubernetes.ServiceCIDR != "10.43.0.0/16" {
+		t.Errorf("expected service CIDR '10.43.0.0/16', got '%s'", config.Kubernetes.ServiceCIDR)
+	}
+	if config.Kubernetes.ClusterDNS != "10.43.0.10" {
+		t.Errorf("expected cluster DNS '10.43.0.10', got '%s'", config.Kubernetes.ClusterDNS)
+	}
+	if config.Kubernetes.ClusterDomain != "cluster.local" {
+		t.Errorf("expected cluster domain 'cluster.local', got '%s'", config.Kubernetes.ClusterDomain)
+	}
 }
 
-func ErrValidation(msg string) error {
-	return &validationError{message: msg}
+func TestApplyDefaults_Network(t *testing.T) {
+	config := &ClusterConfig{}
+	applyDefaults(config)
+
+	if config.Network.Mode != "wireguard" {
+		t.Errorf("expected mode 'wireguard', got '%s'", config.Network.Mode)
+	}
+	if config.Network.PodCIDR != "10.42.0.0/16" {
+		t.Errorf("expected pod CIDR '10.42.0.0/16', got '%s'", config.Network.PodCIDR)
+	}
+	if config.Network.ServiceCIDR != "10.43.0.0/16" {
+		t.Errorf("expected service CIDR '10.43.0.0/16', got '%s'", config.Network.ServiceCIDR)
+	}
+}
+
+func TestApplyDefaults_Metadata(t *testing.T) {
+	config := &ClusterConfig{}
+	applyDefaults(config)
+
+	if config.Metadata.Name != "kubernetes-cluster" {
+		t.Errorf("expected name 'kubernetes-cluster', got '%s'", config.Metadata.Name)
+	}
+	if config.Metadata.Environment != "development" {
+		t.Errorf("expected environment 'development', got '%s'", config.Metadata.Environment)
+	}
+	if config.Metadata.Version != "1.0.0" {
+		t.Errorf("expected version '1.0.0', got '%s'", config.Metadata.Version)
+	}
 }

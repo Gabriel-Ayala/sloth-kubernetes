@@ -7,6 +7,7 @@ package e2e
 import (
 	"context"
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/hex"
 	"fmt"
 	"os"
@@ -780,7 +781,7 @@ func extractPublicKeyFromPrivate(t *testing.T, privateKey string) string {
 
 // encodeUserData encodes user data to base64
 func encodeUserData(userData string) string {
-	return userData // AWS SDK handles encoding
+	return base64.StdEncoding.EncodeToString([]byte(userData))
 }
 
 // =============================================================================
