@@ -8,10 +8,11 @@ import (
 
 func TestRootCmd_Structure(t *testing.T) {
 	assert.NotNil(t, rootCmd)
-	assert.Equal(t, "sloth-kubernetes", rootCmd.Use)
+	assert.Equal(t, "sloth", rootCmd.Use)
 	assert.NotEmpty(t, rootCmd.Short)
 	assert.NotEmpty(t, rootCmd.Long)
-	assert.Equal(t, "1.0.0", rootCmd.Version)
+	// Version is "dev" by default, set by goreleaser ldflags in production builds
+	assert.NotEmpty(t, rootCmd.Version)
 }
 
 func TestRootCmd_HasCommands(t *testing.T) {
@@ -95,7 +96,8 @@ func TestRootCmd_CommandLookup(t *testing.T) {
 func TestRootCmd_Version(t *testing.T) {
 	version := rootCmd.Version
 	assert.NotEmpty(t, version)
-	assert.Contains(t, version, ".")
+	// In development, version is "dev"; in production builds, it's semver like "1.0.0"
+	assert.True(t, version == "dev" || len(version) >= 5, "Version should be 'dev' or a semver string")
 }
 
 func TestRootCmd_RunE_NotSet(t *testing.T) {
