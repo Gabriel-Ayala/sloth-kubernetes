@@ -15,7 +15,7 @@ sloth-kubernetes is a unified tool for deploying production-grade Kubernetes clu
 
 **Single Binary**: No need to install and manage multiple tools. Everything is embedded in one executable.
 
-**Simplified Workflow**: Declarative YAML configuration covers infrastructure, networking, security, and Kubernetes setup.
+**Simplified Workflow**: Declarative LISP configuration covers infrastructure, networking, security, and Kubernetes setup.
 
 **Built-in Multi-Cloud VPN**: Automatic WireGuard mesh networking between clouds - no manual setup required.
 
@@ -28,13 +28,11 @@ sloth-kubernetes is a unified tool for deploying production-grade Kubernetes clu
 ### Which cloud providers are supported?
 
 Currently supported:
-- **DigitalOcean** (fully supported)
-- **Linode** (fully supported)
-
-Coming soon:
-- **AWS** (in development)
-- **Azure** (in development)
-- **GCP** (in development)
+- **DigitalOcean** - Droplets, VPCs, Floating IPs, Cloud Firewalls
+- **Linode** - Instances, VLANs, NodeBalancers
+- **AWS** - EC2, VPC, Security Groups, Route53
+- **Azure** - VMs, VNets, Load Balancers
+- **GCP** - Compute Engine, VPC, Cloud DNS
 
 ### Is sloth-kubernetes production-ready?
 
@@ -73,53 +71,55 @@ Requires Go 1.21+.
 
 ### Does it work on Windows?
 
-Yes. Windows binaries are available in releases. However, the best experience is on Linux or macOS.
+Currently, only Linux binaries (amd64 and arm64) are available in releases. For Windows users, we recommend using WSL2 (Windows Subsystem for Linux).
 
 ## Configuration
 
 ### How do I configure multiple cloud providers?
 
-Enable multiple providers in your `cluster.yaml`:
+Enable multiple providers in your `cluster.lisp`:
 
-```yaml
-providers:
-  digitalocean:
-    enabled: true
-    token: ${DO_TOKEN}
-  
-  linode:
-    enabled: true
-    token: ${LINODE_TOKEN}
+```lisp
+(cluster
+  (providers
+    (digitalocean
+      (enabled true)
+      (token "${DIGITALOCEAN_TOKEN}"))
+    (linode
+      (enabled true)
+      (token "${LINODE_TOKEN}")))
 
-nodePools:
-  - name: do-masters
-    provider: digitalocean
-    role: master
-    count: 1
-
-  - name: linode-masters
-    provider: linode
-    role: master
-    count: 2
+  (node-pools
+    (pool
+      (name "do-masters")
+      (provider "digitalocean")
+      (roles master etcd)
+      (count 1))
+    (pool
+      (name "linode-masters")
+      (provider "linode")
+      (roles master etcd)
+      (count 2))))
 ```
 
 ### Can I use different instance sizes per node pool?
 
 Yes:
 
-```yaml
-nodePools:
-  - name: masters
-    size: s-2vcpu-4gb
-    count: 3
-
-  - name: workers-small
-    size: s-2vcpu-4gb
-    count: 5
-
-  - name: workers-large
-    size: s-8vcpu-16gb
-    count: 2
+```lisp
+(node-pools
+  (pool
+    (name "masters")
+    (size "s-2vcpu-4gb")
+    (count 3))
+  (pool
+    (name "workers-small")
+    (size "s-2vcpu-4gb")
+    (count 5))
+  (pool
+    (name "workers-large")
+    (size "s-8vcpu-16gb")
+    (count 2)))
 ```
 
 ### How do I specify SSH keys?
@@ -129,11 +129,11 @@ Either:
 1. **Let sloth-kubernetes generate them** (automatic)
 2. **Provide existing keys**:
 
-```yaml
-providers:
-  digitalocean:
-    sshKeys:
-      - "ssh-ed25519 AAAA... user@host"
+```lisp
+(providers
+  (digitalocean
+    (ssh-keys
+      "ssh-ed25519 AAAA... user@host")))
 ```
 
 ## Deployment
@@ -149,22 +149,23 @@ Typical times:
 
 Yes, specify region per node pool:
 
-```yaml
-nodePools:
-  - name: nyc-masters
-    provider: digitalocean
-    region: nyc3
-    count: 1
-
-  - name: sfo-masters
-    provider: digitalocean
-    region: sfo3
-    count: 1
-
-  - name: lon-masters
-    provider: linode
-    region: eu-west
-    count: 1
+```lisp
+(node-pools
+  (pool
+    (name "nyc-masters")
+    (provider "digitalocean")
+    (region "nyc3")
+    (count 1))
+  (pool
+    (name "sfo-masters")
+    (provider "digitalocean")
+    (region "sfo3")
+    (count 1))
+  (pool
+    (name "lon-masters")
+    (provider "linode")
+    (region "eu-west")
+    (count 1)))
 ```
 
 ### What if deployment fails?
@@ -176,7 +177,7 @@ sloth-kubernetes preserves state and allows resume:
 sloth-kubernetes status
 
 # Retry deployment
-sloth-kubernetes deploy --config cluster.yaml
+sloth-kubernetes deploy --config cluster.lisp
 ```
 
 Pulumi handles idempotency - only missing resources are created.
@@ -211,10 +212,10 @@ By default, **only the bastion host has a public IP**. All cluster nodes use pri
 
 Yes, disable WireGuard and configure your own:
 
-```yaml
-network:
-  wireguard:
-    enabled: false
+```lisp
+(network
+  (wireguard
+    (enabled false)))
 ```
 
 ## Operations
@@ -275,10 +276,10 @@ sloth-kubernetes stacks select production
 
 RKE2 with the version specified in your config:
 
-```yaml
-kubernetes:
-  version: "v1.28.2+rke2r1"
-  distribution: rke2
+```lisp
+(kubernetes
+  (version "v1.28.2+rke2r1")
+  (distribution "rke2"))
 ```
 
 ### Can I use kubectl directly?
@@ -324,11 +325,11 @@ sloth-kubernetes helm install myapp ./chart
 ```
 
 3. **GitOps (ArgoCD)**:
-```yaml
-addons:
-  argocd:
-    enabled: true
-    repository: "https://github.com/org/k8s-apps"
+```lisp
+(addons
+  (argocd
+    (enabled true)
+    (repository "https://github.com/org/k8s-apps")))
 ```
 
 ## Troubleshooting
@@ -395,10 +396,18 @@ Costs depend on cloud provider and instance sizes. Example DigitalOcean cluster:
 
 ### Can I use spot/preemptible instances?
 
-Coming soon. Will support:
-- AWS Spot Instances
-- GCP Preemptible VMs
-- Azure Spot VMs
+Yes, for supported providers:
+
+```lisp
+(node-pools
+  (pool
+    (name "workers")
+    (provider "aws")
+    (spot-instances true)
+    (count 5)))
+```
+
+Support varies by provider - check your provider's configuration options.
 
 ### How do I minimize costs?
 
@@ -413,27 +422,29 @@ Coming soon. Will support:
 
 Yes, provide custom user data:
 
-```yaml
-nodePools:
-  - name: workers
-    cloudInit: |
-      #cloud-config
-      packages:
-        - docker
-      runcmd:
-        - systemctl enable docker
+```lisp
+(node-pools
+  (pool
+    (name "workers")
+    (cloud-init "
+#cloud-config
+packages:
+  - docker
+runcmd:
+  - systemctl enable docker
+")))
 ```
 
 ### How do I backup etcd?
 
 Automatic backups enabled by default:
 
-```yaml
-kubernetes:
-  rke2:
-    server:
-      etcdSnapshotScheduleCron: "0 */6 * * *"
-      etcdSnapshotRetention: 10
+```lisp
+(kubernetes
+  (rke2
+    (server
+      (etcd-snapshot-schedule-cron "0 */6 * * *")
+      (etcd-snapshot-retention 10))))
 ```
 
 Manual backup:
