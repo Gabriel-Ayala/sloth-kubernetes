@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.9.0](https://github.com/chalkan3/sloth-kubernetes/compare/v0.8.1...v0.9.0) (2026-01-05)
+
+
+### Features
+
+* **salt:** persist credentials to Pulumi state for automatic retrieval ([9086a04](https://github.com/chalkan3/sloth-kubernetes/commit/9086a04))
+  - Add SaltCredentials, ArgoCDCredentials, GrafanaCredentials structs
+  - Implement auto-login from saved Pulumi state credentials
+  - Salt commands now automatically authenticate without manual configuration
+
 ## [0.8.1](https://github.com/chalkan3/sloth-kubernetes/compare/v0.8.0...v0.8.1) (2026-01-05)
 
 
