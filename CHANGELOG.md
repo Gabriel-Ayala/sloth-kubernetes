@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.9.1](https://github.com/chalkan3/sloth-kubernetes/compare/v0.9.0...v0.9.1) (2026-01-05)
+
+
+### Features
+
+* **salt:** auto-save credentials on first use from stack outputs ([aa98cd9](https://github.com/chalkan3/sloth-kubernetes/commit/aa98cd9))
+  - No `salt login` required - credentials saved automatically on first command
+  - Reads from `salt_master` stack output and caches to operations history
+  - Subsequent commands use cached credentials for faster execution
+
 ## [0.9.0](https://github.com/chalkan3/sloth-kubernetes/compare/v0.8.1...v0.9.0) (2026-01-05)
 
 
