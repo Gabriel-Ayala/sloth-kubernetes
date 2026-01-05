@@ -141,6 +141,7 @@ func GetStackInfo(targetStack string) (*StackKubeconfig, error) {
 	}
 
 	// Get master IP from nodes output
+	// Try __realNodes first
 	if nodesOutput, ok := outputs["__realNodes"]; ok {
 		nodes, ok := nodesOutput.Value.([]interface{})
 		if ok && len(nodes) > 0 {
@@ -171,6 +172,31 @@ func GetStackInfo(targetStack string) (*StackKubeconfig, error) {
 				}
 				if result.MasterIP != "" {
 					break
+				}
+			}
+		}
+	}
+
+	// If not found, try the nodes map output
+	if result.MasterIP == "" {
+		if nodesOutput, ok := outputs["nodes"]; ok {
+			nodesMap, ok := nodesOutput.Value.(map[string]interface{})
+			if ok {
+				for _, nodeInterface := range nodesMap {
+					node, ok := nodeInterface.(map[string]interface{})
+					if !ok {
+						continue
+					}
+					// Check if this is a master node by name or role
+					name, _ := node["name"].(string)
+					role, _ := node["role"].(string)
+					if strings.Contains(name, "master") || role == "master" || role == "controlplane" {
+						// Get public IP
+						if pubIP, ok := node["public_ip"].(string); ok && pubIP != "" {
+							result.MasterIP = pubIP
+							break
+						}
+					}
 				}
 			}
 		}

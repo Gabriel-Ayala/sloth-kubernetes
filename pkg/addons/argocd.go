@@ -2,6 +2,7 @@ package addons
 
 import (
 	"fmt"
+	"os"
 	"os/exec"
 	"strings"
 	"time"
@@ -91,22 +92,34 @@ func installArgoCDManifests(masterNodeIP string, sshPrivateKey string, argocdCon
 	installScript := fmt.Sprintf(`
 set -e
 
-# Install kubectl if not present
-if ! command -v kubectl &> /dev/null; then
+# Set kubeconfig for RKE2
+export KUBECONFIG=/etc/rancher/rke2/rke2.yaml
+
+# Install kubectl if not present (use RKE2's kubectl if available)
+if [ -f /var/lib/rancher/rke2/bin/kubectl ]; then
+    alias kubectl='/var/lib/rancher/rke2/bin/kubectl'
+    echo "Using RKE2 kubectl"
+elif ! command -v kubectl &> /dev/null; then
     echo "Installing kubectl..."
     curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
-    sudo install -o root -g root -m 0755 kubectl /usr/local/bin/kubectl
+    install -o root -g root -m 0755 kubectl /usr/local/bin/kubectl
     rm kubectl
     echo "kubectl installed successfully"
 else
     echo "kubectl already installed"
 fi
 
+# Use the correct kubectl path
+KUBECTL="/var/lib/rancher/rke2/bin/kubectl"
+if [ ! -f "$KUBECTL" ]; then
+    KUBECTL="kubectl"
+fi
+
 # Create ArgoCD namespace
-kubectl create namespace %s --dry-run=client -o yaml | kubectl apply -f -
+$KUBECTL --kubeconfig=/etc/rancher/rke2/rke2.yaml create namespace %s --dry-run=client -o yaml | $KUBECTL --kubeconfig=/etc/rancher/rke2/rke2.yaml apply -f -
 
 # Install ArgoCD
-kubectl apply -n %s -f https://raw.githubusercontent.com/argoproj/argo-cd/%s/manifests/install.yaml
+$KUBECTL --kubeconfig=/etc/rancher/rke2/rke2.yaml apply -n %s -f https://raw.githubusercontent.com/argoproj/argo-cd/%s/manifests/install.yaml
 
 echo "ArgoCD installed successfully"
 `, argocdConfig.Namespace, argocdConfig.Namespace, argocdConfig.Version)
@@ -119,8 +132,14 @@ func waitForArgoCDReady(masterNodeIP string, sshPrivateKey string, namespace str
 	waitScript := fmt.Sprintf(`
 set -e
 
+export KUBECONFIG=/etc/rancher/rke2/rke2.yaml
+KUBECTL="/var/lib/rancher/rke2/bin/kubectl"
+if [ ! -f "$KUBECTL" ]; then
+    KUBECTL="kubectl"
+fi
+
 echo "Waiting for ArgoCD pods to be ready..."
-kubectl wait --for=condition=Ready pods --all -n %s --timeout=300s
+$KUBECTL --kubeconfig=/etc/rancher/rke2/rke2.yaml wait --for=condition=Ready pods --all -n %s --timeout=300s
 
 echo "ArgoCD is ready"
 `, namespace)
@@ -132,6 +151,12 @@ echo "ArgoCD is ready"
 func applyGitOpsApplications(masterNodeIP string, sshPrivateKey string, argocdConfig *config.ArgoCDConfig) error {
 	applyScript := fmt.Sprintf(`
 set -e
+
+export KUBECONFIG=/etc/rancher/rke2/rke2.yaml
+KUBECTL="/var/lib/rancher/rke2/bin/kubectl"
+if [ ! -f "$KUBECTL" ]; then
+    KUBECTL="kubectl"
+fi
 
 # Create temporary directory for GitOps repo
 TEMP_DIR=$(mktemp -d)
@@ -148,7 +173,7 @@ git clone -b %s %s gitops-repo
 # Apply all YAML files from the apps path
 if [ -d "gitops-repo/%s" ]; then
 	echo "Applying applications from %s..."
-	kubectl apply -f gitops-repo/%s/ -n %s
+	$KUBECTL --kubeconfig=/etc/rancher/rke2/rke2.yaml apply -f gitops-repo/%s/ -n %s
 	echo "Applications applied successfully"
 else
 	echo "Warning: Apps path 'gitops-repo/%s' not found"
@@ -167,7 +192,12 @@ echo "Cleaning up temporary directory..."
 func getArgoCDAdminPassword(masterNodeIP string, sshPrivateKey string, namespace string) (string, error) {
 	getPasswordScript := fmt.Sprintf(`
 set -e
-kubectl -n %s get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d
+export KUBECONFIG=/etc/rancher/rke2/rke2.yaml
+KUBECTL="/var/lib/rancher/rke2/bin/kubectl"
+if [ ! -f "$KUBECTL" ]; then
+    KUBECTL="kubectl"
+fi
+$KUBECTL --kubeconfig=/etc/rancher/rke2/rke2.yaml -n %s get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d
 `, namespace)
 
 	output, err := runSSHCommandWithOutput(masterNodeIP, sshPrivateKey, getPasswordScript)
@@ -186,6 +216,13 @@ func runSSHCommand(host string, privateKey string, command string) error {
 
 // runSSHCommandWithOutput executes a command on the remote node via SSH and returns output
 func runSSHCommandWithOutput(host string, privateKey string, command string) (string, error) {
+	// Determine SSH user from environment or use default
+	// AWS uses "ubuntu", DigitalOcean/Linode use "root"
+	sshUser := os.Getenv("SSH_USER")
+	if sshUser == "" {
+		sshUser = "ubuntu" // Default to ubuntu for AWS compatibility
+	}
+
 	// Save private key to temporary file
 	tmpKeyFile := fmt.Sprintf("/tmp/ssh-key-%d", time.Now().UnixNano())
 	if err := exec.Command("bash", "-c", fmt.Sprintf("echo '%s' > %s && chmod 600 %s", privateKey, tmpKeyFile, tmpKeyFile)).Run(); err != nil {
@@ -194,7 +231,12 @@ func runSSHCommandWithOutput(host string, privateKey string, command string) (st
 	defer exec.Command("rm", "-f", tmpKeyFile).Run()
 
 	// Execute SSH command with connection timeout
-	sshCmd := fmt.Sprintf(`ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=5 -i %s root@%s '%s'`, tmpKeyFile, host, strings.ReplaceAll(command, "'", "'\\''"))
+	// Use sudo for non-root users to ensure commands run with proper permissions
+	actualCommand := command
+	if sshUser != "root" {
+		actualCommand = fmt.Sprintf("sudo bash -c '%s'", strings.ReplaceAll(command, "'", "'\\''"))
+	}
+	sshCmd := fmt.Sprintf(`ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=30 -i %s %s@%s '%s'`, tmpKeyFile, sshUser, host, strings.ReplaceAll(actualCommand, "'", "'\\''"))
 
 	cmd := exec.Command("bash", "-c", sshCmd)
 	output, err := cmd.CombinedOutput()
@@ -249,7 +291,12 @@ spec:
 
 	applyScript := fmt.Sprintf(`
 set -e
-cat <<'EOF' | kubectl apply -f -
+export KUBECONFIG=/etc/rancher/rke2/rke2.yaml
+KUBECTL="/var/lib/rancher/rke2/bin/kubectl"
+if [ ! -f "$KUBECTL" ]; then
+    KUBECTL="kubectl"
+fi
+cat <<'EOF' | $KUBECTL --kubeconfig=/etc/rancher/rke2/rke2.yaml apply -f -
 %s
 EOF
 echo "App of Apps created successfully"
@@ -278,7 +325,12 @@ type PodStatus struct {
 func GetArgoCDStatus(masterNodeIP string, sshPrivateKey string, namespace string) (*ArgoCDStatus, error) {
 	statusScript := fmt.Sprintf(`
 set -e
-kubectl get pods -n %s -o json 2>/dev/null || echo '{"items":[]}'
+export KUBECONFIG=/etc/rancher/rke2/rke2.yaml
+KUBECTL="/var/lib/rancher/rke2/bin/kubectl"
+if [ ! -f "$KUBECTL" ]; then
+    KUBECTL="kubectl"
+fi
+$KUBECTL --kubeconfig=/etc/rancher/rke2/rke2.yaml get pods -n %s -o json 2>/dev/null || echo '{"items":[]}'
 `, namespace)
 
 	output, err := runSSHCommandWithOutput(masterNodeIP, sshPrivateKey, statusScript)
@@ -310,7 +362,11 @@ kubectl get pods -n %s -o json 2>/dev/null || echo '{"items":[]}'
 	}
 
 	// Get simple pod list
-	podListScript := fmt.Sprintf(`kubectl get pods -n %s --no-headers 2>/dev/null || true`, namespace)
+	podListScript := fmt.Sprintf(`
+export KUBECONFIG=/etc/rancher/rke2/rke2.yaml
+KUBECTL="/var/lib/rancher/rke2/bin/kubectl"
+if [ ! -f "$KUBECTL" ]; then KUBECTL="kubectl"; fi
+$KUBECTL --kubeconfig=/etc/rancher/rke2/rke2.yaml get pods -n %s --no-headers 2>/dev/null || true`, namespace)
 	podOutput, _ := runSSHCommandWithOutput(masterNodeIP, sshPrivateKey, podListScript)
 
 	status.Pods = []PodStatus{}
@@ -329,7 +385,11 @@ kubectl get pods -n %s -o json 2>/dev/null || echo '{"items":[]}'
 	}
 
 	// Get application count
-	appCountScript := fmt.Sprintf(`kubectl get applications -n %s --no-headers 2>/dev/null | wc -l || echo "0"`, namespace)
+	appCountScript := fmt.Sprintf(`
+export KUBECONFIG=/etc/rancher/rke2/rke2.yaml
+KUBECTL="/var/lib/rancher/rke2/bin/kubectl"
+if [ ! -f "$KUBECTL" ]; then KUBECTL="kubectl"; fi
+$KUBECTL --kubeconfig=/etc/rancher/rke2/rke2.yaml get applications -n %s --no-headers 2>/dev/null | wc -l || echo "0"`, namespace)
 	countOutput, _ := runSSHCommandWithOutput(masterNodeIP, sshPrivateKey, appCountScript)
 	fmt.Sscanf(strings.TrimSpace(countOutput), "%d", &status.AppsTotal)
 
@@ -354,7 +414,10 @@ type ArgoCDApp struct {
 // ListArgoCDApps lists all ArgoCD applications
 func ListArgoCDApps(masterNodeIP string, sshPrivateKey string, namespace string) ([]ArgoCDApp, error) {
 	listScript := fmt.Sprintf(`
-kubectl get applications -n %s -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.status.sync.status}{"\t"}{.status.health.status}{"\t"}{.spec.source.repoURL}{"\t"}{.spec.source.path}{"\n"}{end}' 2>/dev/null || true
+export KUBECONFIG=/etc/rancher/rke2/rke2.yaml
+KUBECTL="/var/lib/rancher/rke2/bin/kubectl"
+if [ ! -f "$KUBECTL" ]; then KUBECTL="kubectl"; fi
+$KUBECTL --kubeconfig=/etc/rancher/rke2/rke2.yaml get applications -n %s -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.status.sync.status}{"\t"}{.status.health.status}{"\t"}{.spec.source.repoURL}{"\t"}{.spec.source.path}{"\n"}{end}' 2>/dev/null || true
 `, namespace)
 
 	output, err := runSSHCommandWithOutput(masterNodeIP, sshPrivateKey, listScript)
@@ -386,9 +449,12 @@ kubectl get applications -n %s -o jsonpath='{range .items[*]}{.metadata.name}{"\
 func SyncAllApps(masterNodeIP string, sshPrivateKey string, namespace string) error {
 	syncScript := fmt.Sprintf(`
 set -e
-for app in $(kubectl get applications -n %s -o jsonpath='{.items[*].metadata.name}'); do
+export KUBECONFIG=/etc/rancher/rke2/rke2.yaml
+KUBECTL="/var/lib/rancher/rke2/bin/kubectl"
+if [ ! -f "$KUBECTL" ]; then KUBECTL="kubectl"; fi
+for app in $($KUBECTL --kubeconfig=/etc/rancher/rke2/rke2.yaml get applications -n %s -o jsonpath='{.items[*].metadata.name}'); do
     echo "Syncing $app..."
-    kubectl patch application $app -n %s --type merge -p '{"operation":{"initiatedBy":{"username":"admin"},"sync":{"revision":"HEAD"}}}'
+    $KUBECTL --kubeconfig=/etc/rancher/rke2/rke2.yaml patch application $app -n %s --type merge -p '{"operation":{"initiatedBy":{"username":"admin"},"sync":{"revision":"HEAD"}}}'
 done
 echo "All applications sync triggered"
 `, namespace, namespace)
@@ -400,7 +466,10 @@ echo "All applications sync triggered"
 func SyncApp(masterNodeIP string, sshPrivateKey string, namespace string, appName string) error {
 	syncScript := fmt.Sprintf(`
 set -e
-kubectl patch application %s -n %s --type merge -p '{"operation":{"initiatedBy":{"username":"admin"},"sync":{"revision":"HEAD"}}}'
+export KUBECONFIG=/etc/rancher/rke2/rke2.yaml
+KUBECTL="/var/lib/rancher/rke2/bin/kubectl"
+if [ ! -f "$KUBECTL" ]; then KUBECTL="kubectl"; fi
+$KUBECTL --kubeconfig=/etc/rancher/rke2/rke2.yaml patch application %s -n %s --type merge -p '{"operation":{"initiatedBy":{"username":"admin"},"sync":{"revision":"HEAD"}}}'
 echo "Application sync triggered"
 `, appName, namespace)
 
