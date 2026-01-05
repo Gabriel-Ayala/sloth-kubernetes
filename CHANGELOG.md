@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.5.0](https://github.com/chalkan3/sloth-kubernetes/compare/v0.4.1...v0.5.0) (2026-01-05)
+
+
+### Features
+
+* add Lisp evaluator with 70+ built-in functions and config validator ([e3a1281](https://github.com/chalkan3/sloth-kubernetes/commit/e3a1281f5dcfa34d94d38705427a39d3eeaee028))
+* add Lisp evaluator with 70+ built-in functions and config validator ([da450fc](https://github.com/chalkan3/sloth-kubernetes/commit/da450fc6f53b975748f4243dfb87b3e6b25b782f))
+* add state management, versioning, manifest registry, and audit logging ([c761a37](https://github.com/chalkan3/sloth-kubernetes/commit/c761a37418466268ce6f7d82996fd06e2a2d48ad))
+* add state management, versioning, manifest registry, and audit logging ([6d26c33](https://github.com/chalkan3/sloth-kubernetes/commit/6d26c3388f77db2c8d4c5c6c99c2b582eb181626))
+
 ## [0.4.1](https://github.com/chalkan3/sloth-kubernetes/compare/v0.4.0...v0.4.1) (2026-01-04)
 
 
