@@ -27,22 +27,44 @@ Most commands require a **stack name** as the first argument. The stack name ide
 
 Available Commands:
 
+**Deployment & Configuration:**
 - [`deploy`](#deploy) - Deploy a Kubernetes cluster
 - [`destroy`](#destroy) - Destroy a cluster
-- [`preview`](#preview) - Preview changes
-- [`refresh`](#refresh) - Sync state with cloud
 - [`validate`](#validate) - Validate configuration
-- [`stacks`](#stacks) - Manage Pulumi stacks
-- [`salt`](#salt) - Node management with Salt
+- [`config`](#config) - Generate example configuration
+- [`export-config`](#export-config) - Export config from Pulumi state
+- [`login`](#login) - Configure S3 state backend
+
+**Cluster Operations:**
 - [`kubectl`](#kubectl) - Kubernetes operations (stack-aware)
+- [`helm`](#helm) - Helm chart management (stack-aware)
+- [`kustomize`](#kustomize) - Kustomize operations (stack-aware)
 - [`kubeconfig`](#kubeconfig) - Generate kubeconfig
+
+**Node & Infrastructure:**
+- [`nodes`](#nodes) - Manage cluster nodes
+- [`salt`](#salt) - Node management with SaltStack
+- [`vpn`](#vpn) - WireGuard VPN management
+
+**Monitoring & Operations:**
 - [`health`](#health) - Cluster health checks (stack-aware)
 - [`backup`](#backup) - Velero backup management (stack-aware)
 - [`benchmark`](#benchmark) - Cluster benchmarks (stack-aware)
 - [`upgrade`](#upgrade) - Cluster upgrades (stack-aware)
+- [`history`](#history) - View operation history
+
+**GitOps & Addons:**
 - [`argocd`](#argocd) - ArgoCD GitOps (stack-aware)
-- [`addons`](#addons) - Manage cluster addons
+- [`addons`](#addons) - Manage cluster addons via GitOps
+
+**State Management:**
+- [`stacks`](#stacks) - Manage Pulumi stacks
+- [`pulumi`](#pulumi) - Direct Pulumi operations (no CLI required)
+
+**Utility:**
 - [`version`](#version) - Show version info
+- [`list`](#list) - List deployed clusters
+- [`status`](#status) - Show cluster status
 
 ---
 
@@ -699,16 +721,639 @@ sloth-kubernetes argocd sync my-cluster --all
 
 ---
 
+## `helm`
+
+Execute Helm commands using kubeconfig from a stack. The kubeconfig is automatically retrieved from Pulumi state.
+
+### Usage
+
+```bash
+sloth-kubernetes helm <stack-name> [helm-args...]
+```
+
+### Examples
+
+```bash
+# List all releases
+sloth-kubernetes helm my-cluster list
+
+# List releases in all namespaces
+sloth-kubernetes helm my-cluster list -A
+
+# Install a chart
+sloth-kubernetes helm my-cluster install myapp bitnami/nginx
+
+# Upgrade a release
+sloth-kubernetes helm my-cluster upgrade myapp bitnami/nginx
+
+# Add a repository
+sloth-kubernetes helm my-cluster repo add bitnami https://charts.bitnami.com/bitnami
+
+# Search for charts
+sloth-kubernetes helm my-cluster search repo nginx
+
+# Get release status
+sloth-kubernetes helm my-cluster status myapp
+
+# Uninstall a release
+sloth-kubernetes helm my-cluster uninstall myapp
+
+# Install with custom values
+sloth-kubernetes helm my-cluster install redis bitnami/redis -f values.yaml
+
+# Install in specific namespace
+sloth-kubernetes helm my-cluster install nginx bitnami/nginx -n web --create-namespace
+```
+
+---
+
+## `kustomize`
+
+Execute Kustomize commands for declarative Kubernetes configuration management.
+
+### Usage
+
+```bash
+sloth-kubernetes kustomize <stack-name> [kustomize-args...]
+```
+
+### Subcommands
+
+| Subcommand | Description |
+|------------|-------------|
+| `build` | Build a kustomization target |
+| `create` | Create a new kustomization |
+| `edit` | Edit a kustomization file |
+
+### Examples
+
+```bash
+# Build kustomization and apply to cluster
+sloth-kubernetes kustomize my-cluster build ./overlays/production | \
+  sloth-kubernetes kubectl my-cluster apply -f -
+
+# Build with specific output
+sloth-kubernetes kustomize my-cluster build ./base
+
+# Create new kustomization
+sloth-kubernetes kustomize my-cluster create --resources deployment.yaml,service.yaml
+
+# Edit kustomization - add resource
+sloth-kubernetes kustomize my-cluster edit add resource configmap.yaml
+
+# Edit kustomization - set image
+sloth-kubernetes kustomize my-cluster edit set image nginx=nginx:1.25
+```
+
+---
+
+## `addons`
+
+Manage Kubernetes cluster addons using GitOps methodology with ArgoCD.
+
+### Usage
+
+```bash
+sloth-kubernetes addons <subcommand> <stack-name> [flags]
+```
+
+### Subcommands
+
+| Subcommand | Description |
+|------------|-------------|
+| `bootstrap` | Bootstrap ArgoCD from a GitOps repository |
+| `list` | List installed addons |
+| `status` | Show ArgoCD and addon status |
+| `sync` | Manually trigger ArgoCD sync |
+| `template` | Generate example GitOps repository structure |
+
+### Examples
+
+```bash
+# Bootstrap ArgoCD with GitOps repo
+sloth-kubernetes addons bootstrap my-cluster --repo https://github.com/org/gitops.git
+
+# List installed addons
+sloth-kubernetes addons list my-cluster
+
+# Check addon status
+sloth-kubernetes addons status my-cluster
+
+# Trigger sync
+sloth-kubernetes addons sync my-cluster
+
+# Generate example GitOps structure
+sloth-kubernetes addons template --output ./my-gitops-repo
+```
+
+### GitOps Repository Structure
+
+The addons system expects this directory structure in your GitOps repo:
+
+```
+gitops-repo/
+├── argocd/
+│   └── apps/           # ArgoCD Application manifests
+│       ├── monitoring.yaml
+│       ├── logging.yaml
+│       └── ingress.yaml
+├── addons/
+│   ├── prometheus/     # Prometheus manifests
+│   ├── grafana/        # Grafana manifests
+│   ├── nginx-ingress/  # Ingress controller
+│   └── cert-manager/   # Certificate management
+└── README.md
+```
+
+---
+
+## `history`
+
+View operation history stored in Pulumi stack state. All CLI operations are automatically recorded.
+
+### Usage
+
+```bash
+sloth-kubernetes history <stack-name> [type] [flags]
+```
+
+### Flags
+
+| Flag | Description | Default |
+|------|-------------|---------|
+| `--json` | Output in JSON format | `false` |
+| `--limit` | Number of records per type | `10` |
+
+### Operation Types
+
+| Type | Description |
+|------|-------------|
+| `backups` | Backup create/restore/delete operations |
+| `upgrades` | Cluster upgrade operations |
+| `health` | Health check results |
+| `benchmarks` | Benchmark runs |
+| `nodes` | Node add/remove/drain operations |
+| `vpn` | VPN join/leave/test operations |
+| `argocd` | ArgoCD install/sync operations |
+| `addons` | Addons bootstrap/install operations |
+| `salt` | Salt command executions |
+| `validation` | Validation check results |
+
+### Examples
+
+```bash
+# View all operation history
+sloth-kubernetes history my-cluster
+
+# View backup history only
+sloth-kubernetes history my-cluster backups
+
+# View upgrade history
+sloth-kubernetes history my-cluster upgrades
+
+# View health check history
+sloth-kubernetes history my-cluster health
+
+# Output as JSON
+sloth-kubernetes history my-cluster --json
+
+# Limit records
+sloth-kubernetes history my-cluster --limit 5
+```
+
+### Output Example
+
+```
+Operation History for stack: my-cluster
+════════════════════════════════════════════════════════════
+
+Backup Operations (last 10):
+────────────────────────────────────────
+  2026-01-05 10:30:00  create   daily-backup-001    success   2m 15s
+  2026-01-05 08:00:00  create   scheduled-backup    success   1m 45s
+
+Upgrade Operations (last 10):
+────────────────────────────────────────
+  2026-01-04 15:00:00  upgrade  v1.28.0 → v1.29.0   success   15m 30s
+
+Health Check History (last 10):
+────────────────────────────────────────
+  2026-01-05 11:00:00  healthy  12/12 passed        45s
+```
+
+---
+
+## `login`
+
+Configure the S3 bucket for storing Pulumi state. Similar to `pulumi login` but with S3-compatible storage support.
+
+### Usage
+
+```bash
+sloth-kubernetes login [s3://bucket-name] [flags]
+```
+
+### Flags
+
+| Flag | Description | Required |
+|------|-------------|----------|
+| `-b, --bucket` | S3 bucket URL | Yes |
+| `--access-key-id` | AWS Access Key ID | No |
+| `--secret-access-key` | AWS Secret Access Key | No |
+| `--region` | AWS Region | No |
+| `--endpoint` | S3 endpoint for S3-compatible storage | No |
+
+### Examples
+
+```bash
+# Login with S3 bucket URL
+sloth-kubernetes login s3://my-pulumi-state-bucket
+
+# Login with bucket flag
+sloth-kubernetes login --bucket my-pulumi-state-bucket
+
+# Login with credentials
+sloth-kubernetes login s3://bucket \
+  --access-key-id YOUR_KEY \
+  --secret-access-key YOUR_SECRET \
+  --region us-east-1
+
+# Login to MinIO or S3-compatible storage
+sloth-kubernetes login s3://bucket \
+  --endpoint https://minio.example.com \
+  --access-key-id minio \
+  --secret-access-key minio123
+```
+
+### Configuration File
+
+The backend configuration is stored in `~/.sloth-kubernetes/config`:
+
+```json
+{
+  "backend_url": "s3://my-pulumi-state-bucket",
+  "region": "us-east-1"
+}
+```
+
+---
+
+## `export-config`
+
+Export cluster configuration stored in Pulumi state. Useful for recovering lost config files or auditing deployments.
+
+### Usage
+
+```bash
+sloth-kubernetes export-config <stack-name> [flags]
+```
+
+### Flags
+
+| Flag | Description | Default |
+|------|-------------|---------|
+| `-f, --format` | Output format: `lisp`, `json`, `yaml`, `meta` | `lisp` |
+| `-o, --output` | Output file path | stdout |
+| `--regenerate` | Regenerate Lisp from stored JSON | `false` |
+| `--meta` | Also show deployment metadata | `false` |
+
+### Examples
+
+```bash
+# Export config as Lisp (default)
+sloth-kubernetes export-config production
+
+# Export config as JSON
+sloth-kubernetes export-config production --format json
+
+# Export to a file
+sloth-kubernetes export-config production --output recovered-config.lisp
+
+# Regenerate Lisp from stored JSON
+sloth-kubernetes export-config production --regenerate
+
+# Export deployment metadata
+sloth-kubernetes export-config production --format meta
+
+# Export with metadata included
+sloth-kubernetes export-config production --meta
+```
+
+### Output Formats
+
+**Lisp (default):**
+```lisp
+(cluster
+  (metadata
+    (name "production")
+    (environment "prod"))
+  (providers
+    (digitalocean
+      (enabled true)
+      (region "nyc3"))))
+```
+
+**JSON:**
+```json
+{
+  "metadata": {
+    "name": "production",
+    "environment": "prod"
+  },
+  "providers": {
+    "digitalocean": {
+      "enabled": true,
+      "region": "nyc3"
+    }
+  }
+}
+```
+
+**Meta:**
+```
+Deployment Metadata
+═══════════════════
+Stack:        production
+Deployed:     2026-01-05T10:30:00Z
+Last Update:  2026-01-05T15:45:00Z
+Nodes:        5 (3 masters, 2 workers)
+K8s Version:  v1.29.0+rke2r1
+```
+
+---
+
+## `pulumi`
+
+Execute Pulumi operations using the embedded Automation API. No Pulumi CLI installation required.
+
+### Usage
+
+```bash
+sloth-kubernetes pulumi <command> [flags]
+```
+
+### Subcommands
+
+| Subcommand | Description |
+|------------|-------------|
+| `stack list` | List all stacks |
+| `stack output` | Show stack outputs |
+| `stack export` | Export stack state to JSON |
+| `stack import` | Import stack state from JSON |
+| `stack info` | Show detailed stack information |
+| `stack delete` | Delete a stack |
+| `stack select` | Select current stack |
+| `stack current` | Show current selected stack |
+| `stack rename` | Rename a stack |
+| `stack cancel` | Cancel and unlock a stack |
+| `preview` | Preview infrastructure changes |
+| `refresh` | Refresh stack state from cloud |
+
+### Examples
+
+```bash
+# List all stacks
+sloth-kubernetes pulumi stack list
+
+# Show stack outputs
+sloth-kubernetes pulumi stack output --stack production
+
+# Export stack state for backup
+sloth-kubernetes pulumi stack export --stack production > backup.json
+
+# Import stack state
+sloth-kubernetes pulumi stack import --stack production < backup.json
+
+# Preview changes
+sloth-kubernetes pulumi preview --stack production
+
+# Refresh state from cloud
+sloth-kubernetes pulumi refresh --stack production
+
+# Get detailed stack info
+sloth-kubernetes pulumi stack info --stack production
+
+# Cancel stuck operation
+sloth-kubernetes pulumi stack cancel --stack production
+```
+
+---
+
+## `config`
+
+Manage cluster configuration files.
+
+### Usage
+
+```bash
+sloth-kubernetes config <command> [flags]
+```
+
+### Subcommands
+
+| Subcommand | Description |
+|------------|-------------|
+| `generate` | Generate example configuration file |
+
+### Examples
+
+```bash
+# Generate example config
+sloth-kubernetes config generate
+
+# Generate with specific provider
+sloth-kubernetes config generate --provider digitalocean
+
+# Generate minimal config
+sloth-kubernetes config generate --minimal
+
+# Generate with output file
+sloth-kubernetes config generate --output my-cluster.lisp
+```
+
+---
+
+## `validate`
+
+Validate cluster configuration before deployment.
+
+### Usage
+
+```bash
+sloth-kubernetes validate [flags]
+```
+
+### Flags
+
+| Flag | Description | Default |
+|------|-------------|---------|
+| `-c, --config` | Path to config file | `cluster.lisp` |
+| `-v, --verbose` | Show detailed output | `false` |
+
+### Validation Checks
+
+- Lisp S-expression syntax
+- Required fields and metadata
+- Node distribution (masters/workers)
+- Provider configuration
+- Network and VPN settings
+- DNS configuration
+- Resource limits
+
+### Examples
+
+```bash
+# Validate configuration
+sloth-kubernetes validate --config cluster.lisp
+
+# Validate with verbose output
+sloth-kubernetes validate --config production.lisp --verbose
+```
+
+### Output
+
+```
+Validating: cluster.lisp
+═══════════════════════════════════════════════════════════
+
+✓ Lisp syntax valid
+✓ Metadata complete
+✓ Provider configuration valid
+✓ Node pools configured (3 masters, 5 workers)
+✓ Network settings valid
+✓ VPN configuration valid
+✓ DNS settings valid
+
+Configuration is valid! Ready for deployment.
+```
+
+---
+
+## `list`
+
+List all deployed clusters.
+
+### Usage
+
+```bash
+sloth-kubernetes list [flags]
+```
+
+### Examples
+
+```bash
+# List all clusters
+sloth-kubernetes list
+
+# Output as JSON
+sloth-kubernetes list --json
+```
+
+### Output
+
+```
+Deployed Clusters
+═════════════════════════════════════════════════════════════
+NAME            NODES   STATUS    LAST UPDATE      PROVIDER
+production      8       healthy   2h ago           digitalocean
+staging         3       healthy   1d ago           linode
+development     2       warning   5h ago           aws
+```
+
+---
+
+## `status`
+
+Show detailed cluster status and health information.
+
+### Usage
+
+```bash
+sloth-kubernetes status <stack-name> [flags]
+```
+
+### Examples
+
+```bash
+# Show cluster status
+sloth-kubernetes status my-cluster
+
+# Show detailed status
+sloth-kubernetes status my-cluster --verbose
+```
+
+### Output
+
+```
+Cluster Status: my-cluster
+═══════════════════════════════════════════════════════════
+
+Overview:
+  Status:       Healthy
+  K8s Version:  v1.29.0+rke2r1
+  Nodes:        5 (3 ready, 0 not ready)
+  Pods:         45 running, 2 pending
+
+Nodes:
+  NAME              STATUS   ROLES           VERSION
+  master-1          Ready    control-plane   v1.29.0+rke2r1
+  master-2          Ready    control-plane   v1.29.0+rke2r1
+  master-3          Ready    control-plane   v1.29.0+rke2r1
+  worker-1          Ready    worker          v1.29.0+rke2r1
+  worker-2          Ready    worker          v1.29.0+rke2r1
+
+Resources:
+  CPU:      45% utilized (18/40 cores)
+  Memory:   62% utilized (50/80 GB)
+  Storage:  35% utilized (350/1000 GB)
+```
+
+---
+
 ## Environment Variables
 
 Sloth Kubernetes supports these environment variables:
+
+### Cloud Provider Credentials
 
 | Variable | Description | Example |
 |----------|-------------|---------|
 | `DIGITALOCEAN_TOKEN` | DigitalOcean API token | `dop_v1_abc123...` |
 | `LINODE_TOKEN` | Linode API token | `abc123...` |
+| `AWS_ACCESS_KEY_ID` | AWS Access Key ID | `AKIA...` |
+| `AWS_SECRET_ACCESS_KEY` | AWS Secret Access Key | `wJalr...` |
+| `AWS_SESSION_TOKEN` | AWS Session Token (optional) | `FwoGZX...` |
+| `AWS_REGION` | AWS Region | `us-east-1` |
+
+### State Backend (S3)
+
+| Variable | Description | Example |
+|----------|-------------|---------|
+| `PULUMI_BACKEND_URL` | S3 backend URL | `s3://my-bucket` |
+| `PULUMI_CONFIG_PASSPHRASE` | Encryption passphrase | `mysecret` |
+| `AWS_S3_ENDPOINT` | S3-compatible endpoint | `https://minio.example.com` |
+
+### SSH Configuration
+
+| Variable | Description | Example |
+|----------|-------------|---------|
+| `SSH_USER` | SSH username for nodes | `ubuntu` (AWS), `root` (DO) |
+| `SSH_KEY_PATH` | Path to SSH private key | `~/.ssh/id_rsa` |
+
+### Salt API
+
+| Variable | Description | Example |
+|----------|-------------|---------|
+| `SALT_API_URL` | Salt API endpoint | `http://bastion:8000` |
+| `SALT_USERNAME` | Salt API username | `saltapi` |
+| `SALT_PASSWORD` | Salt API password | `saltapi123` |
+
+### Debug & Logging
+
+| Variable | Description | Example |
+|----------|-------------|---------|
 | `SLOTH_DEBUG` | Enable debug mode | `true` |
-| `SLOTH_STATE_DIR` | State directory | `~/.sloth` |
+| `SLOTH_VERBOSE` | Verbose output | `true` |
 
 ---
 
