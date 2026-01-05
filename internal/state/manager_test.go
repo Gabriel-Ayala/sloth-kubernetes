@@ -492,7 +492,7 @@ func TestCalculateResourceChanges(t *testing.T) {
 		{Type: "vpc", Name: "vpc-1", ID: "id-3", Status: "active"},
 	}
 	to := []ResourceState{
-		{Type: "node", Name: "node-1", ID: "id-1", Status: "stopped"}, // updated
+		{Type: "node", Name: "node-1", ID: "id-1", Status: "stopped"},  // updated
 		{Type: "node", Name: "created", ID: "id-4", Status: "running"}, // created
 		{Type: "vpc", Name: "vpc-1", ID: "id-3", Status: "active"},     // unchanged
 	}

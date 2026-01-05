@@ -1,58 +1,60 @@
 ; Sloth Kubernetes - AWS Cluster Configuration
 ; This is a complete example of an AWS cluster with WireGuard mesh VPN
+; Uses Lisp built-in functions for dynamic configuration
 
 (cluster
   ; Cluster metadata
   (metadata
-    (name "sloth-aws-cluster")
-    (environment "production")
+    (name (concat "sloth-aws-" (env "CLUSTER_SUFFIX" "cluster")))
+    (environment (env "CLUSTER_ENV" "production"))
     (description "Kubernetes cluster on AWS with HA control plane")
-    (owner "chalkan3")
+    (owner (env "CLUSTER_OWNER" "chalkan3"))
     (labels
       (project "sloth-kubernetes")
-      (provider "aws")))
+      (provider "aws")
+      (created-at (now))))
 
   ; Cluster specification
   (cluster
     (type "rke2")
-    (version "v1.29.0+rke2r1")
+    (version (env "RKE2_VERSION" "v1.29.0+rke2r1"))
     (high-availability true))
 
   ; Cloud providers
   (providers
     (aws
       (enabled true)
-      (region "us-east-1")))
+      (region (env "AWS_REGION" "us-east-1"))))
 
   ; Network configuration
   (network
     (mode "wireguard")
-    (pod-cidr "10.42.0.0/16")
-    (service-cidr "10.43.0.0/16")
+    (pod-cidr (env "POD_CIDR" "10.42.0.0/16"))
+    (service-cidr (env "SERVICE_CIDR" "10.43.0.0/16"))
     (wireguard
       (enabled true)
       (create true)
       (provider "aws")
-      (region "us-east-1")
+      (region (env "AWS_REGION" "us-east-1"))
       (subnet-cidr "10.8.0.0/24")
-      (port 51820)
+      (port (default (env "WIREGUARD_PORT") 51820))
       (mesh-networking true)
       (auto-config true)))
 
   ; Security configuration
   (security
     (ssh
-      (key-path "~/.ssh/id_rsa")
-      (public-key-path "~/.ssh/id_rsa.pub")
+      (key-path (env "SSH_KEY_PATH" "~/.ssh/id_rsa"))
+      (public-key-path (env "SSH_PUBLIC_KEY_PATH" "~/.ssh/id_rsa.pub"))
       (port 22))
     (bastion
       (enabled true)
       (provider "aws")
-      (region "us-east-1")
+      (region (env "AWS_REGION" "us-east-1"))
       (size "t3.micro")
-      (name "sloth-bastion")
+      (name (concat "sloth-bastion-" (uuid-short)))
       (ssh-port 22)
-      (allowed-cidrs "0.0.0.0/0")
+      (allowed-cidrs (env "BASTION_ALLOWED_CIDRS" "0.0.0.0/0"))
       (enable-audit-log true)
       (idle-timeout 30)
       (max-sessions 10)))
@@ -62,46 +64,46 @@
     (masters
       (name "aws-masters")
       (provider "aws")
-      (region "us-east-1")
-      (count 3)
+      (region (env "AWS_REGION" "us-east-1"))
+      (count (default (env "MASTER_COUNT") 3))
       (roles master etcd)
-      (size "t3.medium")
+      (size (env "AWS_MASTER_SIZE" "t3.medium"))
       (labels
         (role "control-plane")
         (tier "master")))
     (workers
       (name "aws-workers")
       (provider "aws")
-      (region "us-east-1")
-      (count 5)
+      (region (env "AWS_REGION" "us-east-1"))
+      (count (default (env "WORKER_COUNT") 5))
       (roles worker)
-      (size "t3.large")
-      (spot-instance true)
+      (size (env "AWS_WORKER_SIZE" "t3.large"))
+      (spot-instance (env "USE_SPOT_INSTANCES" true))
       (labels
         (role "worker")
         (tier "application"))))
 
   ; Kubernetes configuration
   (kubernetes
-    (version "v1.29.0")
+    (version (env "K8S_VERSION" "v1.29.0"))
     (distribution "rke2")
-    (network-plugin "canal")
-    (pod-cidr "10.42.0.0/16")
-    (service-cidr "10.43.0.0/16")
+    (network-plugin (env "CNI_PLUGIN" "canal"))
+    (pod-cidr (env "POD_CIDR" "10.42.0.0/16"))
+    (service-cidr (env "SERVICE_CIDR" "10.43.0.0/16"))
     (cluster-domain "cluster.local")
     (rke2
-      (version "v1.29.0+rke2r1")
+      (version (env "RKE2_VERSION" "v1.29.0+rke2r1"))
       (channel "stable")
       (disable-components "rke2-ingress-nginx")
-      (snapshot-schedule-cron "0 */6 * * *")
-      (snapshot-retention 5)))
+      (snapshot-schedule-cron (env "SNAPSHOT_CRON" "0 */6 * * *"))
+      (snapshot-retention (default (env "SNAPSHOT_RETENTION") 5))))
 
   ; Monitoring
   (monitoring
-    (enabled true)
+    (enabled (env "MONITORING_ENABLED" true))
     (prometheus
       (enabled true)
-      (retention "15d"))
+      (retention (env "PROMETHEUS_RETENTION" "15d")))
     (grafana
       (enabled true)))
 
@@ -109,10 +111,10 @@
   (addons
     ; Salt Master/Minion for configuration management
     (salt
-      (enabled true)
+      (enabled (env "SALT_ENABLED" true))
       (master-node "0")        ; Install on first master (index 0)
       (api-enabled true)       ; Enable Salt API
-      (api-port 8000)          ; API port
+      (api-port (default (env "SALT_API_PORT") 8000))
       (secure-auth true)       ; Use hash-based secure authentication
       (auto-join true)         ; All nodes auto-join as minions
       (audit-logging true))))

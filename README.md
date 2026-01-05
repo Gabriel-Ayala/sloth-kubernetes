@@ -117,6 +117,182 @@ export PULUMI_CONFIG_PASSPHRASE="your-secure-passphrase"
 sloth-kubernetes deploy production --config cluster.lisp --verbose
 ```
 
+---
+
+## Lisp Built-in Functions
+
+Sloth Kubernetes provides a rich set of built-in functions for dynamic configuration.
+
+### Environment Variables
+
+| Function | Description | Example |
+|----------|-------------|---------|
+| `(env "VAR")` | Get environment variable | `(env "AWS_REGION")` |
+| `(env "VAR" "default")` | Get env var with default | `(env "CLUSTER_ENV" "production")` |
+| `(env-or "VAR" "fallback")` | Get env var or fallback | `(env-or "TOKEN" "default-token")` |
+| `(env? "VAR")` | Check if env var exists | `(if (env? "DEBUG") "yes" "no")` |
+
+### String Functions
+
+| Function | Description | Example |
+|----------|-------------|---------|
+| `(concat a b ...)` | Concatenate strings | `(concat "prefix-" (env "NAME"))` |
+| `(format "template" args...)` | Format string | `(format "cluster-%s" (env "ENV"))` |
+| `(upper str)` | Uppercase | `(upper "hello")` → `"HELLO"` |
+| `(lower str)` | Lowercase | `(lower "HELLO")` → `"hello"` |
+| `(trim str)` | Trim whitespace | `(trim "  hello  ")` → `"hello"` |
+| `(replace str old new)` | Replace all occurrences | `(replace "foo-bar" "-" "_")` |
+| `(substring str start end)` | Extract substring | `(substring "hello" 0 2)` → `"he"` |
+| `(split str sep)` | Split into list | `(split "a,b,c" ",")` |
+| `(join list sep)` | Join list to string | `(join (list "a" "b") "-")` |
+
+### Control Flow
+
+| Function | Description | Example |
+|----------|-------------|---------|
+| `(if cond then else)` | Conditional | `(if (env? "PROD") "prod" "dev")` |
+| `(when cond body...)` | When true | `(when (env? "DEBUG") (set "log" "verbose"))` |
+| `(unless cond body...)` | When false | `(unless (env? "CI") "local")` |
+| `(cond (c1 v1) (c2 v2))` | Multiple conditions | `(cond ((eq x 1) "one") ((eq x 2) "two"))` |
+| `(default val fallback)` | Default if nil/empty | `(default (env "SIZE") "t3.medium")` |
+| `(or a b ...)` | First truthy | `(or (env "A") (env "B") "default")` |
+| `(and a b ...)` | All truthy | `(and (env? "A") (env? "B"))` |
+| `(not x)` | Negate | `(not false)` → `true` |
+
+### Comparison
+
+| Function | Description | Example |
+|----------|-------------|---------|
+| `(eq a b)` or `(= a b)` | Equal | `(eq (env "ENV") "prod")` |
+| `(!= a b)` | Not equal | `(!= (env "ENV") "dev")` |
+| `(< a b)` | Less than | `(< count 10)` |
+| `(> a b)` | Greater than | `(> count 0)` |
+| `(<= a b)` | Less or equal | `(<= count 100)` |
+| `(>= a b)` | Greater or equal | `(>= count 3)` |
+
+### Arithmetic
+
+| Function | Description | Example |
+|----------|-------------|---------|
+| `(+ a b ...)` | Add | `(+ 1 2 3)` → `6` |
+| `(- a b)` | Subtract | `(- 10 3)` → `7` |
+| `(* a b ...)` | Multiply | `(* 2 3 4)` → `24` |
+| `(/ a b)` | Divide | `(/ 10 2)` → `5` |
+| `(mod a b)` | Modulo | `(mod 10 3)` → `1` |
+
+### Encoding & Hashing
+
+| Function | Description | Example |
+|----------|-------------|---------|
+| `(base64-encode str)` | Base64 encode | `(base64-encode "hello")` |
+| `(base64-decode str)` | Base64 decode | `(base64-decode "aGVsbG8=")` |
+| `(sha256 str)` | SHA256 hash | `(sha256 "password")` |
+
+### UUID & Random
+
+| Function | Description | Example |
+|----------|-------------|---------|
+| `(uuid)` | Generate UUID | `(uuid)` → `"550e8400-..."` |
+| `(random-string len)` | Random string | `(random-string 16)` |
+
+### Time & Date
+
+| Function | Description | Example |
+|----------|-------------|---------|
+| `(now)` | Current RFC3339 time | `(now)` → `"2026-01-05T..."` |
+| `(timestamp)` | Unix timestamp | `(timestamp)` → `1736078400` |
+| `(date "format")` | Formatted date | `(date "2006-01-02")` |
+| `(time "format")` | Formatted time | `(time "15:04:05")` |
+
+### System
+
+| Function | Description | Example |
+|----------|-------------|---------|
+| `(hostname)` | System hostname | `(hostname)` |
+| `(user)` | Current user | `(user)` |
+| `(home)` | Home directory | `(home)` → `"/home/user"` |
+| `(cwd)` | Current directory | `(cwd)` |
+
+### File Operations
+
+| Function | Description | Example |
+|----------|-------------|---------|
+| `(read-file path)` | Read file content | `(read-file "~/.ssh/id_rsa.pub")` |
+| `(file-exists? path)` | Check file exists | `(file-exists? "/etc/hosts")` |
+| `(dirname path)` | Directory name | `(dirname "/a/b/c.txt")` → `"/a/b"` |
+| `(basename path)` | Base name | `(basename "/a/b/c.txt")` → `"c.txt"` |
+| `(expand-path path)` | Expand ~ and relative | `(expand-path "~/file")` |
+
+### Variables
+
+| Function | Description | Example |
+|----------|-------------|---------|
+| `(let ((v1 e1) ...) body)` | Local bindings | `(let ((x 1) (y 2)) (+ x y))` |
+| `(set name value)` | Set variable | `(set "region" "us-east-1")` |
+| `(var name)` | Get variable | `(var "region")` |
+
+### List Operations
+
+| Function | Description | Example |
+|----------|-------------|---------|
+| `(list a b ...)` | Create list | `(list 1 2 3)` |
+| `(first lst)` | First element | `(first (list 1 2 3))` → `1` |
+| `(rest lst)` | All but first | `(rest (list 1 2 3))` → `(2 3)` |
+| `(nth lst n)` | Nth element | `(nth (list "a" "b") 1)` → `"b"` |
+| `(len lst)` | Length | `(len (list 1 2 3))` → `3` |
+| `(append a b)` | Concatenate lists | `(append (list 1) (list 2))` |
+| `(range n)` | Generate 0..n-1 | `(range 5)` → `(0 1 2 3 4)` |
+
+### Type Checking
+
+| Function | Description | Example |
+|----------|-------------|---------|
+| `(string? x)` | Is string? | `(string? "hello")` → `true` |
+| `(number? x)` | Is number? | `(number? 42)` → `true` |
+| `(bool? x)` | Is boolean? | `(bool? true)` → `true` |
+| `(list? x)` | Is list? | `(list? (list 1))` → `true` |
+| `(nil? x)` | Is nil? | `(nil? nil)` → `true` |
+| `(empty? x)` | Is empty? | `(empty? "")` → `true` |
+
+### Type Conversion
+
+| Function | Description | Example |
+|----------|-------------|---------|
+| `(to-string x)` | Convert to string | `(to-string 42)` → `"42"` |
+| `(to-int x)` | Convert to integer | `(to-int "42")` → `42` |
+| `(to-bool x)` | Convert to boolean | `(to-bool "true")` → `true` |
+
+### Regex
+
+| Function | Description | Example |
+|----------|-------------|---------|
+| `(match pattern str)` | Match and capture | `(match "v([0-9]+)" "v123")` |
+| `(match? pattern str)` | Test if matches | `(match? "^prod" "production")` |
+
+### Example: Dynamic Configuration
+
+```lisp
+(cluster
+  (metadata
+    (name (concat "cluster-" (env "CLUSTER_ENV" "dev")))
+    (environment (env "CLUSTER_ENV" "development")))
+
+  (providers
+    (aws
+      (enabled true)
+      (region (env "AWS_REGION" "us-east-1"))
+      (access-key-id (env "AWS_ACCESS_KEY_ID"))
+      (secret-access-key (env "AWS_SECRET_ACCESS_KEY"))))
+
+  (node-pools
+    (masters
+      (count (if (eq (env "CLUSTER_ENV") "production") 3 1))
+      (size (default (env "MASTER_SIZE") "t3.medium"))))
+
+  (kubernetes
+    (version (concat "v1." (env "K8S_MINOR" "29") ".0+rke2r1"))))
+```
+
 ### 4. Access Cluster
 
 ```bash
