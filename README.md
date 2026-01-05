@@ -16,6 +16,34 @@
 
 ---
 
+## Installation
+
+**One-line install (recommended):**
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/chalkan3/sloth-kubernetes/main/install.sh | bash
+```
+
+<details>
+<summary>Other installation methods</summary>
+
+**Install specific version:**
+```bash
+curl -fsSL https://raw.githubusercontent.com/chalkan3/sloth-kubernetes/main/install.sh | bash -s v0.6.0
+```
+
+**Build from source:**
+```bash
+git clone https://github.com/chalkan3/sloth-kubernetes.git
+cd sloth-kubernetes
+go build -o sloth .
+sudo mv sloth /usr/local/bin/
+```
+
+</details>
+
+---
+
 Deploy production-ready Kubernetes clusters across **DigitalOcean**, **Linode**, **AWS**, and **Azure** with embedded Pulumi, Salt, and kubectl. Features advanced **state management**, **configuration versioning**, **manifest tracking**, and comprehensive **audit logging**.
 
 ## Key Features
@@ -30,21 +58,6 @@ Deploy production-ready Kubernetes clusters across **DigitalOcean**, **Linode**,
 | **Manifest Registry** | Track all Kubernetes manifests with history |
 | **Audit Logging** | Complete audit trail of all changes |
 | **WireGuard VPN** | Automatic mesh networking across providers |
-
----
-
-## Installation
-
-```bash
-# Build from source
-git clone https://github.com/chalkan3/sloth-kubernetes.git
-cd sloth-kubernetes
-go build -o sloth-kubernetes .
-
-# Or download binary (coming soon)
-curl -fsSL https://github.com/chalkan3/sloth-kubernetes/releases/latest/download/sloth-kubernetes -o sloth-kubernetes
-chmod +x sloth-kubernetes
-```
 
 ---
 

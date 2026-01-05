@@ -19,7 +19,8 @@ NC='\033[0m' # No Color
 
 # Configuration
 REPO="chalkan3/sloth-kubernetes"
-BINARY_NAME="sloth-kubernetes"
+PROJECT_NAME="sloth-kubernetes"
+BINARY_NAME="sloth"
 INSTALL_DIR="${INSTALL_DIR:-/usr/local/bin}"
 
 # Functions
@@ -125,11 +126,10 @@ install_binary() {
 
     # Construct download URL
     local archive_ext="tar.gz"
-    if [ "$os" = "Windows" ]; then
-        archive_ext="zip"
-    fi
 
-    local archive_name="${BINARY_NAME}_${version}_${os}_${arch}.${archive_ext}"
+    # Remove 'v' prefix from version for archive name
+    local version_num="${version#v}"
+    local archive_name="${PROJECT_NAME}_${version_num}_${os}_${arch}.${archive_ext}"
     local download_url="https://github.com/${REPO}/releases/download/${version}/${archive_name}"
 
     print_info "Downloading ${BINARY_NAME} ${version} for ${os} ${arch}..."
