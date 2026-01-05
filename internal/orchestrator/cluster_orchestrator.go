@@ -1,12 +1,15 @@
 package orchestrator
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"time"
 
 	"github.com/chalkan3/sloth-kubernetes/internal/orchestrator/components"
 	"github.com/chalkan3/sloth-kubernetes/pkg/config"
+	"github.com/chalkan3/sloth-kubernetes/pkg/versioning"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 )
 
@@ -35,6 +38,68 @@ type DeploymentMetadata struct {
 	SlothVersion   string `json:"slothVersion"`   // Sloth-kubernetes version
 	PulumiVersion  string `json:"pulumiVersion"`  // Pulumi version used
 	ConfigChecksum string `json:"configChecksum"` // SHA256 of config for change detection
+
+	// Enhanced versioning (new fields)
+	ConfigVersion *versioning.ConfigVersion `json:"configVersion,omitempty"` // Full config version info with migrations
+	SchemaVersion string                    `json:"schemaVersion,omitempty"` // Current schema version (e.g., "2.0")
+
+	// Manifest tracking (new fields)
+	ManifestCount    int                      `json:"manifestCount,omitempty"`    // Number of tracked manifests
+	ManifestRegistry *ManifestRegistryState   `json:"manifestRegistry,omitempty"` // Serialized manifest registry state
+	ManifestHashes   map[string]string        `json:"manifestHashes,omitempty"`   // Map of manifest name to hash
+
+	// Deployment history (new fields)
+	PreviousDeployments []DeploymentHistoryEntry `json:"previousDeployments,omitempty"` // History of past deployments
+	RollbackTarget      string                   `json:"rollbackTarget,omitempty"`      // Target deployment ID for rollback
+	RollbackReason      string                   `json:"rollbackReason,omitempty"`      // Reason for rollback if applicable
+
+	// Change tracking (new fields)
+	ChangeLog     []ChangeLogEntry `json:"changeLog,omitempty"`     // Detailed change log
+	DriftDetected bool             `json:"driftDetected,omitempty"` // Whether drift was detected from desired state
+	DriftDetails  string           `json:"driftDetails,omitempty"`  // Details about detected drift
+
+	// State management (new fields)
+	StateSnapshotID string `json:"stateSnapshotId,omitempty"` // ID of the state snapshot for this deployment
+	ParentStateID   string `json:"parentStateId,omitempty"`   // ID of the parent state snapshot
+}
+
+// ManifestRegistryState holds serialized manifest registry information
+type ManifestRegistryState struct {
+	Version    string            `json:"version"`
+	Hash       string            `json:"hash"`
+	Manifests  []ManifestSummary `json:"manifests,omitempty"`
+	ExportedAt string            `json:"exportedAt"`
+}
+
+// ManifestSummary provides a summary of a manifest in the registry
+type ManifestSummary struct {
+	Name    string `json:"name"`
+	Type    string `json:"type"`
+	Version string `json:"version"`
+	Hash    string `json:"hash"`
+	Status  string `json:"status"`
+}
+
+// DeploymentHistoryEntry represents a historical deployment record
+type DeploymentHistoryEntry struct {
+	DeploymentID   string `json:"deploymentId"`
+	Timestamp      string `json:"timestamp"`
+	NodeCount      int    `json:"nodeCount"`
+	ConfigChecksum string `json:"configChecksum"`
+	SchemaVersion  string `json:"schemaVersion,omitempty"`
+	Success        bool   `json:"success"`
+	ErrorMessage   string `json:"errorMessage,omitempty"`
+}
+
+// ChangeLogEntry represents a single change in the deployment
+type ChangeLogEntry struct {
+	Timestamp   string `json:"timestamp"`
+	ChangeType  string `json:"changeType"`  // "node_added", "node_removed", "config_updated", "manifest_applied", etc.
+	ResourceID  string `json:"resourceId"`  // ID of the affected resource
+	Description string `json:"description"` // Human-readable description
+	OldValue    string `json:"oldValue,omitempty"`
+	NewValue    string `json:"newValue,omitempty"`
+	Actor       string `json:"actor,omitempty"` // Who/what initiated the change
 }
 
 // SimpleRealOrchestratorComponent orchestrates REAL cluster with WireGuard, RKE2, and DNS
@@ -607,6 +672,7 @@ func sanitizeConfigForStorage(cfg *config.ClusterConfig) *config.ClusterConfig {
 // generateDeploymentMetadata creates metadata for tracking scale operations
 func generateDeploymentMetadata(cfg *config.ClusterConfig, previousMetaJSON string, currentNodeCount int, lispManifest string) *DeploymentMetadata {
 	now := time.Now().UTC().Format(time.RFC3339)
+	configChecksum := generateSHA256Checksum(lispManifest)
 
 	meta := &DeploymentMetadata{
 		LastDeployedAt:   now,
@@ -614,7 +680,21 @@ func generateDeploymentMetadata(cfg *config.ClusterConfig, previousMetaJSON stri
 		CurrentNodeCount: currentNodeCount,
 		SlothVersion:     "1.0.0", // TODO: get from version constant
 		PulumiVersion:    "3.x",   // Pulumi SDK version
-		ConfigChecksum:   generateChecksum(lispManifest),
+		ConfigChecksum:   configChecksum,
+		SchemaVersion:    string(versioning.CurrentSchema),
+		ManifestHashes:   make(map[string]string),
+		ChangeLog:        make([]ChangeLogEntry, 0),
+	}
+
+	// Create config version
+	vm := versioning.NewVersionManager()
+	configMap := map[string]interface{}{
+		"cluster_name": cfg.Metadata.Name,
+		"node_count":   currentNodeCount,
+		"checksum":     configChecksum,
+	}
+	if configVersion, err := vm.CreateVersion(configMap, ""); err == nil {
+		meta.ConfigVersion = configVersion
 	}
 
 	// Parse previous metadata if exists
@@ -627,17 +707,93 @@ func generateDeploymentMetadata(cfg *config.ClusterConfig, previousMetaJSON stri
 			meta.PreviousNodeCount = prevMeta.CurrentNodeCount
 			meta.DeploymentID = fmt.Sprintf("deploy-%d-%s", meta.DeploymentCount, now[:10])
 
-			// Determine scale operation type
+			// Link to parent state
+			if prevMeta.StateSnapshotID != "" {
+				meta.ParentStateID = prevMeta.StateSnapshotID
+			}
+
+			// Update config version with parent hash
+			if prevMeta.ConfigVersion != nil && meta.ConfigVersion != nil {
+				meta.ConfigVersion.ParentHash = prevMeta.ConfigVersion.ConfigHash
+			}
+
+			// Determine scale operation type and create change log entries
 			if currentNodeCount > prevMeta.CurrentNodeCount {
 				meta.LastScaleOperation = "scale-up"
+				meta.ChangeLog = append(meta.ChangeLog, ChangeLogEntry{
+					Timestamp:   now,
+					ChangeType:  "scale_up",
+					ResourceID:  cfg.Metadata.Name,
+					Description: fmt.Sprintf("Scaled cluster from %d to %d nodes", prevMeta.CurrentNodeCount, currentNodeCount),
+					OldValue:    fmt.Sprintf("%d", prevMeta.CurrentNodeCount),
+					NewValue:    fmt.Sprintf("%d", currentNodeCount),
+					Actor:       "sloth-kubernetes",
+				})
 			} else if currentNodeCount < prevMeta.CurrentNodeCount {
 				meta.LastScaleOperation = "scale-down"
+				meta.ChangeLog = append(meta.ChangeLog, ChangeLogEntry{
+					Timestamp:   now,
+					ChangeType:  "scale_down",
+					ResourceID:  cfg.Metadata.Name,
+					Description: fmt.Sprintf("Scaled cluster from %d to %d nodes", prevMeta.CurrentNodeCount, currentNodeCount),
+					OldValue:    fmt.Sprintf("%d", prevMeta.CurrentNodeCount),
+					NewValue:    fmt.Sprintf("%d", currentNodeCount),
+					Actor:       "sloth-kubernetes",
+				})
 			} else {
 				meta.LastScaleOperation = "update"
 			}
 
+			// Check for config changes
+			if prevMeta.ConfigChecksum != configChecksum {
+				meta.ChangeLog = append(meta.ChangeLog, ChangeLogEntry{
+					Timestamp:   now,
+					ChangeType:  "config_updated",
+					ResourceID:  cfg.Metadata.Name,
+					Description: "Configuration updated",
+					OldValue:    prevMeta.ConfigChecksum,
+					NewValue:    configChecksum,
+					Actor:       "sloth-kubernetes",
+				})
+			}
+
 			// Track node pool changes
 			meta.NodePoolsAdded, meta.NodePoolsRemoved, meta.NodePoolsScaled = detectPoolChanges(cfg, &prevMeta)
+
+			// Add pool changes to changelog
+			for _, poolName := range meta.NodePoolsAdded {
+				meta.ChangeLog = append(meta.ChangeLog, ChangeLogEntry{
+					Timestamp:   now,
+					ChangeType:  "pool_added",
+					ResourceID:  poolName,
+					Description: fmt.Sprintf("Node pool '%s' added", poolName),
+					Actor:       "sloth-kubernetes",
+				})
+			}
+			for _, poolName := range meta.NodePoolsRemoved {
+				meta.ChangeLog = append(meta.ChangeLog, ChangeLogEntry{
+					Timestamp:   now,
+					ChangeType:  "pool_removed",
+					ResourceID:  poolName,
+					Description: fmt.Sprintf("Node pool '%s' removed", poolName),
+					Actor:       "sloth-kubernetes",
+				})
+			}
+
+			// Build deployment history (keep last 10 entries)
+			meta.PreviousDeployments = append([]DeploymentHistoryEntry{{
+				DeploymentID:   prevMeta.DeploymentID,
+				Timestamp:      prevMeta.LastDeployedAt,
+				NodeCount:      prevMeta.CurrentNodeCount,
+				ConfigChecksum: prevMeta.ConfigChecksum,
+				SchemaVersion:  prevMeta.SchemaVersion,
+				Success:        true, // Previous deployment was successful if we have its metadata
+			}}, prevMeta.PreviousDeployments...)
+
+			// Trim history to last 10 entries
+			if len(meta.PreviousDeployments) > 10 {
+				meta.PreviousDeployments = meta.PreviousDeployments[:10]
+			}
 		}
 	}
 
@@ -652,13 +808,39 @@ func generateDeploymentMetadata(cfg *config.ClusterConfig, previousMetaJSON stri
 		// All pools are "added" on initial deployment
 		for poolName := range cfg.NodePools {
 			meta.NodePoolsAdded = append(meta.NodePoolsAdded, poolName)
+			meta.ChangeLog = append(meta.ChangeLog, ChangeLogEntry{
+				Timestamp:   now,
+				ChangeType:  "pool_added",
+				ResourceID:  poolName,
+				Description: fmt.Sprintf("Initial node pool '%s' created", poolName),
+				Actor:       "sloth-kubernetes",
+			})
 		}
+
+		// Initial deployment change log entry
+		meta.ChangeLog = append([]ChangeLogEntry{{
+			Timestamp:   now,
+			ChangeType:  "cluster_created",
+			ResourceID:  cfg.Metadata.Name,
+			Description: fmt.Sprintf("Initial cluster deployment with %d nodes", currentNodeCount),
+			NewValue:    fmt.Sprintf("%d", currentNodeCount),
+			Actor:       "sloth-kubernetes",
+		}}, meta.ChangeLog...)
 	}
+
+	// Generate state snapshot ID for this deployment
+	meta.StateSnapshotID = fmt.Sprintf("state-%s-%s", meta.DeploymentID, configChecksum[:8])
 
 	return meta
 }
 
-// generateChecksum creates a simple checksum for change detection
+// generateSHA256Checksum creates a cryptographic checksum for change detection
+func generateSHA256Checksum(content string) string {
+	hash := sha256.Sum256([]byte(content))
+	return hex.EncodeToString(hash[:])
+}
+
+// generateChecksum creates a simple checksum for change detection (legacy, kept for compatibility)
 func generateChecksum(content string) string {
 	// Simple hash for change detection (not cryptographic)
 	var hash uint64
