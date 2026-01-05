@@ -80,11 +80,11 @@ type Manifest struct {
 
 // ManifestVersion represents a version of a manifest in history
 type ManifestVersion struct {
-	Hash      string    `json:"hash"`
-	Version   string    `json:"version"`
-	CreatedAt time.Time `json:"created_at"`
+	Hash      string         `json:"hash"`
+	Version   string         `json:"version"`
+	CreatedAt time.Time      `json:"created_at"`
 	Status    ManifestStatus `json:"status"`
-	Content   string    `json:"content,omitempty"` // Optional, for rollback
+	Content   string         `json:"content,omitempty"` // Optional, for rollback
 }
 
 // ManifestHistory tracks the version history of a manifest
@@ -96,9 +96,9 @@ type ManifestHistory struct {
 
 // Registry manages manifest registration and versioning
 type Registry struct {
-	mu        sync.RWMutex
-	manifests map[string]*Manifest
-	history   map[string]*ManifestHistory
+	mu         sync.RWMutex
+	manifests  map[string]*Manifest
+	history    map[string]*ManifestHistory
 	maxHistory int
 }
 
@@ -358,9 +358,9 @@ func (r *Registry) Diff(other *Registry) *RegistryDiff {
 			diff.Added = append(diff.Added, m)
 		} else if m.Hash != om.Hash {
 			diff.Modified = append(diff.Modified, &ManifestChange{
-				Name:    m.Name,
-				OldHash: om.Hash,
-				NewHash: m.Hash,
+				Name:       m.Name,
+				OldHash:    om.Hash,
+				NewHash:    m.Hash,
 				OldVersion: om.Version,
 				NewVersion: m.Version,
 			})

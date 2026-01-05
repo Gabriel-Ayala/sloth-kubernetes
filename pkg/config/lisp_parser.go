@@ -450,3 +450,57 @@ func expandEnvVars(content string) string {
 	}
 	return result
 }
+
+// ParseLispFileWithEval parses a Lisp file and evaluates all built-in functions
+func ParseLispFileWithEval(filePath string) (SExpr, error) {
+	// First parse the file
+	expr, err := ParseLispFile(filePath)
+	if err != nil {
+		return nil, err
+	}
+
+	// Create evaluation context
+	ctx := NewEvalContext()
+
+	// Set working directory for file operations
+	if strings.Contains(filePath, "/") {
+		idx := strings.LastIndex(filePath, "/")
+		ctx.WorkDir = filePath[:idx]
+	}
+
+	// Evaluate all function calls in the expression
+	return ctx.EvalAll(expr)
+}
+
+// ParseLispStringWithEval parses a Lisp string and evaluates all built-in functions
+func ParseLispStringWithEval(content string) (SExpr, error) {
+	// Expand environment variables first
+	contentStr := expandEnvVars(content)
+
+	// Parse the content
+	parser := NewLispParser(contentStr)
+	expr, err := parser.Parse()
+	if err != nil {
+		return nil, err
+	}
+
+	// Create evaluation context and evaluate
+	ctx := NewEvalContext()
+	return ctx.EvalAll(expr)
+}
+
+// ParseLispWithContext parses and evaluates with a custom context
+func ParseLispWithContext(content string, ctx *EvalContext) (SExpr, error) {
+	// Expand environment variables first
+	contentStr := expandEnvVars(content)
+
+	// Parse the content
+	parser := NewLispParser(contentStr)
+	expr, err := parser.Parse()
+	if err != nil {
+		return nil, err
+	}
+
+	// Evaluate with provided context
+	return ctx.EvalAll(expr)
+}

@@ -421,8 +421,9 @@ func applyDefaults(config *ClusterConfig) {
 	}
 }
 
-// ValidateConfig validates the cluster configuration
-func ValidateConfig(cfg *ClusterConfig) error {
+// ValidateConfigLegacy validates the cluster configuration (legacy interface)
+// Deprecated: Use ValidateConfig which returns *ValidationResult for detailed validation
+func ValidateConfigLegacy(cfg *ClusterConfig) error {
 	loader := &Loader{}
 	return loader.validate(cfg)
 }

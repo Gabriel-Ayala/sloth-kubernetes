@@ -1,16 +1,17 @@
 ; Sloth Kubernetes - Minimal Cluster Configuration
 ; The simplest possible cluster configuration
+; Uses Lisp built-in functions for dynamic configuration
 
 (cluster
   (metadata
-    (name "minimal-cluster")
-    (environment "development"))
+    (name (env "CLUSTER_NAME" "minimal-cluster"))
+    (environment (env "CLUSTER_ENV" "development")))
 
   (providers
     (digitalocean
       (enabled true)
-      (token "${DIGITALOCEAN_TOKEN}")
-      (region "nyc3")))
+      (token (env "DIGITALOCEAN_TOKEN"))
+      (region (env "DO_REGION" "nyc3"))))
 
   (network
     (mode "wireguard")
@@ -23,18 +24,18 @@
     (masters
       (name "masters")
       (provider "digitalocean")
-      (count 1)
+      (count (default (env "MASTER_COUNT") 1))
       (roles master etcd)
-      (size "s-2vcpu-4gb")
-      (region "nyc3"))
+      (size (env "DO_MASTER_SIZE" "s-2vcpu-4gb"))
+      (region (env "DO_REGION" "nyc3")))
     (workers
       (name "workers")
       (provider "digitalocean")
-      (count 2)
+      (count (default (env "WORKER_COUNT") 2))
       (roles worker)
-      (size "s-2vcpu-4gb")
-      (region "nyc3")))
+      (size (env "DO_WORKER_SIZE" "s-2vcpu-4gb"))
+      (region (env "DO_REGION" "nyc3"))))
 
   (kubernetes
-    (distribution "k3s")
-    (version "v1.29.0")))
+    (distribution (env "K8S_DISTRIBUTION" "k3s"))
+    (version (env "K8S_VERSION" "v1.29.0"))))

@@ -226,14 +226,14 @@ func (vm *VersionManager) ValidateVersion(v *ConfigVersion) error {
 // CompareVersions compares two config versions and returns a diff
 func (vm *VersionManager) CompareVersions(v1, v2 *ConfigVersion) *VersionDiff {
 	diff := &VersionDiff{
-		HashChanged:    v1.ConfigHash != v2.ConfigHash,
-		SchemaChanged:  v1.SchemaVersion != v2.SchemaVersion,
-		OldHash:        v1.ConfigHash,
-		NewHash:        v2.ConfigHash,
-		OldSchema:      v1.SchemaVersion,
-		NewSchema:      v2.SchemaVersion,
-		TimeDelta:      v2.UpdatedAt.Sub(v1.UpdatedAt),
-		NewMigrations:  getMigrationDiff(v1.Migrations, v2.Migrations),
+		HashChanged:   v1.ConfigHash != v2.ConfigHash,
+		SchemaChanged: v1.SchemaVersion != v2.SchemaVersion,
+		OldHash:       v1.ConfigHash,
+		NewHash:       v2.ConfigHash,
+		OldSchema:     v1.SchemaVersion,
+		NewSchema:     v2.SchemaVersion,
+		TimeDelta:     v2.UpdatedAt.Sub(v1.UpdatedAt),
+		NewMigrations: getMigrationDiff(v1.Migrations, v2.Migrations),
 	}
 	return diff
 }
