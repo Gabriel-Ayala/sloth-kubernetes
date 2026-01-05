@@ -400,6 +400,16 @@ func NewEtcdBackupComponent(dataSize int) *EtcdBackupComponent {
 	}
 }
 
+// NewDeterministicEtcdBackupComponent creates a component with no random failures
+// for use in deterministic tests
+func NewDeterministicEtcdBackupComponent(dataSize int) *EtcdBackupComponent {
+	return &EtcdBackupComponent{
+		dataSize:   dataSize,
+		latency:    10 * time.Millisecond,
+		failChance: 0.0,
+	}
+}
+
 func (c *EtcdBackupComponent) Name() string {
 	return "etcd"
 }
@@ -813,8 +823,8 @@ func TestRealistic_Backup_FullClusterBackup(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	// Register components
-	manager.RegisterComponent(NewEtcdBackupComponent(50 * 1024)) // 50KB etcd
+	// Register components - use deterministic component for reliable CI tests
+	manager.RegisterComponent(NewDeterministicEtcdBackupComponent(50 * 1024)) // 50KB etcd
 	manager.RegisterComponent(NewVolumeBackupComponent([]string{
 		"pvc-postgres-data",
 		"pvc-redis-data",
@@ -857,7 +867,8 @@ func TestRealistic_Backup_RestoreWithVerification(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	manager.RegisterComponent(NewEtcdBackupComponent(10 * 1024))
+	// Use deterministic component for reliable CI tests
+	manager.RegisterComponent(NewDeterministicEtcdBackupComponent(10 * 1024))
 
 	ctx := context.Background()
 
@@ -895,7 +906,8 @@ func TestRealistic_Backup_ConcurrentBackups(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	manager.RegisterComponent(NewEtcdBackupComponent(5 * 1024))
+	// Use deterministic component for reliable CI tests
+	manager.RegisterComponent(NewDeterministicEtcdBackupComponent(5 * 1024))
 
 	ctx := context.Background()
 
@@ -1275,7 +1287,8 @@ func TestRealistic_E2E_ClusterLifecycle(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	backupManager.RegisterComponent(NewEtcdBackupComponent(20 * 1024))
+	// Use deterministic component for reliable CI tests
+	backupManager.RegisterComponent(NewDeterministicEtcdBackupComponent(20 * 1024))
 
 	initialBackup, err := backupManager.CreateBackup(ctx, nil)
 	require.NoError(t, err)
