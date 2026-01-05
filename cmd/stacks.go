@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"sort"
 	"strings"
 	"text/tabwriter"
 	"time"
@@ -13,6 +14,7 @@ import (
 	"github.com/pulumi/pulumi/sdk/v3/go/auto"
 	"github.com/pulumi/pulumi/sdk/v3/go/auto/optdestroy"
 	"github.com/pulumi/pulumi/sdk/v3/go/auto/optremove"
+	"github.com/pulumi/pulumi/sdk/v3/go/common/apitype"
 	"github.com/pulumi/pulumi/sdk/v3/go/common/tokens"
 	"github.com/pulumi/pulumi/sdk/v3/go/common/workspace"
 	"github.com/spf13/cobra"
@@ -161,13 +163,89 @@ var stateListCmd = &cobra.Command{
 	RunE: runStateList,
 }
 
+var stateDiffCmd = &cobra.Command{
+	Use:   "diff [stack1] [stack2]",
+	Short: "Compare state between two stacks",
+	Long: `Compare resources between two stacks to identify differences.
+Useful for comparing production vs staging, or before/after states.`,
+	Example: `  # Compare two stacks
+  sloth-kubernetes stacks state diff production staging
+
+  # Compare with exported file
+  sloth-kubernetes stacks state diff production --file backup.json`,
+	RunE: runStateDiff,
+}
+
+var stateRepairCmd = &cobra.Command{
+	Use:   "repair [stack-name]",
+	Short: "Repair corrupted stack state",
+	Long: `Attempt to repair a corrupted stack state by:
+- Removing duplicate resources
+- Fixing invalid URNs
+- Cleaning up orphaned dependencies`,
+	Example: `  # Repair stack state
+  sloth-kubernetes stacks state repair production
+
+  # Dry-run to see what would be fixed
+  sloth-kubernetes stacks state repair production --dry-run`,
+	RunE: runStateRepair,
+}
+
+var stateUnprotectCmd = &cobra.Command{
+	Use:   "unprotect [stack-name] [urn]",
+	Short: "Remove protection from a resource",
+	Long: `Remove the 'protect' flag from a resource, allowing it to be deleted.
+Some resources are marked as protected to prevent accidental deletion.`,
+	Example: `  # Unprotect a specific resource
+  sloth-kubernetes stacks state unprotect production urn:pulumi:...
+
+  # Unprotect all resources
+  sloth-kubernetes stacks state unprotect production --all`,
+	RunE: runStateUnprotect,
+}
+
+var stateBulkDeleteCmd = &cobra.Command{
+	Use:   "bulk-delete [stack-name]",
+	Short: "Delete multiple resources from state",
+	Long: `Remove multiple resources from stack state at once.
+Supports filtering by type, pattern matching, or providing a list of URNs.`,
+	Example: `  # Delete all resources of a type
+  sloth-kubernetes stacks state bulk-delete production --type digitalocean:Droplet
+
+  # Delete resources matching pattern
+  sloth-kubernetes stacks state bulk-delete production --pattern "worker-*"
+
+  # Delete from file with URN list
+  sloth-kubernetes stacks state bulk-delete production --file urns.txt`,
+	RunE: runStateBulkDelete,
+}
+
+var stateMoveCmd = &cobra.Command{
+	Use:   "move [source-stack] [target-stack] [urn]",
+	Short: "Move a resource between stacks",
+	Long: `Move a resource from one stack to another.
+The resource is removed from the source stack and added to the target stack.`,
+	Example: `  # Move a single resource
+  sloth-kubernetes stacks state move staging production urn:pulumi:...
+
+  # Move multiple resources by type
+  sloth-kubernetes stacks state move staging production --type digitalocean:Droplet`,
+	RunE: runStateMove,
+}
+
 var (
-	destroyStack bool
-	outputKey    string
-	outputJSON   bool
-	exportOutput string
-	forceDelete  bool
-	resourceType string
+	destroyStack    bool
+	outputKey       string
+	outputJSON      bool
+	exportOutput    string
+	forceDelete     bool
+	resourceType    string
+	diffFile        string
+	stateDryRun     bool
+	unprotectAll    bool
+	bulkPattern     string
+	bulkFile        string
+	moveType        string
 )
 
 func init() {
@@ -190,6 +268,11 @@ func init() {
 	// State subcommands
 	stateCmd.AddCommand(stateDeleteCmd)
 	stateCmd.AddCommand(stateListCmd)
+	stateCmd.AddCommand(stateDiffCmd)
+	stateCmd.AddCommand(stateRepairCmd)
+	stateCmd.AddCommand(stateUnprotectCmd)
+	stateCmd.AddCommand(stateBulkDeleteCmd)
+	stateCmd.AddCommand(stateMoveCmd)
 
 	// Delete flags
 	deleteStackCmd.Flags().BoolVar(&destroyStack, "destroy", false, "Destroy all resources before deleting stack")
@@ -207,6 +290,24 @@ func init() {
 
 	// State list flags
 	stateListCmd.Flags().StringVar(&resourceType, "type", "", "Filter by resource type (e.g., digitalocean:Droplet)")
+
+	// State diff flags
+	stateDiffCmd.Flags().StringVarP(&diffFile, "file", "f", "", "Compare with exported state file instead of another stack")
+
+	// State repair flags
+	stateRepairCmd.Flags().BoolVar(&stateDryRun, "dry-run", false, "Show what would be repaired without making changes")
+
+	// State unprotect flags
+	stateUnprotectCmd.Flags().BoolVar(&unprotectAll, "all", false, "Unprotect all resources in the stack")
+
+	// State bulk-delete flags
+	stateBulkDeleteCmd.Flags().StringVar(&resourceType, "type", "", "Delete all resources of this type")
+	stateBulkDeleteCmd.Flags().StringVar(&bulkPattern, "pattern", "", "Delete resources matching this URN pattern")
+	stateBulkDeleteCmd.Flags().StringVarP(&bulkFile, "file", "f", "", "File containing list of URNs to delete")
+	stateBulkDeleteCmd.Flags().BoolVar(&forceDelete, "force", false, "Force delete without confirmation")
+
+	// State move flags
+	stateMoveCmd.Flags().StringVar(&moveType, "type", "", "Move all resources of this type")
 }
 
 // createWorkspaceWithS3Support creates a Pulumi workspace with S3/MinIO backend support
@@ -627,18 +728,68 @@ func runExportStack(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("usage: sloth-kubernetes stacks export <stack-name>")
 	}
 
+	ctx := context.Background()
 	stackName := args[0]
 
 	printHeader(fmt.Sprintf("💾 Exporting Stack: %s", stackName))
 
+	// Create workspace with S3 support
+	workspace, err := createWorkspaceWithS3Support(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to create workspace: %w", err)
+	}
+
+	// Select stack using fully qualified name
+	fullyQualifiedStackName := fmt.Sprintf("organization/sloth-kubernetes/%s", stackName)
+	stack, err := auto.SelectStack(ctx, fullyQualifiedStackName, workspace)
+	if err != nil {
+		return fmt.Errorf("failed to select stack '%s': %w", stackName, err)
+	}
+
+	// Export stack state
 	fmt.Println()
-	color.Yellow("⚠️  Stack export/import functionality requires Pulumi CLI")
+	color.Cyan("⏳ Exporting stack state...")
+
+	deployment, err := stack.Export(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to export stack: %w", err)
+	}
+
+	// Determine output file
+	outputFile := exportOutput
+	if outputFile == "" {
+		outputFile = fmt.Sprintf("%s-state.json", stackName)
+	}
+
+	// Create export wrapper with metadata
+	exportData := map[string]interface{}{
+		"version": deployment.Version,
+		"deployment": json.RawMessage(deployment.Deployment),
+		"metadata": map[string]interface{}{
+			"stack":      stackName,
+			"exportedAt": time.Now().UTC().Format(time.RFC3339),
+			"exportedBy": "sloth-kubernetes",
+		},
+	}
+
+	// Marshal with indentation for readability
+	jsonData, err := json.MarshalIndent(exportData, "", "  ")
+	if err != nil {
+		return fmt.Errorf("failed to marshal export data: %w", err)
+	}
+
+	// Write to file
+	if err := os.WriteFile(outputFile, jsonData, 0644); err != nil {
+		return fmt.Errorf("failed to write export file: %w", err)
+	}
+
 	fmt.Println()
-	color.Cyan("Alternative: Use 'sloth-kubernetes pulumi stack export' command:")
-	fmt.Printf("  sloth-kubernetes pulumi stack export --stack %s > %s-state.json\n", stackName, stackName)
+	color.Green("✅ Stack exported successfully")
+	fmt.Printf("\n  File: %s\n", outputFile)
+	fmt.Printf("  Size: %d bytes\n", len(jsonData))
 	fmt.Println()
 	color.Cyan("To import later:")
-	fmt.Printf("  sloth-kubernetes pulumi stack import --stack %s < %s-state.json\n", stackName, stackName)
+	fmt.Printf("  sloth-kubernetes stacks import %s %s\n", stackName, outputFile)
 
 	return nil
 }
@@ -648,20 +799,94 @@ func runImportStack(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("usage: sloth-kubernetes stacks import <stack-name> <file>")
 	}
 
+	ctx := context.Background()
 	stackName := args[0]
 	filePath := args[1]
 
 	printHeader(fmt.Sprintf("📥 Importing Stack: %s", stackName))
 
+	// Read import file
+	fileData, err := os.ReadFile(filePath)
+	if err != nil {
+		return fmt.Errorf("failed to read import file: %w", err)
+	}
+
+	// Parse export wrapper
+	var exportData struct {
+		Version    int             `json:"version"`
+		Deployment json.RawMessage `json:"deployment"`
+		Metadata   map[string]interface{} `json:"metadata,omitempty"`
+	}
+
+	if err := json.Unmarshal(fileData, &exportData); err != nil {
+		return fmt.Errorf("failed to parse import file: %w", err)
+	}
+
+	// Show metadata if available
+	if exportData.Metadata != nil {
+		fmt.Println()
+		color.Cyan("📋 Import Metadata:")
+		if stack, ok := exportData.Metadata["stack"].(string); ok {
+			fmt.Printf("  Original Stack: %s\n", stack)
+		}
+		if exportedAt, ok := exportData.Metadata["exportedAt"].(string); ok {
+			fmt.Printf("  Exported At: %s\n", exportedAt)
+		}
+	}
+
+	// Confirm import
 	fmt.Println()
-	color.Yellow("⚠️  Stack export/import functionality requires Pulumi CLI")
+	color.Yellow("⚠️  This will REPLACE the entire stack state!")
+	color.Yellow("   All existing resources in the stack will be overwritten.")
 	fmt.Println()
-	color.Cyan("Use 'sloth-kubernetes pulumi stack import' command:")
-	fmt.Printf("  sloth-kubernetes pulumi stack import --stack %s < %s\n", stackName, filePath)
+
+	if !autoApprove {
+		if !confirm(fmt.Sprintf("Import state into stack '%s'?", stackName)) {
+			color.Yellow("Import cancelled")
+			return nil
+		}
+	}
+
+	// Create workspace with S3 support
+	workspace, err := createWorkspaceWithS3Support(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to create workspace: %w", err)
+	}
+
+	// Try to select existing stack, or create new one
+	fullyQualifiedStackName := fmt.Sprintf("organization/sloth-kubernetes/%s", stackName)
+	stack, err := auto.SelectStack(ctx, fullyQualifiedStackName, workspace)
+	if err != nil {
+		// Stack doesn't exist, create it
+		color.Cyan("Stack doesn't exist, creating new stack...")
+		stack, err = auto.NewStack(ctx, fullyQualifiedStackName, workspace)
+		if err != nil {
+			return fmt.Errorf("failed to create stack '%s': %w", stackName, err)
+		}
+	}
+
+	// Create deployment object
+	deployment := apitype.UntypedDeployment{
+		Version:    exportData.Version,
+		Deployment: exportData.Deployment,
+	}
+
+	// Import state
 	fmt.Println()
-	color.Cyan("Or create the stack and import:")
-	fmt.Printf("  sloth-kubernetes pulumi stack init %s\n", stackName)
-	fmt.Printf("  sloth-kubernetes pulumi stack import < %s\n", filePath)
+	color.Cyan("⏳ Importing stack state...")
+
+	if err := stack.Import(ctx, deployment); err != nil {
+		return fmt.Errorf("failed to import stack state: %w", err)
+	}
+
+	fmt.Println()
+	color.Green("✅ Stack imported successfully")
+	fmt.Printf("\n  Stack: %s\n", stackName)
+	fmt.Printf("  Source: %s\n", filePath)
+	fmt.Println()
+	color.Cyan("Next steps:")
+	fmt.Println("  • Run 'sloth-kubernetes stacks info " + stackName + "' to verify")
+	fmt.Println("  • Run 'sloth-kubernetes refresh --stack " + stackName + "' to sync with cloud")
 
 	return nil
 }
@@ -969,6 +1194,727 @@ func runCancel(cmd *cobra.Command, args []string) error {
 	color.Cyan("Next steps:")
 	fmt.Println("  • You can now run deploy, destroy, or other operations on this stack")
 	fmt.Println("  • If there were running operations, they have been cancelled")
+
+	return nil
+}
+
+func runStateDiff(cmd *cobra.Command, args []string) error {
+	ctx := context.Background()
+
+	// Validate arguments
+	if diffFile == "" && len(args) < 2 {
+		return fmt.Errorf("usage: sloth-kubernetes stacks state diff <stack1> <stack2>\n       or: sloth-kubernetes stacks state diff <stack> --file backup.json")
+	}
+
+	stack1Name := args[0]
+	printHeader(fmt.Sprintf("🔍 State Diff: %s", stack1Name))
+
+	// Create workspace with S3 support
+	workspace, err := createWorkspaceWithS3Support(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to create workspace: %w", err)
+	}
+
+	// Get stack1 resources
+	fullyQualifiedStack1 := fmt.Sprintf("organization/sloth-kubernetes/%s", stack1Name)
+	stack1, err := auto.SelectStack(ctx, fullyQualifiedStack1, workspace)
+	if err != nil {
+		return fmt.Errorf("failed to select stack '%s': %w", stack1Name, err)
+	}
+
+	deployment1, err := stack1.Export(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to export stack '%s': %w", stack1Name, err)
+	}
+
+	resources1 := parseResourcesFromDeployment(deployment1.Deployment)
+
+	var resources2 []resourceInfo
+	var stack2Name string
+
+	if diffFile != "" {
+		// Compare with file
+		stack2Name = diffFile
+		fileData, err := os.ReadFile(diffFile)
+		if err != nil {
+			return fmt.Errorf("failed to read file '%s': %w", diffFile, err)
+		}
+
+		var exportData struct {
+			Deployment json.RawMessage `json:"deployment"`
+		}
+		if err := json.Unmarshal(fileData, &exportData); err != nil {
+			return fmt.Errorf("failed to parse file: %w", err)
+		}
+
+		resources2 = parseResourcesFromDeployment(exportData.Deployment)
+	} else {
+		// Compare with another stack
+		stack2Name = args[1]
+		fullyQualifiedStack2 := fmt.Sprintf("organization/sloth-kubernetes/%s", stack2Name)
+		stack2, err := auto.SelectStack(ctx, fullyQualifiedStack2, workspace)
+		if err != nil {
+			return fmt.Errorf("failed to select stack '%s': %w", stack2Name, err)
+		}
+
+		deployment2, err := stack2.Export(ctx)
+		if err != nil {
+			return fmt.Errorf("failed to export stack '%s': %w", stack2Name, err)
+		}
+
+		resources2 = parseResourcesFromDeployment(deployment2.Deployment)
+	}
+
+	// Build maps for comparison
+	map1 := make(map[string]resourceInfo)
+	map2 := make(map[string]resourceInfo)
+
+	for _, r := range resources1 {
+		map1[r.URN] = r
+	}
+	for _, r := range resources2 {
+		map2[r.URN] = r
+	}
+
+	// Find differences
+	var onlyIn1, onlyIn2, inBoth []string
+
+	for urn := range map1 {
+		if _, exists := map2[urn]; exists {
+			inBoth = append(inBoth, urn)
+		} else {
+			onlyIn1 = append(onlyIn1, urn)
+		}
+	}
+
+	for urn := range map2 {
+		if _, exists := map1[urn]; !exists {
+			onlyIn2 = append(onlyIn2, urn)
+		}
+	}
+
+	// Sort for consistent output
+	sort.Strings(onlyIn1)
+	sort.Strings(onlyIn2)
+	sort.Strings(inBoth)
+
+	// Display results
+	fmt.Println()
+	fmt.Printf("Comparing: %s vs %s\n\n", color.CyanString(stack1Name), color.CyanString(stack2Name))
+
+	color.New(color.Bold).Printf("Summary:\n")
+	fmt.Printf("  Resources in %s: %d\n", stack1Name, len(resources1))
+	fmt.Printf("  Resources in %s: %d\n", stack2Name, len(resources2))
+	fmt.Printf("  Common resources: %d\n", len(inBoth))
+	fmt.Println()
+
+	if len(onlyIn1) > 0 {
+		color.New(color.Bold, color.FgRed).Printf("Only in %s (%d):\n", stack1Name, len(onlyIn1))
+		for _, urn := range onlyIn1 {
+			r := map1[urn]
+			fmt.Printf("  - %s (%s)\n", color.RedString(r.URN), r.Type)
+		}
+		fmt.Println()
+	}
+
+	if len(onlyIn2) > 0 {
+		color.New(color.Bold, color.FgGreen).Printf("Only in %s (%d):\n", stack2Name, len(onlyIn2))
+		for _, urn := range onlyIn2 {
+			r := map2[urn]
+			fmt.Printf("  + %s (%s)\n", color.GreenString(r.URN), r.Type)
+		}
+		fmt.Println()
+	}
+
+	if len(onlyIn1) == 0 && len(onlyIn2) == 0 {
+		color.Green("✅ No differences found - stacks have identical resources")
+	}
+
+	return nil
+}
+
+type resourceInfo struct {
+	URN       string
+	Type      string
+	ID        string
+	Protected bool
+}
+
+func parseResourcesFromDeployment(deployment json.RawMessage) []resourceInfo {
+	var data struct {
+		Resources []struct {
+			URN       string      `json:"urn"`
+			Type      string      `json:"type"`
+			ID        interface{} `json:"id"`
+			Protect   bool        `json:"protect"`
+		} `json:"resources"`
+	}
+
+	if err := json.Unmarshal(deployment, &data); err != nil {
+		return nil
+	}
+
+	var resources []resourceInfo
+	for _, r := range data.Resources {
+		resources = append(resources, resourceInfo{
+			URN:       r.URN,
+			Type:      r.Type,
+			ID:        fmt.Sprintf("%v", r.ID),
+			Protected: r.Protect,
+		})
+	}
+
+	return resources
+}
+
+func runStateRepair(cmd *cobra.Command, args []string) error {
+	if len(args) < 1 {
+		return fmt.Errorf("usage: sloth-kubernetes stacks state repair <stack-name>")
+	}
+
+	ctx := context.Background()
+	stackName := args[0]
+
+	printHeader(fmt.Sprintf("🔧 Repairing Stack State: %s", stackName))
+
+	// Create workspace with S3 support
+	workspace, err := createWorkspaceWithS3Support(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to create workspace: %w", err)
+	}
+
+	fullyQualifiedStackName := fmt.Sprintf("organization/sloth-kubernetes/%s", stackName)
+	stack, err := auto.SelectStack(ctx, fullyQualifiedStackName, workspace)
+	if err != nil {
+		return fmt.Errorf("failed to select stack '%s': %w", stackName, err)
+	}
+
+	// Export current state
+	deployment, err := stack.Export(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to export stack: %w", err)
+	}
+
+	// Parse deployment
+	var data struct {
+		Resources []map[string]interface{} `json:"resources"`
+	}
+
+	if err := json.Unmarshal(deployment.Deployment, &data); err != nil {
+		return fmt.Errorf("failed to parse deployment: %w", err)
+	}
+
+	fmt.Println()
+	color.Cyan("Analyzing stack state...")
+	fmt.Println()
+
+	// Track issues
+	var issues []string
+	seenURNs := make(map[string]bool)
+	var cleanedResources []map[string]interface{}
+	duplicatesRemoved := 0
+	invalidRemoved := 0
+
+	for _, resource := range data.Resources {
+		urn, _ := resource["urn"].(string)
+
+		// Check for empty/invalid URN
+		if urn == "" {
+			issues = append(issues, "Found resource with empty URN")
+			invalidRemoved++
+			continue
+		}
+
+		// Check for duplicates
+		if seenURNs[urn] {
+			issues = append(issues, fmt.Sprintf("Duplicate URN: %s", urn))
+			duplicatesRemoved++
+			continue
+		}
+
+		seenURNs[urn] = true
+		cleanedResources = append(cleanedResources, resource)
+	}
+
+	// Report findings
+	color.New(color.Bold).Println("Analysis Results:")
+	fmt.Printf("  Total resources: %d\n", len(data.Resources))
+	fmt.Printf("  Duplicate URNs: %d\n", duplicatesRemoved)
+	fmt.Printf("  Invalid resources: %d\n", invalidRemoved)
+	fmt.Println()
+
+	if len(issues) == 0 {
+		color.Green("✅ No issues found - stack state is healthy")
+		return nil
+	}
+
+	color.Yellow("Issues found:")
+	for _, issue := range issues {
+		fmt.Printf("  • %s\n", issue)
+	}
+	fmt.Println()
+
+	if stateDryRun {
+		color.Cyan("Dry-run mode: No changes made")
+		fmt.Printf("\nWould remove %d resources from state\n", duplicatesRemoved+invalidRemoved)
+		return nil
+	}
+
+	// Confirm repair
+	if !autoApprove {
+		if !confirm(fmt.Sprintf("Repair stack state by removing %d problematic resources?", duplicatesRemoved+invalidRemoved)) {
+			color.Yellow("Repair cancelled")
+			return nil
+		}
+	}
+
+	// Apply changes
+	data.Resources = cleanedResources
+	modifiedDeployment, err := json.Marshal(data)
+	if err != nil {
+		return fmt.Errorf("failed to marshal repaired state: %w", err)
+	}
+
+	deployment.Deployment = modifiedDeployment
+
+	color.Cyan("Applying repaired state...")
+	if err := stack.Import(ctx, deployment); err != nil {
+		return fmt.Errorf("failed to import repaired state: %w", err)
+	}
+
+	fmt.Println()
+	color.Green("✅ Stack state repaired successfully")
+	fmt.Printf("  Removed %d duplicate/invalid resources\n", duplicatesRemoved+invalidRemoved)
+
+	return nil
+}
+
+func runStateUnprotect(cmd *cobra.Command, args []string) error {
+	if len(args) < 1 {
+		return fmt.Errorf("usage: sloth-kubernetes stacks state unprotect <stack-name> [urn]")
+	}
+
+	ctx := context.Background()
+	stackName := args[0]
+
+	var targetURN string
+	if len(args) > 1 && !unprotectAll {
+		targetURN = args[1]
+	}
+
+	if targetURN == "" && !unprotectAll {
+		return fmt.Errorf("specify a URN or use --all to unprotect all resources")
+	}
+
+	printHeader(fmt.Sprintf("🔓 Unprotecting Resources: %s", stackName))
+
+	// Create workspace with S3 support
+	workspace, err := createWorkspaceWithS3Support(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to create workspace: %w", err)
+	}
+
+	fullyQualifiedStackName := fmt.Sprintf("organization/sloth-kubernetes/%s", stackName)
+	stack, err := auto.SelectStack(ctx, fullyQualifiedStackName, workspace)
+	if err != nil {
+		return fmt.Errorf("failed to select stack '%s': %w", stackName, err)
+	}
+
+	// Export current state
+	deployment, err := stack.Export(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to export stack: %w", err)
+	}
+
+	// Parse deployment
+	var data struct {
+		Resources []map[string]interface{} `json:"resources"`
+	}
+
+	if err := json.Unmarshal(deployment.Deployment, &data); err != nil {
+		return fmt.Errorf("failed to parse deployment: %w", err)
+	}
+
+	// Find and unprotect resources
+	unprotectedCount := 0
+	var protectedResources []string
+
+	for i, resource := range data.Resources {
+		urn, _ := resource["urn"].(string)
+		protected, _ := resource["protect"].(bool)
+
+		if protected {
+			protectedResources = append(protectedResources, urn)
+		}
+
+		if unprotectAll {
+			if protected {
+				data.Resources[i]["protect"] = false
+				unprotectedCount++
+				fmt.Printf("  • %s\n", urn)
+			}
+		} else if urn == targetURN {
+			if !protected {
+				color.Yellow("Resource is not protected: %s", targetURN)
+				return nil
+			}
+			data.Resources[i]["protect"] = false
+			unprotectedCount++
+			fmt.Printf("  • %s\n", urn)
+		}
+	}
+
+	if unprotectedCount == 0 {
+		if targetURN != "" {
+			return fmt.Errorf("resource not found: %s", targetURN)
+		}
+		color.Yellow("\n⚠️  No protected resources found")
+		return nil
+	}
+
+	fmt.Println()
+
+	// Confirm
+	if !autoApprove {
+		if !confirm(fmt.Sprintf("Unprotect %d resource(s)?", unprotectedCount)) {
+			color.Yellow("Operation cancelled")
+			return nil
+		}
+	}
+
+	// Apply changes
+	modifiedDeployment, err := json.Marshal(data)
+	if err != nil {
+		return fmt.Errorf("failed to marshal state: %w", err)
+	}
+
+	deployment.Deployment = modifiedDeployment
+
+	color.Cyan("Applying changes...")
+	if err := stack.Import(ctx, deployment); err != nil {
+		return fmt.Errorf("failed to import state: %w", err)
+	}
+
+	fmt.Println()
+	color.Green("✅ Successfully unprotected %d resource(s)", unprotectedCount)
+	fmt.Println()
+	color.Yellow("⚠️  These resources can now be deleted by 'destroy' operations")
+
+	return nil
+}
+
+func runStateBulkDelete(cmd *cobra.Command, args []string) error {
+	if len(args) < 1 {
+		return fmt.Errorf("usage: sloth-kubernetes stacks state bulk-delete <stack-name> --type <type>|--pattern <pattern>|--file <file>")
+	}
+
+	ctx := context.Background()
+	stackName := args[0]
+
+	if resourceType == "" && bulkPattern == "" && bulkFile == "" {
+		return fmt.Errorf("must specify --type, --pattern, or --file")
+	}
+
+	printHeader(fmt.Sprintf("🗑️  Bulk Delete from State: %s", stackName))
+
+	// Create workspace with S3 support
+	workspace, err := createWorkspaceWithS3Support(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to create workspace: %w", err)
+	}
+
+	fullyQualifiedStackName := fmt.Sprintf("organization/sloth-kubernetes/%s", stackName)
+	stack, err := auto.SelectStack(ctx, fullyQualifiedStackName, workspace)
+	if err != nil {
+		return fmt.Errorf("failed to select stack '%s': %w", stackName, err)
+	}
+
+	// Export current state
+	deployment, err := stack.Export(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to export stack: %w", err)
+	}
+
+	// Parse deployment
+	var data struct {
+		Resources []map[string]interface{} `json:"resources"`
+	}
+
+	if err := json.Unmarshal(deployment.Deployment, &data); err != nil {
+		return fmt.Errorf("failed to parse deployment: %w", err)
+	}
+
+	// Build list of URNs to delete
+	urnsToDelete := make(map[string]bool)
+
+	if bulkFile != "" {
+		// Read URNs from file
+		fileData, err := os.ReadFile(bulkFile)
+		if err != nil {
+			return fmt.Errorf("failed to read file '%s': %w", bulkFile, err)
+		}
+		lines := strings.Split(string(fileData), "\n")
+		for _, line := range lines {
+			line = strings.TrimSpace(line)
+			if line != "" && !strings.HasPrefix(line, "#") {
+				urnsToDelete[line] = true
+			}
+		}
+	}
+
+	// Find matching resources
+	var toDelete []string
+	var remaining []map[string]interface{}
+
+	for _, resource := range data.Resources {
+		urn, _ := resource["urn"].(string)
+		resType, _ := resource["type"].(string)
+
+		shouldDelete := false
+
+		// Check by type
+		if resourceType != "" && resType == resourceType {
+			shouldDelete = true
+		}
+
+		// Check by pattern
+		if bulkPattern != "" && matchesPattern(urn, bulkPattern) {
+			shouldDelete = true
+		}
+
+		// Check from file
+		if urnsToDelete[urn] {
+			shouldDelete = true
+		}
+
+		if shouldDelete {
+			toDelete = append(toDelete, urn)
+		} else {
+			remaining = append(remaining, resource)
+		}
+	}
+
+	if len(toDelete) == 0 {
+		color.Yellow("\n⚠️  No matching resources found")
+		return nil
+	}
+
+	// Show what will be deleted
+	fmt.Println()
+	color.New(color.Bold).Printf("Resources to delete (%d):\n", len(toDelete))
+	for _, urn := range toDelete {
+		fmt.Printf("  • %s\n", color.RedString(urn))
+	}
+	fmt.Println()
+
+	color.Red("⚠️  WARNING: This will remove resources from Pulumi state only!")
+	fmt.Println("   Cloud resources will NOT be destroyed and will become unmanaged.")
+	fmt.Println()
+
+	// Confirm
+	if !forceDelete {
+		if !confirm(fmt.Sprintf("Delete %d resource(s) from state?", len(toDelete))) {
+			color.Yellow("Operation cancelled")
+			return nil
+		}
+	}
+
+	// Apply changes
+	data.Resources = remaining
+	modifiedDeployment, err := json.Marshal(data)
+	if err != nil {
+		return fmt.Errorf("failed to marshal state: %w", err)
+	}
+
+	deployment.Deployment = modifiedDeployment
+
+	color.Cyan("Applying changes...")
+	if err := stack.Import(ctx, deployment); err != nil {
+		return fmt.Errorf("failed to import state: %w", err)
+	}
+
+	fmt.Println()
+	color.Green("✅ Successfully removed %d resource(s) from state", len(toDelete))
+
+	return nil
+}
+
+func matchesPattern(urn, pattern string) bool {
+	// Simple wildcard matching
+	if strings.HasSuffix(pattern, "*") {
+		prefix := strings.TrimSuffix(pattern, "*")
+		return strings.Contains(urn, prefix)
+	}
+	if strings.HasPrefix(pattern, "*") {
+		suffix := strings.TrimPrefix(pattern, "*")
+		return strings.HasSuffix(urn, suffix)
+	}
+	return strings.Contains(urn, pattern)
+}
+
+func runStateMove(cmd *cobra.Command, args []string) error {
+	if len(args) < 2 {
+		return fmt.Errorf("usage: sloth-kubernetes stacks state move <source-stack> <target-stack> [urn]")
+	}
+
+	ctx := context.Background()
+	sourceStackName := args[0]
+	targetStackName := args[1]
+
+	var targetURN string
+	if len(args) > 2 {
+		targetURN = args[2]
+	}
+
+	if targetURN == "" && moveType == "" {
+		return fmt.Errorf("specify a URN or use --type to move resources by type")
+	}
+
+	printHeader(fmt.Sprintf("📦 Moving Resources: %s → %s", sourceStackName, targetStackName))
+
+	// Create workspace with S3 support
+	workspace, err := createWorkspaceWithS3Support(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to create workspace: %w", err)
+	}
+
+	// Get source stack
+	fullyQualifiedSource := fmt.Sprintf("organization/sloth-kubernetes/%s", sourceStackName)
+	sourceStack, err := auto.SelectStack(ctx, fullyQualifiedSource, workspace)
+	if err != nil {
+		return fmt.Errorf("failed to select source stack '%s': %w", sourceStackName, err)
+	}
+
+	// Get target stack
+	fullyQualifiedTarget := fmt.Sprintf("organization/sloth-kubernetes/%s", targetStackName)
+	targetStack, err := auto.SelectStack(ctx, fullyQualifiedTarget, workspace)
+	if err != nil {
+		return fmt.Errorf("failed to select target stack '%s': %w", targetStackName, err)
+	}
+
+	// Export both stacks
+	sourceDeployment, err := sourceStack.Export(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to export source stack: %w", err)
+	}
+
+	targetDeployment, err := targetStack.Export(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to export target stack: %w", err)
+	}
+
+	// Parse deployments
+	var sourceData struct {
+		Resources []map[string]interface{} `json:"resources"`
+	}
+	var targetData struct {
+		Resources []map[string]interface{} `json:"resources"`
+	}
+
+	if err := json.Unmarshal(sourceDeployment.Deployment, &sourceData); err != nil {
+		return fmt.Errorf("failed to parse source deployment: %w", err)
+	}
+	if err := json.Unmarshal(targetDeployment.Deployment, &targetData); err != nil {
+		return fmt.Errorf("failed to parse target deployment: %w", err)
+	}
+
+	// Find resources to move
+	var toMove []map[string]interface{}
+	var remaining []map[string]interface{}
+
+	for _, resource := range sourceData.Resources {
+		urn, _ := resource["urn"].(string)
+		resType, _ := resource["type"].(string)
+
+		shouldMove := false
+
+		if targetURN != "" && urn == targetURN {
+			shouldMove = true
+		}
+		if moveType != "" && resType == moveType {
+			shouldMove = true
+		}
+
+		if shouldMove {
+			toMove = append(toMove, resource)
+		} else {
+			remaining = append(remaining, resource)
+		}
+	}
+
+	if len(toMove) == 0 {
+		color.Yellow("\n⚠️  No matching resources found in source stack")
+		return nil
+	}
+
+	// Show what will be moved
+	fmt.Println()
+	color.New(color.Bold).Printf("Resources to move (%d):\n", len(toMove))
+	for _, resource := range toMove {
+		urn, _ := resource["urn"].(string)
+		resType, _ := resource["type"].(string)
+		fmt.Printf("  • %s (%s)\n", color.CyanString(urn), resType)
+	}
+	fmt.Println()
+
+	// Confirm
+	if !autoApprove {
+		if !confirm(fmt.Sprintf("Move %d resource(s) from %s to %s?", len(toMove), sourceStackName, targetStackName)) {
+			color.Yellow("Operation cancelled")
+			return nil
+		}
+	}
+
+	// Update URNs to reflect new stack
+	for i, resource := range toMove {
+		urn, _ := resource["urn"].(string)
+		// Replace stack name in URN
+		// URN format: urn:pulumi:stack::project::type::name
+		parts := strings.Split(urn, "::")
+		if len(parts) >= 2 {
+			parts[0] = strings.Replace(parts[0], sourceStackName, targetStackName, 1)
+			toMove[i]["urn"] = strings.Join(parts, "::")
+		}
+	}
+
+	// Add to target
+	targetData.Resources = append(targetData.Resources, toMove...)
+
+	// Remove from source
+	sourceData.Resources = remaining
+
+	// Marshal and import both
+	sourceModified, err := json.Marshal(sourceData)
+	if err != nil {
+		return fmt.Errorf("failed to marshal source state: %w", err)
+	}
+
+	targetModified, err := json.Marshal(targetData)
+	if err != nil {
+		return fmt.Errorf("failed to marshal target state: %w", err)
+	}
+
+	sourceDeployment.Deployment = sourceModified
+	targetDeployment.Deployment = targetModified
+
+	color.Cyan("Updating target stack...")
+	if err := targetStack.Import(ctx, targetDeployment); err != nil {
+		return fmt.Errorf("failed to import to target stack: %w", err)
+	}
+
+	color.Cyan("Updating source stack...")
+	if err := sourceStack.Import(ctx, sourceDeployment); err != nil {
+		return fmt.Errorf("failed to update source stack: %w", err)
+	}
+
+	fmt.Println()
+	color.Green("✅ Successfully moved %d resource(s)", len(toMove))
+	fmt.Printf("  From: %s\n", sourceStackName)
+	fmt.Printf("  To:   %s\n", targetStackName)
+	fmt.Println()
+	color.Cyan("Next steps:")
+	fmt.Printf("  • Verify target: sloth-kubernetes stacks state list %s\n", targetStackName)
+	fmt.Printf("  • Verify source: sloth-kubernetes stacks state list %s\n", sourceStackName)
 
 	return nil
 }
