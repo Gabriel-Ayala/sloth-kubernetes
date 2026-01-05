@@ -19,25 +19,27 @@ The benchmark system provides:
 
 ## Commands
 
+All benchmark commands require the **stack name** as the first argument. The kubeconfig is automatically retrieved from the Pulumi stack.
+
 ### benchmark run
 
 Execute comprehensive benchmarks on your cluster.
 
 ```bash
 # Run all benchmarks
-sloth-kubernetes benchmark run
+sloth-kubernetes benchmark run my-cluster
 
 # Run specific benchmark type
-sloth-kubernetes benchmark run --type network
+sloth-kubernetes benchmark run my-cluster --type network
 
 # Run with verbose output
-sloth-kubernetes benchmark run --type storage --verbose
+sloth-kubernetes benchmark run my-cluster --type storage --verbose
 
 # Save results to JSON file
-sloth-kubernetes benchmark run --output json --save results.json
+sloth-kubernetes benchmark run my-cluster --output json --save results.json
 
 # Compare with previous results
-sloth-kubernetes benchmark run --compare previous-results.json
+sloth-kubernetes benchmark run my-cluster --compare previous-results.json
 ```
 
 **Flags:**
@@ -47,7 +49,6 @@ sloth-kubernetes benchmark run --compare previous-results.json
 | `--type` | Benchmark type (network, storage, cpu, memory, all) | `all` |
 | `--output` | Output format (text, json, compact) | `text` |
 | `--verbose`, `-v` | Show verbose output with details | `false` |
-| `--kubeconfig` | Path to kubeconfig file | - |
 | `--nodes` | Specific nodes to benchmark (comma-separated) | - |
 | `--save` | Save results to file | - |
 | `--compare` | Compare with previous results file | - |
@@ -57,17 +58,16 @@ sloth-kubernetes benchmark run --compare previous-results.json
 Run a quick set of essential benchmarks for a fast performance overview.
 
 ```bash
-sloth-kubernetes benchmark quick
+sloth-kubernetes benchmark quick my-cluster
 
 # Output as JSON
-sloth-kubernetes benchmark quick --output json
+sloth-kubernetes benchmark quick my-cluster --output json
 ```
 
 **Flags:**
 
 | Flag | Description | Default |
 |------|-------------|---------|
-| `--kubeconfig` | Path to kubeconfig file | - |
 | `--output` | Output format (text, json, compact) | `compact` |
 
 **Example output:**
@@ -152,7 +152,7 @@ API Server Latency                 18 ms           12 ms    -33.3%
 Measures network performance within the cluster.
 
 ```bash
-sloth-kubernetes benchmark run --type network
+sloth-kubernetes benchmark run my-cluster --type network
 ```
 
 **Metrics measured:**
@@ -170,7 +170,7 @@ sloth-kubernetes benchmark run --type network
 Measures storage I/O performance.
 
 ```bash
-sloth-kubernetes benchmark run --type storage
+sloth-kubernetes benchmark run my-cluster --type storage
 ```
 
 **Metrics measured:**
@@ -188,7 +188,7 @@ sloth-kubernetes benchmark run --type storage
 Measures compute performance and scheduling efficiency.
 
 ```bash
-sloth-kubernetes benchmark run --type cpu
+sloth-kubernetes benchmark run my-cluster --type cpu
 ```
 
 **Metrics measured:**
@@ -205,7 +205,7 @@ sloth-kubernetes benchmark run --type cpu
 Measures memory performance and utilization.
 
 ```bash
-sloth-kubernetes benchmark run --type memory
+sloth-kubernetes benchmark run my-cluster --type memory
 ```
 
 **Metrics measured:**
@@ -225,7 +225,7 @@ sloth-kubernetes benchmark run --type memory
 Human-readable detailed report with color-coded status.
 
 ```bash
-sloth-kubernetes benchmark run --output text
+sloth-kubernetes benchmark run my-cluster --output text
 ```
 
 ### JSON
@@ -233,7 +233,7 @@ sloth-kubernetes benchmark run --output text
 Machine-readable format for automation and storage.
 
 ```bash
-sloth-kubernetes benchmark run --output json
+sloth-kubernetes benchmark run my-cluster --output json
 ```
 
 Example JSON structure:
@@ -272,7 +272,7 @@ Example JSON structure:
 Condensed summary view.
 
 ```bash
-sloth-kubernetes benchmark run --output compact
+sloth-kubernetes benchmark run my-cluster --output compact
 ```
 
 ---
@@ -285,7 +285,7 @@ Establish a performance baseline for your cluster:
 
 ```bash
 # Run full benchmark suite and save
-sloth-kubernetes benchmark run --save baseline-$(date +%Y%m%d).json
+sloth-kubernetes benchmark run my-cluster --save baseline-$(date +%Y%m%d).json
 
 # View the saved report
 sloth-kubernetes benchmark report baseline-20240115.json
@@ -297,7 +297,7 @@ Regular performance monitoring workflow:
 
 ```bash
 # Weekly performance check
-sloth-kubernetes benchmark run \
+sloth-kubernetes benchmark run my-cluster \
   --save weekly-$(date +%Y%m%d).json \
   --compare baseline.json
 ```
@@ -308,10 +308,10 @@ Benchmark specific nodes to identify issues:
 
 ```bash
 # Benchmark only worker nodes
-sloth-kubernetes benchmark run --nodes worker-1,worker-2,worker-3
+sloth-kubernetes benchmark run my-cluster --nodes worker-1,worker-2,worker-3
 
 # Benchmark a specific problematic node
-sloth-kubernetes benchmark run --nodes worker-5 --verbose
+sloth-kubernetes benchmark run my-cluster --nodes worker-5 --verbose
 ```
 
 ### Pre-Production Validation
@@ -320,10 +320,10 @@ Validate cluster performance before production deployment:
 
 ```bash
 # Run comprehensive benchmarks
-sloth-kubernetes benchmark run --verbose --output text
+sloth-kubernetes benchmark run my-cluster --verbose --output text
 
 # Quick sanity check
-sloth-kubernetes benchmark quick
+sloth-kubernetes benchmark quick my-cluster
 ```
 
 ### CI/CD Integration
@@ -333,8 +333,9 @@ Automated performance testing in pipelines:
 ```bash
 #!/bin/bash
 # benchmark-check.sh
+STACK_NAME="production"
 
-sloth-kubernetes benchmark run --output json --save results.json
+sloth-kubernetes benchmark run $STACK_NAME --output json --save results.json
 
 # Extract overall score
 SCORE=$(jq '.summary.overall_score' results.json)
@@ -385,11 +386,8 @@ The overall score (0-100) is a weighted average of category scores:
 If benchmarks fail to connect to the cluster:
 
 ```bash
-# Verify kubeconfig
-sloth-kubernetes benchmark run --kubeconfig ~/.kube/config
-
-# Check cluster connectivity
-sloth-kubernetes kubectl get nodes
+# Verify stack and connectivity
+sloth-kubernetes kubectl my-cluster get nodes
 ```
 
 ### Low Network Scores
@@ -412,7 +410,7 @@ For more reliable results:
 ```bash
 # Run multiple times and compare
 for i in 1 2 3; do
-  sloth-kubernetes benchmark run --save run-$i.json
+  sloth-kubernetes benchmark run my-cluster --save run-$i.json
 done
 
 # Compare runs

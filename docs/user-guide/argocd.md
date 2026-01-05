@@ -19,28 +19,30 @@ The ArgoCD integration provides:
 
 ## Commands
 
+All ArgoCD commands require the **stack name** as the first argument. The kubeconfig is automatically retrieved from the Pulumi stack.
+
 ### argocd install
 
 Install ArgoCD on your Kubernetes cluster.
 
 ```bash
 # Install ArgoCD with defaults
-sloth-kubernetes argocd install --config cluster.lisp
+sloth-kubernetes argocd install my-cluster
 
 # Install with GitOps repository
-sloth-kubernetes argocd install --config cluster.lisp \
+sloth-kubernetes argocd install my-cluster \
   --repo https://github.com/myorg/gitops.git \
   --branch main \
   --apps-path argocd/apps
 
 # Install with App of Apps pattern
-sloth-kubernetes argocd install --config cluster.lisp \
+sloth-kubernetes argocd install my-cluster \
   --repo https://github.com/myorg/gitops.git \
   --app-of-apps \
   --app-of-apps-name root-app
 
 # Install specific version
-sloth-kubernetes argocd install --config cluster.lisp --version v2.9.3
+sloth-kubernetes argocd install my-cluster --version v2.9.3
 ```
 
 **Flags:**
@@ -67,7 +69,7 @@ sloth-kubernetes argocd install --config cluster.lisp --version v2.9.3
 Check the status of ArgoCD installation and applications.
 
 ```bash
-sloth-kubernetes argocd status --config cluster.lisp
+sloth-kubernetes argocd status my-cluster
 ```
 
 **Example output:**
@@ -96,7 +98,7 @@ Applications: 12 total, 10 synced, 2 out-of-sync
 Retrieve the ArgoCD admin password.
 
 ```bash
-sloth-kubernetes argocd password --config cluster.lisp
+sloth-kubernetes argocd password my-cluster
 ```
 
 **Example output:**
@@ -113,7 +115,7 @@ Password: aB3cD4eF5gH6iJ7k
 List all ArgoCD applications and their sync status.
 
 ```bash
-sloth-kubernetes argocd apps --config cluster.lisp
+sloth-kubernetes argocd apps my-cluster
 ```
 
 **Example output:**
@@ -138,10 +140,10 @@ Trigger synchronization of ArgoCD applications.
 
 ```bash
 # Sync a specific application
-sloth-kubernetes argocd sync my-app --config cluster.lisp
+sloth-kubernetes argocd sync my-cluster my-app
 
 # Sync all applications
-sloth-kubernetes argocd sync --all --config cluster.lisp
+sloth-kubernetes argocd sync my-cluster --all
 ```
 
 **Flags:**
@@ -160,7 +162,7 @@ The App of Apps pattern allows you to manage multiple applications declaratively
 ### Setting Up App of Apps
 
 ```bash
-sloth-kubernetes argocd install --config cluster.lisp \
+sloth-kubernetes argocd install my-cluster \
   --repo https://github.com/myorg/gitops.git \
   --app-of-apps \
   --app-of-apps-name cluster-apps
@@ -254,7 +256,7 @@ open https://localhost:8080
 
 **Login credentials:**
 - Username: `admin`
-- Password: Run `sloth-kubernetes argocd password --config cluster.lisp`
+- Password: Run `sloth-kubernetes argocd password my-cluster`
 
 ---
 
@@ -264,32 +266,32 @@ open https://localhost:8080
 
 ```bash
 # 1. Install ArgoCD with GitOps repo
-sloth-kubernetes argocd install --config cluster.lisp \
+sloth-kubernetes argocd install my-cluster \
   --repo https://github.com/myorg/k8s-apps.git \
   --branch main \
   --apps-path environments/production
 
 # 2. Check installation status
-sloth-kubernetes argocd status --config cluster.lisp
+sloth-kubernetes argocd status my-cluster
 
 # 3. Get admin password
-sloth-kubernetes argocd password --config cluster.lisp
+sloth-kubernetes argocd password my-cluster
 
 # 4. List deployed applications
-sloth-kubernetes argocd apps --config cluster.lisp
+sloth-kubernetes argocd apps my-cluster
 ```
 
 ### Managing Applications
 
 ```bash
 # Check out-of-sync applications
-sloth-kubernetes argocd apps --config cluster.lisp | grep OutOfSync
+sloth-kubernetes argocd apps my-cluster | grep OutOfSync
 
 # Sync specific application
-sloth-kubernetes argocd sync monitoring-stack --config cluster.lisp
+sloth-kubernetes argocd sync my-cluster monitoring-stack
 
 # Sync all applications after git push
-sloth-kubernetes argocd sync --all --config cluster.lisp
+sloth-kubernetes argocd sync my-cluster --all
 ```
 
 ### CI/CD Integration
@@ -297,16 +299,17 @@ sloth-kubernetes argocd sync --all --config cluster.lisp
 ```bash
 #!/bin/bash
 # deploy.sh - Called after git push to trigger sync
+STACK_NAME="production"
 
 # Sync all applications
-sloth-kubernetes argocd sync --all --config cluster.lisp
+sloth-kubernetes argocd sync $STACK_NAME --all
 
 # Wait and check status
 sleep 30
-sloth-kubernetes argocd apps --config cluster.lisp
+sloth-kubernetes argocd apps $STACK_NAME
 
 # Verify no out-of-sync applications
-if sloth-kubernetes argocd apps --config cluster.lisp | grep -q "OutOfSync"; then
+if sloth-kubernetes argocd apps $STACK_NAME | grep -q "OutOfSync"; then
   echo "Some applications are out of sync!"
   exit 1
 fi
@@ -323,8 +326,8 @@ echo "All applications synced successfully!"
 Check pod status and events:
 
 ```bash
-sloth-kubernetes kubectl get pods -n argocd
-sloth-kubernetes kubectl describe pod <pod-name> -n argocd
+sloth-kubernetes kubectl my-cluster get pods -n argocd
+sloth-kubernetes kubectl my-cluster describe pod <pod-name> -n argocd
 ```
 
 ### Application Stuck in OutOfSync
@@ -336,7 +339,7 @@ Check application events and logs:
 kubectl port-forward svc/argocd-server -n argocd 8080:443
 
 # Or check via CLI
-sloth-kubernetes kubectl get application <app-name> -n argocd -o yaml
+sloth-kubernetes kubectl my-cluster get application <app-name> -n argocd -o yaml
 ```
 
 ### Cannot Reach Git Repository
@@ -345,10 +348,10 @@ Verify network connectivity and credentials:
 
 ```bash
 # Check repo server logs
-sloth-kubernetes kubectl logs -n argocd deployment/argocd-repo-server
+sloth-kubernetes kubectl my-cluster logs -n argocd deployment/argocd-repo-server
 
 # Verify repository is configured
-sloth-kubernetes kubectl get secret -n argocd -l argocd.argoproj.io/secret-type=repository
+sloth-kubernetes kubectl my-cluster get secret -n argocd -l argocd.argoproj.io/secret-type=repository
 ```
 
 ### Health Check Failed
@@ -357,9 +360,9 @@ If the ArgoCD status shows unhealthy:
 
 ```bash
 # Get detailed pod status
-sloth-kubernetes kubectl get pods -n argocd -o wide
+sloth-kubernetes kubectl my-cluster get pods -n argocd -o wide
 
 # Check specific component logs
-sloth-kubernetes kubectl logs -n argocd deployment/argocd-application-controller
-sloth-kubernetes kubectl logs -n argocd deployment/argocd-server
+sloth-kubernetes kubectl my-cluster logs -n argocd deployment/argocd-application-controller
+sloth-kubernetes kubectl my-cluster logs -n argocd deployment/argocd-server
 ```

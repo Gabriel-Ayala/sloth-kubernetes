@@ -59,7 +59,7 @@ The upgrade process includes:
 }
 
 var upgradePlanCmd = &cobra.Command{
-	Use:   "plan",
+	Use:   "plan [stack-name]",
 	Short: "Create an upgrade plan",
 	Long: `Create a detailed upgrade plan without executing it.
 
@@ -73,7 +73,7 @@ The plan shows:
 }
 
 var upgradeApplyCmd = &cobra.Command{
-	Use:   "apply",
+	Use:   "apply [stack-name]",
 	Short: "Execute cluster upgrade",
 	Long: `Execute the upgrade plan on the cluster.
 
@@ -83,7 +83,7 @@ Use --force to skip confirmation prompts.`,
 }
 
 var upgradeRollbackCmd = &cobra.Command{
-	Use:   "rollback",
+	Use:   "rollback [stack-name]",
 	Short: "Rollback to previous version",
 	Long: `Rollback the cluster to the previous Kubernetes version.
 
@@ -93,14 +93,14 @@ Only the most recent upgrade can be rolled back.`,
 }
 
 var upgradeVersionsCmd = &cobra.Command{
-	Use:   "versions",
+	Use:   "versions [stack-name]",
 	Short: "List available versions",
 	Long:  `List current cluster version and available upgrade targets.`,
 	RunE:  runUpgradeVersions,
 }
 
 var upgradeStatusCmd = &cobra.Command{
-	Use:   "status",
+	Use:   "status [stack-name]",
 	Short: "Show upgrade status",
 	Long:  `Show the status of an ongoing or recent upgrade.`,
 	RunE:  runUpgradeStatus,
@@ -144,18 +144,20 @@ func init() {
 	upgradeStatusCmd.Flags().StringVar(&upgradeKubeconfig, "kubeconfig", "", "Path to kubeconfig file")
 }
 
-func createUpgradeManager() (*upgrade.Manager, error) {
-	// Try to get credentials from cluster config
-	_, masterIP, sshKey, err := loadClusterCredentials()
+func createUpgradeManager(targetStack string) (*upgrade.Manager, error) {
+	// Get stack info including SSH credentials
+	stackInfo, err := GetStackInfo(targetStack)
 	if err != nil {
-		// Use kubeconfig mode if provided
-		if upgradeKubeconfig != "" {
-			return upgrade.NewManager("", "", upgradeKubeconfig), nil
-		}
-		return nil, fmt.Errorf("failed to get cluster credentials: %w\nTip: Use --kubeconfig flag or --config to specify cluster configuration", err)
+		return nil, fmt.Errorf("failed to get stack info: %w", err)
 	}
 
-	manager := upgrade.NewManager(masterIP, sshKey, upgradeKubeconfig)
+	// Get kubeconfig from stack
+	kubeconfigPath, err := GetKubeconfigFromStack(targetStack)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get kubeconfig from stack '%s': %w", targetStack, err)
+	}
+
+	manager := upgrade.NewManager(stackInfo.MasterIP, "", kubeconfigPath)
 	manager.SetDryRun(upgradeDryRun)
 	manager.SetVerbose(upgradeVerbose)
 
@@ -165,7 +167,13 @@ func createUpgradeManager() (*upgrade.Manager, error) {
 func runUpgradePlan(cmd *cobra.Command, args []string) error {
 	printHeader("Upgrade Plan")
 
-	manager, err := createUpgradeManager()
+	// Get stack name from args
+	targetStack, err := RequireStackArg(args)
+	if err != nil {
+		return err
+	}
+
+	manager, err := createUpgradeManager(targetStack)
 	if err != nil {
 		return err
 	}
@@ -195,7 +203,13 @@ func runUpgradePlan(cmd *cobra.Command, args []string) error {
 func runUpgradeApply(cmd *cobra.Command, args []string) error {
 	printHeader("Cluster Upgrade")
 
-	manager, err := createUpgradeManager()
+	// Get stack name from args
+	targetStack, err := RequireStackArg(args)
+	if err != nil {
+		return err
+	}
+
+	manager, err := createUpgradeManager(targetStack)
 	if err != nil {
 		return err
 	}
@@ -256,7 +270,13 @@ func runUpgradeApply(cmd *cobra.Command, args []string) error {
 func runUpgradeRollback(cmd *cobra.Command, args []string) error {
 	printHeader("Cluster Rollback")
 
-	manager, err := createUpgradeManager()
+	// Get stack name from args
+	targetStack, err := RequireStackArg(args)
+	if err != nil {
+		return err
+	}
+
+	manager, err := createUpgradeManager(targetStack)
 	if err != nil {
 		return err
 	}
@@ -289,7 +309,13 @@ func runUpgradeRollback(cmd *cobra.Command, args []string) error {
 func runUpgradeVersions(cmd *cobra.Command, args []string) error {
 	printHeader("Available Versions")
 
-	manager, err := createUpgradeManager()
+	// Get stack name from args
+	targetStack, err := RequireStackArg(args)
+	if err != nil {
+		return err
+	}
+
+	manager, err := createUpgradeManager(targetStack)
 	if err != nil {
 		return err
 	}
@@ -340,7 +366,13 @@ func runUpgradeVersions(cmd *cobra.Command, args []string) error {
 func runUpgradeStatus(cmd *cobra.Command, args []string) error {
 	printHeader("Upgrade Status")
 
-	manager, err := createUpgradeManager()
+	// Get stack name from args
+	targetStack, err := RequireStackArg(args)
+	if err != nil {
+		return err
+	}
+
+	manager, err := createUpgradeManager(targetStack)
 	if err != nil {
 		return err
 	}

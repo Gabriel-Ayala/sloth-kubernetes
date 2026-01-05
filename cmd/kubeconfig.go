@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/briandowns/spinner"
@@ -85,6 +86,11 @@ func runKubeconfig(cmd *cobra.Command, args []string) error {
 
 	kubeConfigStr := fmt.Sprintf("%v", kubeConfigOutput.Value)
 
+	// Extract kubeconfig from between markers if present
+	// The kubeConfig output may contain installation logs with the actual kubeconfig
+	// embedded between ---KUBECONFIG_START--- and ---KUBECONFIG_END--- markers
+	kubeConfigStr = extractKubeconfig(kubeConfigStr)
+
 	// Output to file or stdout
 	if outputFile != "" {
 		// Expand home directory
@@ -115,4 +121,31 @@ func runKubeconfig(cmd *cobra.Command, args []string) error {
 	}
 
 	return nil
+}
+
+// extractKubeconfig extracts the kubeconfig from between markers if present
+// The kubeConfig output may contain installation logs with the actual kubeconfig
+// embedded between ---KUBECONFIG_START--- and ---KUBECONFIG_END--- markers
+func extractKubeconfig(raw string) string {
+	const startMarker = "---KUBECONFIG_START---"
+	const endMarker = "---KUBECONFIG_END---"
+
+	startIdx := strings.Index(raw, startMarker)
+	endIdx := strings.Index(raw, endMarker)
+
+	if startIdx != -1 && endIdx != -1 && endIdx > startIdx {
+		// Extract content between markers
+		kubeconfig := raw[startIdx+len(startMarker) : endIdx]
+		// Trim leading/trailing whitespace
+		kubeconfig = strings.TrimSpace(kubeconfig)
+		return kubeconfig
+	}
+
+	// If no markers found, check if it already looks like a valid kubeconfig
+	if strings.Contains(raw, "apiVersion:") && strings.Contains(raw, "clusters:") {
+		return raw
+	}
+
+	// Return original if no markers and doesn't look like kubeconfig
+	return raw
 }

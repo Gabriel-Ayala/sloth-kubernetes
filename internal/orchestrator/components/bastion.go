@@ -2,6 +2,7 @@ package components
 
 import (
 	"fmt"
+	"os"
 
 	"github.com/chalkan3/sloth-kubernetes/pkg/config"
 	"github.com/pulumi/pulumi-aws/sdk/v6/go/aws"
@@ -216,10 +217,21 @@ func createAWSBastion(
 		region = "us-east-1"
 	}
 
-	// Create explicit AWS provider with region
-	awsProvider, err := aws.NewProvider(ctx, fmt.Sprintf("%s-aws-provider", name), &aws.ProviderArgs{
+	// Create explicit AWS provider with region and credentials
+	providerArgs := &aws.ProviderArgs{
 		Region: pulumi.String(region),
-	}, pulumi.Parent(component))
+	}
+	// Explicitly pass credentials if available (needed for temporary STS credentials)
+	if accessKey := os.Getenv("AWS_ACCESS_KEY_ID"); accessKey != "" {
+		providerArgs.AccessKey = pulumi.StringPtr(accessKey)
+	}
+	if secretKey := os.Getenv("AWS_SECRET_ACCESS_KEY"); secretKey != "" {
+		providerArgs.SecretKey = pulumi.StringPtr(secretKey)
+	}
+	if sessionToken := os.Getenv("AWS_SESSION_TOKEN"); sessionToken != "" {
+		providerArgs.Token = pulumi.StringPtr(sessionToken)
+	}
+	awsProvider, err := aws.NewProvider(ctx, fmt.Sprintf("%s-aws-provider", name), providerArgs, pulumi.Parent(component))
 	if err != nil {
 		return fmt.Errorf("failed to create AWS provider: %w", err)
 	}

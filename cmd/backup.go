@@ -3,7 +3,6 @@ package cmd
 import (
 	"encoding/json"
 	"fmt"
-	"os"
 	"strings"
 	"time"
 
@@ -74,46 +73,46 @@ Velero must be installed in your cluster for backup operations to work.`,
 }
 
 var backupCreateCmd = &cobra.Command{
-	Use:   "create [name]",
+	Use:   "create [stack-name] [backup-name]",
 	Short: "Create a new backup",
 	Long:  `Create a new Velero backup of the cluster or specific namespaces.`,
-	Args:  cobra.MaximumNArgs(1),
+	Args:  cobra.RangeArgs(1, 2),
 	RunE:  runBackupCreate,
 }
 
 var backupListCmd = &cobra.Command{
-	Use:   "list",
+	Use:   "list [stack-name]",
 	Short: "List all backups",
 	Long:  `List all Velero backups in the cluster.`,
 	RunE:  runBackupList,
 }
 
 var backupDescribeCmd = &cobra.Command{
-	Use:   "describe [name]",
+	Use:   "describe [stack-name] [backup-name]",
 	Short: "Describe a backup",
 	Long:  `Show detailed information about a specific backup.`,
-	Args:  cobra.ExactArgs(1),
+	Args:  cobra.ExactArgs(2),
 	RunE:  runBackupDescribe,
 }
 
 var backupDeleteCmd = &cobra.Command{
-	Use:   "delete [name]",
+	Use:   "delete [stack-name] [backup-name]",
 	Short: "Delete a backup",
 	Long:  `Delete a Velero backup.`,
-	Args:  cobra.ExactArgs(1),
+	Args:  cobra.ExactArgs(2),
 	RunE:  runBackupDelete,
 }
 
 var backupRestoreCmd = &cobra.Command{
-	Use:   "restore [name]",
+	Use:   "restore [stack-name] [restore-name]",
 	Short: "Restore from a backup",
 	Long:  `Create a restore from an existing backup.`,
-	Args:  cobra.MaximumNArgs(1),
+	Args:  cobra.RangeArgs(1, 2),
 	RunE:  runBackupRestore,
 }
 
 var backupRestoreListCmd = &cobra.Command{
-	Use:   "restore-list",
+	Use:   "restore-list [stack-name]",
 	Short: "List all restores",
 	Long:  `List all Velero restores in the cluster.`,
 	RunE:  runRestoreList,
@@ -126,7 +125,7 @@ var backupScheduleCmd = &cobra.Command{
 }
 
 var backupScheduleCreateCmd = &cobra.Command{
-	Use:   "create [name]",
+	Use:   "create [stack-name] [schedule-name]",
 	Short: "Create a backup schedule",
 	Long: `Create a new backup schedule using cron expressions.
 
@@ -136,50 +135,50 @@ Examples:
   "0 */6 * * *"   - Every 6 hours
   "0 0 * * 0"     - Weekly on Sunday at midnight
   "0 0 1 * *"     - Monthly on the 1st at midnight`,
-	Args: cobra.ExactArgs(1),
+	Args: cobra.ExactArgs(2),
 	RunE: runScheduleCreate,
 }
 
 var backupScheduleListCmd = &cobra.Command{
-	Use:   "list",
+	Use:   "list [stack-name]",
 	Short: "List backup schedules",
 	Long:  `List all Velero backup schedules.`,
 	RunE:  runScheduleList,
 }
 
 var backupScheduleDeleteCmd = &cobra.Command{
-	Use:   "delete [name]",
+	Use:   "delete [stack-name] [schedule-name]",
 	Short: "Delete a backup schedule",
 	Long:  `Delete a Velero backup schedule.`,
-	Args:  cobra.ExactArgs(1),
+	Args:  cobra.ExactArgs(2),
 	RunE:  runScheduleDelete,
 }
 
 var backupSchedulePauseCmd = &cobra.Command{
-	Use:   "pause [name]",
+	Use:   "pause [stack-name] [schedule-name]",
 	Short: "Pause a backup schedule",
 	Long:  `Pause a Velero backup schedule.`,
-	Args:  cobra.ExactArgs(1),
+	Args:  cobra.ExactArgs(2),
 	RunE:  runSchedulePause,
 }
 
 var backupScheduleUnpauseCmd = &cobra.Command{
-	Use:   "unpause [name]",
+	Use:   "unpause [stack-name] [schedule-name]",
 	Short: "Unpause a backup schedule",
 	Long:  `Unpause a paused Velero backup schedule.`,
-	Args:  cobra.ExactArgs(1),
+	Args:  cobra.ExactArgs(2),
 	RunE:  runScheduleUnpause,
 }
 
 var backupLocationsCmd = &cobra.Command{
-	Use:   "locations",
+	Use:   "locations [stack-name]",
 	Short: "List backup storage locations",
 	Long:  `List all configured backup storage locations.`,
 	RunE:  runBackupLocations,
 }
 
 var backupInstallCmd = &cobra.Command{
-	Use:   "install",
+	Use:   "install [stack-name]",
 	Short: "Install Velero",
 	Long: `Install Velero in the cluster with the specified storage provider.
 
@@ -192,7 +191,7 @@ Supported providers:
 }
 
 var backupStatusCmd = &cobra.Command{
-	Use:   "status",
+	Use:   "status [stack-name]",
 	Short: "Show Velero status",
 	Long:  `Check if Velero is installed and show its status.`,
 	RunE:  runBackupStatus,
@@ -275,26 +274,36 @@ func init() {
 	backupInstallCmd.MarkFlagRequired("secret-file")
 }
 
-func createBackupManager() *backup.Manager {
-	kubeconfig := backupKubeconfig
-	if kubeconfig == "" {
-		kubeconfig = os.ExpandEnv("$HOME/.kube/config")
+func createBackupManager(targetStack string) (*backup.Manager, error) {
+	// Get kubeconfig from stack
+	kubeconfigPath, err := GetKubeconfigFromStack(targetStack)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get kubeconfig from stack '%s': %w", targetStack, err)
 	}
 
-	manager := backup.NewManager(kubeconfig)
+	manager := backup.NewManager(kubeconfigPath)
 	manager.SetNamespace(backupVeleroNS)
-	return manager
+	return manager, nil
 }
 
 func runBackupCreate(cmd *cobra.Command, args []string) error {
 	printHeader("Create Backup")
 
-	manager := createBackupManager()
+	// Get stack name from args
+	targetStack, err := RequireStackArg(args)
+	if err != nil {
+		return err
+	}
+
+	manager, err := createBackupManager(targetStack)
+	if err != nil {
+		return err
+	}
 
 	// Check Velero is installed
 	installed, err := manager.CheckVeleroInstalled()
 	if err != nil || !installed {
-		return fmt.Errorf("velero is not installed. Run 'sloth-kubernetes backup install' first")
+		return fmt.Errorf("velero is not installed. Run 'sloth-kubernetes backup install %s' first", targetStack)
 	}
 
 	config := backup.BackupConfig{
@@ -309,8 +318,9 @@ func runBackupCreate(cmd *cobra.Command, args []string) error {
 		Timeout:            backupTimeout,
 	}
 
-	if len(args) > 0 {
-		config.Name = args[0]
+	// Backup name is second argument (optional)
+	if len(args) > 1 {
+		config.Name = args[1]
 	}
 
 	// Parse labels
@@ -384,7 +394,16 @@ func runBackupCreate(cmd *cobra.Command, args []string) error {
 }
 
 func runBackupList(cmd *cobra.Command, args []string) error {
-	manager := createBackupManager()
+	// Get stack name from args
+	targetStack, err := RequireStackArg(args)
+	if err != nil {
+		return err
+	}
+
+	manager, err := createBackupManager(targetStack)
+	if err != nil {
+		return err
+	}
 
 	backups, err := manager.ListBackups()
 	if err != nil {
@@ -422,9 +441,19 @@ func runBackupList(cmd *cobra.Command, args []string) error {
 }
 
 func runBackupDescribe(cmd *cobra.Command, args []string) error {
-	manager := createBackupManager()
+	// Get stack name from args
+	targetStack, err := RequireStackArg(args)
+	if err != nil {
+		return err
+	}
 
-	b, err := manager.GetBackup(args[0])
+	manager, err := createBackupManager(targetStack)
+	if err != nil {
+		return err
+	}
+
+	// Backup name is second argument
+	b, err := manager.GetBackup(args[1])
 	if err != nil {
 		return err
 	}
@@ -440,14 +469,26 @@ func runBackupDescribe(cmd *cobra.Command, args []string) error {
 }
 
 func runBackupDelete(cmd *cobra.Command, args []string) error {
-	manager := createBackupManager()
+	// Get stack name from args
+	targetStack, err := RequireStackArg(args)
+	if err != nil {
+		return err
+	}
+
+	manager, err := createBackupManager(targetStack)
+	if err != nil {
+		return err
+	}
+
+	// Backup name is second argument
+	backupName := args[1]
 
 	// Dry-run mode: show what would be deleted without deleting
 	if backupDryRun {
 		// Try to get backup details to show
-		b, err := manager.GetBackup(args[0])
+		b, err := manager.GetBackup(backupName)
 		if err != nil {
-			return fmt.Errorf("backup %s not found: %w", args[0], err)
+			return fmt.Errorf("backup %s not found: %w", backupName, err)
 		}
 
 		fmt.Println()
@@ -466,29 +507,33 @@ func runBackupDelete(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	color.Yellow("Deleting backup %s...", args[0])
+	color.Yellow("Deleting backup %s...", backupName)
 
-	if err := manager.DeleteBackup(args[0]); err != nil {
+	if err := manager.DeleteBackup(backupName); err != nil {
 		return err
 	}
 
-	color.Green("Backup %s deleted successfully", args[0])
+	color.Green("Backup %s deleted successfully", backupName)
 	return nil
 }
 
 func runBackupRestore(cmd *cobra.Command, args []string) error {
 	printHeader("Restore from Backup")
 
-	if restoreFromBackup == "" && len(args) == 0 {
+	// Get stack name from args
+	targetStack, err := RequireStackArg(args)
+	if err != nil {
+		return err
+	}
+
+	if restoreFromBackup == "" {
 		return fmt.Errorf("--from-backup flag is required")
 	}
 
-	backupName := restoreFromBackup
-	if backupName == "" && len(args) > 0 {
-		backupName = args[0]
+	manager, err := createBackupManager(targetStack)
+	if err != nil {
+		return err
 	}
-
-	manager := createBackupManager()
 
 	// Check Velero is installed
 	installed, err := manager.CheckVeleroInstalled()
@@ -497,7 +542,7 @@ func runBackupRestore(cmd *cobra.Command, args []string) error {
 	}
 
 	config := backup.RestoreConfig{
-		BackupName:         backupName,
+		BackupName:         restoreFromBackup,
 		IncludedNamespaces: backupNamespaces,
 		ExcludedNamespaces: backupExcludeNS,
 		IncludedResources:  backupResources,
@@ -508,22 +553,23 @@ func runBackupRestore(cmd *cobra.Command, args []string) error {
 		Timeout:            backupTimeout,
 	}
 
-	if len(args) > 0 && restoreFromBackup != "" {
-		config.Name = args[0]
+	// Restore name is second argument (optional)
+	if len(args) > 1 {
+		config.Name = args[1]
 	}
 
 	// Dry-run mode: show what would be restored without restoring
 	if backupDryRun {
 		// Get backup details to show what would be restored
-		b, err := manager.GetBackup(backupName)
+		b, err := manager.GetBackup(restoreFromBackup)
 		if err != nil {
-			return fmt.Errorf("backup %s not found: %w", backupName, err)
+			return fmt.Errorf("backup %s not found: %w", restoreFromBackup, err)
 		}
 
 		fmt.Println()
 		color.Yellow("[DRY-RUN] Would restore from backup with the following configuration:")
 		fmt.Println()
-		fmt.Printf("  Backup:            %s\n", backupName)
+		fmt.Printf("  Backup:            %s\n", restoreFromBackup)
 		fmt.Printf("  Backup Status:     %s\n", b.Status)
 		if !b.StartTimestamp.IsZero() {
 			fmt.Printf("  Backup Created:    %s\n", b.StartTimestamp.Format("2006-01-02 15:04:05"))
@@ -552,7 +598,7 @@ func runBackupRestore(cmd *cobra.Command, args []string) error {
 	}
 
 	fmt.Println()
-	color.Cyan("Creating restore from backup %s...", backupName)
+	color.Cyan("Creating restore from backup %s...", restoreFromBackup)
 
 	result, err := manager.CreateRestore(config)
 	if err != nil {
@@ -578,7 +624,16 @@ func runBackupRestore(cmd *cobra.Command, args []string) error {
 }
 
 func runRestoreList(cmd *cobra.Command, args []string) error {
-	manager := createBackupManager()
+	// Get stack name from args
+	targetStack, err := RequireStackArg(args)
+	if err != nil {
+		return err
+	}
+
+	manager, err := createBackupManager(targetStack)
+	if err != nil {
+		return err
+	}
 
 	restores, err := manager.ListRestores()
 	if err != nil {
@@ -614,7 +669,16 @@ func runRestoreList(cmd *cobra.Command, args []string) error {
 func runScheduleCreate(cmd *cobra.Command, args []string) error {
 	printHeader("Create Backup Schedule")
 
-	manager := createBackupManager()
+	// Get stack name from args
+	targetStack, err := RequireStackArg(args)
+	if err != nil {
+		return err
+	}
+
+	manager, err := createBackupManager(targetStack)
+	if err != nil {
+		return err
+	}
 
 	// Check Velero is installed
 	installed, err := manager.CheckVeleroInstalled()
@@ -622,8 +686,9 @@ func runScheduleCreate(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("velero is not installed")
 	}
 
+	// Schedule name is second argument
 	config := backup.ScheduleConfig{
-		Name:               args[0],
+		Name:               args[1],
 		Schedule:           scheduleExpression,
 		IncludedNamespaces: backupNamespaces,
 		ExcludedNamespaces: backupExcludeNS,
@@ -674,7 +739,16 @@ func runScheduleCreate(cmd *cobra.Command, args []string) error {
 }
 
 func runScheduleList(cmd *cobra.Command, args []string) error {
-	manager := createBackupManager()
+	// Get stack name from args
+	targetStack, err := RequireStackArg(args)
+	if err != nil {
+		return err
+	}
+
+	manager, err := createBackupManager(targetStack)
+	if err != nil {
+		return err
+	}
 
 	schedules, err := manager.ListSchedules()
 	if err != nil {
@@ -713,7 +787,19 @@ func runScheduleList(cmd *cobra.Command, args []string) error {
 }
 
 func runScheduleDelete(cmd *cobra.Command, args []string) error {
-	manager := createBackupManager()
+	// Get stack name from args
+	targetStack, err := RequireStackArg(args)
+	if err != nil {
+		return err
+	}
+
+	manager, err := createBackupManager(targetStack)
+	if err != nil {
+		return err
+	}
+
+	// Schedule name is second argument
+	scheduleName := args[1]
 
 	// Dry-run mode: show what would be deleted without deleting
 	if backupDryRun {
@@ -725,14 +811,14 @@ func runScheduleDelete(cmd *cobra.Command, args []string) error {
 
 		var found *backup.Schedule
 		for i, s := range schedules {
-			if s.Name == args[0] {
+			if s.Name == scheduleName {
 				found = &schedules[i]
 				break
 			}
 		}
 
 		if found == nil {
-			return fmt.Errorf("schedule %s not found", args[0])
+			return fmt.Errorf("schedule %s not found", scheduleName)
 		}
 
 		fmt.Println()
@@ -749,40 +835,73 @@ func runScheduleDelete(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	color.Yellow("Deleting schedule %s...", args[0])
+	color.Yellow("Deleting schedule %s...", scheduleName)
 
-	if err := manager.DeleteSchedule(args[0]); err != nil {
+	if err := manager.DeleteSchedule(scheduleName); err != nil {
 		return err
 	}
 
-	color.Green("Schedule %s deleted successfully", args[0])
+	color.Green("Schedule %s deleted successfully", scheduleName)
 	return nil
 }
 
 func runSchedulePause(cmd *cobra.Command, args []string) error {
-	manager := createBackupManager()
-
-	if err := manager.PauseSchedule(args[0]); err != nil {
+	// Get stack name from args
+	targetStack, err := RequireStackArg(args)
+	if err != nil {
 		return err
 	}
 
-	color.Green("Schedule %s paused", args[0])
+	manager, err := createBackupManager(targetStack)
+	if err != nil {
+		return err
+	}
+
+	// Schedule name is second argument
+	scheduleName := args[1]
+
+	if err := manager.PauseSchedule(scheduleName); err != nil {
+		return err
+	}
+
+	color.Green("Schedule %s paused", scheduleName)
 	return nil
 }
 
 func runScheduleUnpause(cmd *cobra.Command, args []string) error {
-	manager := createBackupManager()
-
-	if err := manager.UnpauseSchedule(args[0]); err != nil {
+	// Get stack name from args
+	targetStack, err := RequireStackArg(args)
+	if err != nil {
 		return err
 	}
 
-	color.Green("Schedule %s unpaused", args[0])
+	manager, err := createBackupManager(targetStack)
+	if err != nil {
+		return err
+	}
+
+	// Schedule name is second argument
+	scheduleName := args[1]
+
+	if err := manager.UnpauseSchedule(scheduleName); err != nil {
+		return err
+	}
+
+	color.Green("Schedule %s unpaused", scheduleName)
 	return nil
 }
 
 func runBackupLocations(cmd *cobra.Command, args []string) error {
-	manager := createBackupManager()
+	// Get stack name from args
+	targetStack, err := RequireStackArg(args)
+	if err != nil {
+		return err
+	}
+
+	manager, err := createBackupManager(targetStack)
+	if err != nil {
+		return err
+	}
 
 	locations, err := manager.GetBackupLocations()
 	if err != nil {
@@ -818,7 +937,16 @@ func runBackupLocations(cmd *cobra.Command, args []string) error {
 func runBackupInstall(cmd *cobra.Command, args []string) error {
 	printHeader("Install Velero")
 
-	manager := createBackupManager()
+	// Get stack name from args
+	targetStack, err := RequireStackArg(args)
+	if err != nil {
+		return err
+	}
+
+	manager, err := createBackupManager(targetStack)
+	if err != nil {
+		return err
+	}
 
 	// Check if already installed
 	installed, _ := manager.CheckVeleroInstalled()
@@ -839,8 +967,8 @@ func runBackupInstall(cmd *cobra.Command, args []string) error {
 	color.Green("Velero installed successfully!")
 	fmt.Println()
 	fmt.Println("Next steps:")
-	fmt.Println("  1. Create a backup: sloth-kubernetes backup create my-backup")
-	fmt.Println("  2. Create a schedule: sloth-kubernetes backup schedule create daily --schedule '0 0 * * *'")
+	fmt.Printf("  1. Create a backup: sloth-kubernetes backup create %s my-backup\n", targetStack)
+	fmt.Printf("  2. Create a schedule: sloth-kubernetes backup schedule create %s daily --schedule '0 0 * * *'\n", targetStack)
 
 	return nil
 }
@@ -848,7 +976,16 @@ func runBackupInstall(cmd *cobra.Command, args []string) error {
 func runBackupStatus(cmd *cobra.Command, args []string) error {
 	printHeader("Velero Status")
 
-	manager := createBackupManager()
+	// Get stack name from args
+	targetStack, err := RequireStackArg(args)
+	if err != nil {
+		return err
+	}
+
+	manager, err := createBackupManager(targetStack)
+	if err != nil {
+		return err
+	}
 
 	installed, err := manager.CheckVeleroInstalled()
 	if err != nil {

@@ -34,7 +34,7 @@ Supports App of Apps pattern for managing multiple applications.`,
 }
 
 var argocdInstallCmd = &cobra.Command{
-	Use:   "install",
+	Use:   "install [stack-name]",
 	Short: "Install ArgoCD on the cluster",
 	Long: `Install ArgoCD on your Kubernetes cluster.
 
@@ -45,16 +45,16 @@ This command will:
   4. Optionally configure GitOps repository
   5. Set up App of Apps pattern if enabled`,
 	Example: `  # Install ArgoCD with defaults
-  sloth-kubernetes argocd install --config cluster.lisp
+  sloth-kubernetes argocd install my-cluster
 
   # Install with GitOps repo
-  sloth-kubernetes argocd install -c cluster.lisp \
+  sloth-kubernetes argocd install my-cluster \
     --repo https://github.com/myorg/gitops.git \
     --branch main \
     --apps-path argocd/apps
 
   # Install with App of Apps pattern
-  sloth-kubernetes argocd install -c cluster.lisp \
+  sloth-kubernetes argocd install my-cluster \
     --repo https://github.com/myorg/gitops.git \
     --app-of-apps \
     --app-of-apps-name root-app`,
@@ -62,41 +62,41 @@ This command will:
 }
 
 var argocdStatusCmd = &cobra.Command{
-	Use:   "status",
+	Use:   "status [stack-name]",
 	Short: "Check ArgoCD status",
 	Long:  `Check the status of ArgoCD installation and applications.`,
 	Example: `  # Check ArgoCD status
-  sloth-kubernetes argocd status --config cluster.lisp`,
+  sloth-kubernetes argocd status my-cluster`,
 	RunE: runArgocdStatus,
 }
 
 var argocdPasswordCmd = &cobra.Command{
-	Use:   "password",
+	Use:   "password [stack-name]",
 	Short: "Get ArgoCD admin password",
 	Long:  `Retrieve the ArgoCD admin password from the cluster.`,
 	Example: `  # Get ArgoCD admin password
-  sloth-kubernetes argocd password --config cluster.lisp`,
+  sloth-kubernetes argocd password my-cluster`,
 	RunE: runArgocdPassword,
 }
 
 var argocdAppsCmd = &cobra.Command{
-	Use:   "apps",
+	Use:   "apps [stack-name]",
 	Short: "List ArgoCD applications",
 	Long:  `List all ArgoCD applications and their sync status.`,
 	Example: `  # List all applications
-  sloth-kubernetes argocd apps --config cluster.lisp`,
+  sloth-kubernetes argocd apps my-cluster`,
 	RunE: runArgocdApps,
 }
 
 var argocdSyncCmd = &cobra.Command{
-	Use:   "sync [app-name]",
+	Use:   "sync [stack-name] [app-name]",
 	Short: "Sync an ArgoCD application",
 	Long:  `Trigger synchronization of an ArgoCD application.`,
 	Example: `  # Sync all applications
-  sloth-kubernetes argocd sync --all --config cluster.lisp
+  sloth-kubernetes argocd sync my-cluster --all
 
   # Sync specific application
-  sloth-kubernetes argocd sync my-app --config cluster.lisp`,
+  sloth-kubernetes argocd sync my-cluster my-app`,
 	RunE: runArgocdSync,
 }
 
@@ -134,43 +134,44 @@ func init() {
 func runArgocdInstall(cmd *cobra.Command, args []string) error {
 	printHeader("Installing ArgoCD GitOps")
 
-	// Load configuration
-	configPath := cfgFile
-	if configPath == "" {
-		configPath = "./cluster-config.lisp"
-	}
-
-	if _, err := os.Stat(configPath); os.IsNotExist(err) {
-		return fmt.Errorf("config file not found: %s", configPath)
-	}
-
-	cfg, err := config.LoadFromLisp(configPath)
+	// Get stack name
+	targetStack, err := RequireStackArg(args)
 	if err != nil {
-		return fmt.Errorf("failed to load config: %w", err)
+		return err
 	}
 
-	// Get master node IP from stack outputs or config
-	masterIP, sshKey, err := getMasterNodeCredentials(cfg)
+	// Get stack info including SSH credentials
+	stackInfo, err := GetStackInfo(targetStack)
 	if err != nil {
-		return fmt.Errorf("failed to get master node credentials: %w", err)
+		return fmt.Errorf("failed to get stack info: %w", err)
 	}
 
-	// Override config with CLI flags
-	if cfg.Addons.ArgoCD == nil {
-		cfg.Addons.ArgoCD = &config.ArgoCDConfig{}
+	if stackInfo.MasterIP == "" || stackInfo.SSHKeyPath == "" {
+		return fmt.Errorf("could not get master IP or SSH key from stack '%s'", targetStack)
 	}
-	cfg.Addons.ArgoCD.Enabled = true
-	cfg.Addons.ArgoCD.Namespace = argocdNamespace
-	cfg.Addons.ArgoCD.Version = argocdVersion
 
-	if gitopsRepoURL != "" {
-		cfg.Addons.ArgoCD.GitOpsRepoURL = gitopsRepoURL
-		cfg.Addons.ArgoCD.GitOpsRepoBranch = gitopsRepoBranch
-		cfg.Addons.ArgoCD.AppsPath = gitopsAppsPath
+	// Read SSH key
+	sshKey, err := readSSHKey(stackInfo.SSHKeyPath)
+	if err != nil {
+		return fmt.Errorf("failed to read SSH key: %w", err)
+	}
+
+	// Create minimal config for addons
+	cfg := &config.ClusterConfig{
+		Addons: config.AddonsConfig{
+			ArgoCD: &config.ArgoCDConfig{
+				Enabled:          true,
+				Namespace:        argocdNamespace,
+				Version:          argocdVersion,
+				GitOpsRepoURL:    gitopsRepoURL,
+				GitOpsRepoBranch: gitopsRepoBranch,
+				AppsPath:         gitopsAppsPath,
+			},
+		},
 	}
 
 	// Install ArgoCD
-	if err := addons.InstallArgoCD(cfg, masterIP, sshKey); err != nil {
+	if err := addons.InstallArgoCD(cfg, stackInfo.MasterIP, sshKey); err != nil {
 		return fmt.Errorf("failed to install ArgoCD: %w", err)
 	}
 
@@ -178,7 +179,7 @@ func runArgocdInstall(cmd *cobra.Command, args []string) error {
 	if appOfAppsEnabled && gitopsRepoURL != "" {
 		fmt.Println()
 		color.Cyan("Setting up App of Apps pattern...")
-		if err := addons.SetupAppOfApps(masterIP, sshKey, &addons.AppOfAppsConfig{
+		if err := addons.SetupAppOfApps(stackInfo.MasterIP, sshKey, &addons.AppOfAppsConfig{
 			Name:       appOfAppsName,
 			Namespace:  argocdNamespace,
 			RepoURL:    gitopsRepoURL,
@@ -202,19 +203,33 @@ func runArgocdInstall(cmd *cobra.Command, args []string) error {
 func runArgocdStatus(cmd *cobra.Command, args []string) error {
 	printHeader("ArgoCD Status")
 
-	// Load configuration
-	cfg, masterIP, sshKey, err := loadClusterCredentials()
+	// Get stack name
+	targetStack, err := RequireStackArg(args)
 	if err != nil {
 		return err
 	}
-	_ = cfg
+
+	// Get stack info
+	stackInfo, err := GetStackInfo(targetStack)
+	if err != nil {
+		return fmt.Errorf("failed to get stack info: %w", err)
+	}
+
+	if stackInfo.MasterIP == "" || stackInfo.SSHKeyPath == "" {
+		return fmt.Errorf("could not get master IP or SSH key from stack '%s'", targetStack)
+	}
+
+	sshKey, err := readSSHKey(stackInfo.SSHKeyPath)
+	if err != nil {
+		return fmt.Errorf("failed to read SSH key: %w", err)
+	}
 
 	fmt.Println()
 	color.Cyan("Checking ArgoCD pods...")
 	fmt.Println()
 
 	// Check pod status
-	status, err := addons.GetArgoCDStatus(masterIP, sshKey, argocdNamespace)
+	status, err := addons.GetArgoCDStatus(stackInfo.MasterIP, sshKey, argocdNamespace)
 	if err != nil {
 		return fmt.Errorf("failed to get ArgoCD status: %w", err)
 	}
@@ -247,12 +262,27 @@ func runArgocdStatus(cmd *cobra.Command, args []string) error {
 }
 
 func runArgocdPassword(cmd *cobra.Command, args []string) error {
-	_, masterIP, sshKey, err := loadClusterCredentials()
+	// Get stack name
+	targetStack, err := RequireStackArg(args)
 	if err != nil {
 		return err
 	}
 
-	password, err := addons.GetArgoCDPassword(masterIP, sshKey, argocdNamespace)
+	stackInfo, err := GetStackInfo(targetStack)
+	if err != nil {
+		return fmt.Errorf("failed to get stack info: %w", err)
+	}
+
+	if stackInfo.MasterIP == "" || stackInfo.SSHKeyPath == "" {
+		return fmt.Errorf("could not get master IP or SSH key from stack '%s'", targetStack)
+	}
+
+	sshKey, err := readSSHKey(stackInfo.SSHKeyPath)
+	if err != nil {
+		return fmt.Errorf("failed to read SSH key: %w", err)
+	}
+
+	password, err := addons.GetArgoCDPassword(stackInfo.MasterIP, sshKey, argocdNamespace)
 	if err != nil {
 		return fmt.Errorf("failed to get ArgoCD password: %w", err)
 	}
@@ -270,12 +300,27 @@ func runArgocdPassword(cmd *cobra.Command, args []string) error {
 func runArgocdApps(cmd *cobra.Command, args []string) error {
 	printHeader("ArgoCD Applications")
 
-	_, masterIP, sshKey, err := loadClusterCredentials()
+	// Get stack name
+	targetStack, err := RequireStackArg(args)
 	if err != nil {
 		return err
 	}
 
-	apps, err := addons.ListArgoCDApps(masterIP, sshKey, argocdNamespace)
+	stackInfo, err := GetStackInfo(targetStack)
+	if err != nil {
+		return fmt.Errorf("failed to get stack info: %w", err)
+	}
+
+	if stackInfo.MasterIP == "" || stackInfo.SSHKeyPath == "" {
+		return fmt.Errorf("could not get master IP or SSH key from stack '%s'", targetStack)
+	}
+
+	sshKey, err := readSSHKey(stackInfo.SSHKeyPath)
+	if err != nil {
+		return fmt.Errorf("failed to read SSH key: %w", err)
+	}
+
+	apps, err := addons.ListArgoCDApps(stackInfo.MasterIP, sshKey, argocdNamespace)
 	if err != nil {
 		return fmt.Errorf("failed to list applications: %w", err)
 	}
@@ -313,21 +358,41 @@ func runArgocdApps(cmd *cobra.Command, args []string) error {
 func runArgocdSync(cmd *cobra.Command, args []string) error {
 	syncAll, _ := cmd.Flags().GetBool("all")
 
-	_, masterIP, sshKey, err := loadClusterCredentials()
+	// Get stack name
+	targetStack, err := RequireStackArg(args)
 	if err != nil {
 		return err
 	}
 
+	// Get app name if provided (second argument after stack)
+	var appName string
+	if len(args) > 1 {
+		appName = args[1]
+	}
+
+	stackInfo, err := GetStackInfo(targetStack)
+	if err != nil {
+		return fmt.Errorf("failed to get stack info: %w", err)
+	}
+
+	if stackInfo.MasterIP == "" || stackInfo.SSHKeyPath == "" {
+		return fmt.Errorf("could not get master IP or SSH key from stack '%s'", targetStack)
+	}
+
+	sshKey, err := readSSHKey(stackInfo.SSHKeyPath)
+	if err != nil {
+		return fmt.Errorf("failed to read SSH key: %w", err)
+	}
+
 	if syncAll {
 		color.Cyan("Syncing all applications...")
-		if err := addons.SyncAllApps(masterIP, sshKey, argocdNamespace); err != nil {
+		if err := addons.SyncAllApps(stackInfo.MasterIP, sshKey, argocdNamespace); err != nil {
 			return fmt.Errorf("failed to sync applications: %w", err)
 		}
 		printSuccess("All applications synced!")
-	} else if len(args) > 0 {
-		appName := args[0]
+	} else if appName != "" {
 		color.Cyan("Syncing application: %s", appName)
-		if err := addons.SyncApp(masterIP, sshKey, argocdNamespace, appName); err != nil {
+		if err := addons.SyncApp(stackInfo.MasterIP, sshKey, argocdNamespace, appName); err != nil {
 			return fmt.Errorf("failed to sync application %s: %w", appName, err)
 		}
 		printSuccess(fmt.Sprintf("Application '%s' synced!", appName))
@@ -339,56 +404,6 @@ func runArgocdSync(cmd *cobra.Command, args []string) error {
 }
 
 // Helper functions
-
-func getMasterNodeCredentials(cfg *config.ClusterConfig) (string, string, error) {
-	// Try to get from environment or saved state
-	masterIP := os.Getenv("MASTER_NODE_IP")
-	sshKeyPath := cfg.Security.SSHConfig.KeyPath
-
-	if masterIP == "" {
-		// Try to find first master node from config
-		for _, pool := range cfg.NodePools {
-			for _, role := range pool.Roles {
-				if role == "master" || role == "controlplane" {
-					// We need to get the actual IP from Pulumi state
-					// For now, prompt user
-					return "", "", fmt.Errorf("MASTER_NODE_IP environment variable not set. Please set it or use 'sloth-kubernetes status' to get node IPs")
-				}
-			}
-		}
-	}
-
-	// Read SSH key
-	sshKey, err := readSSHKey(sshKeyPath)
-	if err != nil {
-		return "", "", fmt.Errorf("failed to read SSH key: %w", err)
-	}
-
-	return masterIP, sshKey, nil
-}
-
-func loadClusterCredentials() (*config.ClusterConfig, string, string, error) {
-	configPath := cfgFile
-	if configPath == "" {
-		configPath = "./cluster-config.lisp"
-	}
-
-	if _, err := os.Stat(configPath); os.IsNotExist(err) {
-		return nil, "", "", fmt.Errorf("config file not found: %s", configPath)
-	}
-
-	cfg, err := config.LoadFromLisp(configPath)
-	if err != nil {
-		return nil, "", "", fmt.Errorf("failed to load config: %w", err)
-	}
-
-	masterIP, sshKey, err := getMasterNodeCredentials(cfg)
-	if err != nil {
-		return nil, "", "", err
-	}
-
-	return cfg, masterIP, sshKey, nil
-}
 
 func readSSHKey(path string) (string, error) {
 	if path == "" {
@@ -419,7 +434,7 @@ func printArgocdAccessInfo(namespace string) {
 	fmt.Println("  Then open: https://localhost:8080")
 	fmt.Println()
 	fmt.Println("To get admin password:")
-	fmt.Println("  sloth-kubernetes argocd password")
+	fmt.Println("  sloth-kubernetes argocd password <stack-name>")
 	fmt.Println()
 }
 

@@ -265,10 +265,11 @@ func runVPNPeers(cmd *cobra.Command, args []string) error {
 
 		// Get WireGuard config and peers from this node
 		// First get the config to extract labels from comments
-		fetchConfigCmd := "cat /etc/wireguard/wg0.conf"
-		fetchPeersCmd := "wg show wg0 dump | tail -n +2" // Skip header line
+		fetchConfigCmd := "sudo cat /etc/wireguard/wg0.conf"
+		fetchPeersCmd := "sudo wg show wg0 dump | tail -n +2" // Skip header line
 
 		// Fetch config to extract peer labels
+		sshUser := getSSHUserForProvider(node.Provider)
 		var configCmd *exec.Cmd
 		if bastionEnabled && bastionIP != "" {
 			configCmd = exec.Command("ssh",
@@ -278,7 +279,7 @@ func runVPNPeers(cmd *cobra.Command, args []string) error {
 				"-o", "UserKnownHostsFile=/dev/null",
 				"-o", "ConnectTimeout=5",
 				"-o", fmt.Sprintf("ProxyCommand=ssh -q -i %s -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null -W %%h:%%p root@%s", sshKeyPath, bastionIP),
-				fmt.Sprintf("root@%s", targetIP),
+				fmt.Sprintf("%s@%s", sshUser, targetIP),
 				fetchConfigCmd,
 			)
 		} else {
@@ -288,7 +289,7 @@ func runVPNPeers(cmd *cobra.Command, args []string) error {
 				"-o", "StrictHostKeyChecking=accept-new",
 				"-o", "UserKnownHostsFile=/dev/null",
 				"-o", "ConnectTimeout=5",
-				fmt.Sprintf("root@%s", targetIP),
+				fmt.Sprintf("%s@%s", sshUser, targetIP),
 				fetchConfigCmd,
 			)
 		}
@@ -332,7 +333,7 @@ func runVPNPeers(cmd *cobra.Command, args []string) error {
 				"-o", "UserKnownHostsFile=/dev/null",
 				"-o", "ConnectTimeout=5",
 				"-o", fmt.Sprintf("ProxyCommand=ssh -q -i %s -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null -W %%h:%%p root@%s", sshKeyPath, bastionIP),
-				fmt.Sprintf("root@%s", targetIP),
+				fmt.Sprintf("%s@%s", sshUser, targetIP),
 				fetchPeersCmd,
 			)
 		} else {
@@ -342,7 +343,7 @@ func runVPNPeers(cmd *cobra.Command, args []string) error {
 				"-o", "StrictHostKeyChecking=accept-new",
 				"-o", "UserKnownHostsFile=/dev/null",
 				"-o", "ConnectTimeout=5",
-				fmt.Sprintf("root@%s", targetIP),
+				fmt.Sprintf("%s@%s", sshUser, targetIP),
 				fetchPeersCmd,
 			)
 		}
@@ -562,7 +563,8 @@ func runVPNConfig(cmd *cobra.Command, args []string) error {
 	}
 
 	// Fetch the WireGuard config
-	fetchCmd := "cat /etc/wireguard/wg0.conf"
+	fetchCmd := "sudo cat /etc/wireguard/wg0.conf"
+	sshUser := getSSHUserForProvider(targetNode.Provider)
 
 	var sshCmd *exec.Cmd
 	if bastionEnabled && bastionIP != "" {
@@ -571,7 +573,7 @@ func runVPNConfig(cmd *cobra.Command, args []string) error {
 			"-o", "StrictHostKeyChecking=accept-new",
 			"-o", "UserKnownHostsFile=/dev/null",
 			"-o", fmt.Sprintf("ProxyCommand=ssh -i %s -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null -W %%h:%%p root@%s", sshKeyPath, bastionIP),
-			fmt.Sprintf("root@%s", targetIP),
+			fmt.Sprintf("%s@%s", sshUser, targetIP),
 			fetchCmd,
 		)
 	} else {
@@ -579,7 +581,7 @@ func runVPNConfig(cmd *cobra.Command, args []string) error {
 			"-i", sshKeyPath,
 			"-o", "StrictHostKeyChecking=accept-new",
 			"-o", "UserKnownHostsFile=/dev/null",
-			fmt.Sprintf("root@%s", targetNode.PublicIP),
+			fmt.Sprintf("%s@%s", sshUser, targetNode.PublicIP),
 			fetchCmd,
 		)
 	}
@@ -694,6 +696,7 @@ func runVPNTest(cmd *cobra.Command, args []string) error {
 			}
 
 			// Build SSH command
+			sshUser := getSSHUserForProvider(sourceNode.Provider)
 			var sshCmd *exec.Cmd
 			if bastionEnabled && bastionIP != "" {
 				sshCmd = exec.Command("ssh",
@@ -703,7 +706,7 @@ func runVPNTest(cmd *cobra.Command, args []string) error {
 					"-o", "UserKnownHostsFile=/dev/null",
 					"-o", "ConnectTimeout=5",
 					"-o", fmt.Sprintf("ProxyCommand=ssh -q -i %s -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null -W %%h:%%p root@%s", sshKeyPath, bastionIP),
-					fmt.Sprintf("root@%s", sourceIP),
+					fmt.Sprintf("%s@%s", sshUser, sourceIP),
 					pingCmd,
 				)
 			} else {
@@ -713,7 +716,7 @@ func runVPNTest(cmd *cobra.Command, args []string) error {
 					"-o", "StrictHostKeyChecking=accept-new",
 					"-o", "UserKnownHostsFile=/dev/null",
 					"-o", "ConnectTimeout=5",
-					fmt.Sprintf("root@%s", sourceNode.PublicIP),
+					fmt.Sprintf("%s@%s", sshUser, sourceNode.PublicIP),
 					pingCmd,
 				)
 			}
@@ -750,7 +753,8 @@ func runVPNTest(cmd *cobra.Command, args []string) error {
 			}
 		}
 
-		checkCmd := "wg show wg0 latest-handshakes | wc -l"
+		checkCmd := "sudo wg show wg0 latest-handshakes | wc -l"
+		sshUserHandshake := getSSHUserForProvider(node.Provider)
 
 		var sshCmd *exec.Cmd
 		if bastionEnabled && bastionIP != "" {
@@ -761,7 +765,7 @@ func runVPNTest(cmd *cobra.Command, args []string) error {
 				"-o", "UserKnownHostsFile=/dev/null",
 				"-o", "ConnectTimeout=5",
 				"-o", fmt.Sprintf("ProxyCommand=ssh -q -i %s -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null -W %%h:%%p root@%s", sshKeyPath, bastionIP),
-				fmt.Sprintf("root@%s", targetIP),
+				fmt.Sprintf("%s@%s", sshUserHandshake, targetIP),
 				checkCmd,
 			)
 		} else {
@@ -771,7 +775,7 @@ func runVPNTest(cmd *cobra.Command, args []string) error {
 				"-o", "StrictHostKeyChecking=accept-new",
 				"-o", "UserKnownHostsFile=/dev/null",
 				"-o", "ConnectTimeout=5",
-				fmt.Sprintf("root@%s", node.PublicIP),
+				fmt.Sprintf("%s@%s", sshUserHandshake, node.PublicIP),
 				checkCmd,
 			)
 		}
@@ -932,12 +936,13 @@ func runVPNJoin(cmd *cobra.Command, args []string) error {
 			}
 		}
 
-		listPeersScript := `wg show wg0 dump | tail -n +2 | while IFS=$'\t' read -r pubkey _ endpoint allowed_ips _; do
+		listPeersScript := `sudo wg show wg0 dump | tail -n +2 | while IFS=$'\t' read -r pubkey _ endpoint allowed_ips _; do
 			first_ip=$(echo "$allowed_ips" | cut -d, -f1 | cut -d/ -f1)
 			if [ -n "$first_ip" ] && [ "$first_ip" != "(none)" ]; then
 				echo "$pubkey|$first_ip"
 			fi
 		done`
+		sshUserDiscover := getSSHUserForProvider(firstMaster.Provider)
 
 		var listCmd *exec.Cmd
 		if bastionEnabled && bastionIP != "" {
@@ -946,7 +951,7 @@ func runVPNJoin(cmd *cobra.Command, args []string) error {
 				"-o", "StrictHostKeyChecking=accept-new",
 				"-o", "UserKnownHostsFile=/dev/null",
 				"-o", fmt.Sprintf("ProxyCommand=ssh -i %s -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null -W %%h:%%p root@%s", sshKeyPath, bastionIP),
-				fmt.Sprintf("root@%s", targetIP),
+				fmt.Sprintf("%s@%s", sshUserDiscover, targetIP),
 				listPeersScript,
 			)
 		} else {
@@ -954,7 +959,7 @@ func runVPNJoin(cmd *cobra.Command, args []string) error {
 				"-i", sshKeyPath,
 				"-o", "StrictHostKeyChecking=accept-new",
 				"-o", "UserKnownHostsFile=/dev/null",
-				fmt.Sprintf("root@%s", targetIP),
+				fmt.Sprintf("%s@%s", sshUserDiscover, targetIP),
 				listPeersScript,
 			)
 		}
@@ -1058,13 +1063,14 @@ func runVPNJoin(cmd *cobra.Command, args []string) error {
 			}
 		}
 
-		listPeersScript := `wg show wg0 dump | tail -n +2 | while IFS=$'\t' read -r pubkey _ endpoint allowed_ips _; do
+		listPeersScript := `sudo wg show wg0 dump | tail -n +2 | while IFS=$'\t' read -r pubkey _ endpoint allowed_ips _; do
 			# Extract first IP from allowed-ips (format: 10.8.0.x/32,10.0.0.0/8)
 			first_ip=$(echo "$allowed_ips" | cut -d, -f1 | cut -d/ -f1)
 			if [ -n "$first_ip" ] && [ "$first_ip" != "(none)" ]; then
 				echo "$pubkey|$first_ip"
 			fi
 		done`
+		sshUserPeers := getSSHUserForProvider(firstMaster.Provider)
 
 		var listCmd *exec.Cmd
 		if bastionEnabled && bastionIP != "" {
@@ -1073,7 +1079,7 @@ func runVPNJoin(cmd *cobra.Command, args []string) error {
 				"-o", "StrictHostKeyChecking=accept-new",
 				"-o", "UserKnownHostsFile=/dev/null",
 				"-o", fmt.Sprintf("ProxyCommand=ssh -i %s -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null -W %%h:%%p root@%s", sshKeyPath, bastionIP),
-				fmt.Sprintf("root@%s", targetIP),
+				fmt.Sprintf("%s@%s", sshUserPeers, targetIP),
 				listPeersScript,
 			)
 		} else {
@@ -1081,7 +1087,7 @@ func runVPNJoin(cmd *cobra.Command, args []string) error {
 				"-i", sshKeyPath,
 				"-o", "StrictHostKeyChecking=accept-new",
 				"-o", "UserKnownHostsFile=/dev/null",
-				fmt.Sprintf("root@%s", targetIP),
+				fmt.Sprintf("%s@%s", sshUserPeers, targetIP),
 				listPeersScript,
 			)
 		}
@@ -1615,7 +1621,8 @@ func runVPNLeave(cmd *cobra.Command, args []string) error {
 		}
 
 		// Get public key for this VPN IP
-		getPubKeyCmd := fmt.Sprintf("wg show wg0 dump | awk '$5 ~ /%s\\/32/ {print $1; exit}'", strings.ReplaceAll(targetIP, ".", "\\."))
+		getPubKeyCmd := fmt.Sprintf("sudo wg show wg0 dump | awk '$5 ~ /%s\\/32/ {print $1; exit}'", strings.ReplaceAll(targetIP, ".", "\\."))
+		sshUserLeave := getSSHUserForProvider(firstNode.Provider)
 
 		var sshCmd *exec.Cmd
 		if bastionEnabled && bastionIP != "" {
@@ -1626,7 +1633,7 @@ func runVPNLeave(cmd *cobra.Command, args []string) error {
 				"-o", "UserKnownHostsFile=/dev/null",
 				"-o", "ConnectTimeout=5",
 				"-o", fmt.Sprintf("ProxyCommand=ssh -q -i %s -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null -W %%h:%%p root@%s", sshKeyPath, bastionIP),
-				fmt.Sprintf("root@%s", targetIP),
+				fmt.Sprintf("%s@%s", sshUserLeave, targetIP),
 				getPubKeyCmd,
 			)
 		} else {
@@ -1636,7 +1643,7 @@ func runVPNLeave(cmd *cobra.Command, args []string) error {
 				"-o", "StrictHostKeyChecking=accept-new",
 				"-o", "UserKnownHostsFile=/dev/null",
 				"-o", "ConnectTimeout=5",
-				fmt.Sprintf("root@%s", firstNode.PublicIP),
+				fmt.Sprintf("%s@%s", sshUserLeave, firstNode.PublicIP),
 				getPubKeyCmd,
 			)
 		}
@@ -1668,6 +1675,7 @@ func runVPNLeave(cmd *cobra.Command, args []string) error {
 
 		// Remove peer using public key
 		removeCmd := fmt.Sprintf("wg set wg0 peer %s remove 2>/dev/null && wg-quick save wg0 && echo 'SUCCESS' || echo 'FAILED'", peerPublicKey)
+		sshUserRemove := getSSHUserForProvider(node.Provider)
 
 		var sshCmd *exec.Cmd
 		if bastionEnabled && bastionIP != "" {
@@ -1678,7 +1686,7 @@ func runVPNLeave(cmd *cobra.Command, args []string) error {
 				"-o", "UserKnownHostsFile=/dev/null",
 				"-o", "ConnectTimeout=5",
 				"-o", fmt.Sprintf("ProxyCommand=ssh -q -i %s -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null -W %%h:%%p root@%s", sshKeyPath, bastionIP),
-				fmt.Sprintf("root@%s", targetIP),
+				fmt.Sprintf("%s@%s", sshUserRemove, targetIP),
 				removeCmd,
 			)
 		} else {
@@ -1688,7 +1696,7 @@ func runVPNLeave(cmd *cobra.Command, args []string) error {
 				"-o", "StrictHostKeyChecking=accept-new",
 				"-o", "UserKnownHostsFile=/dev/null",
 				"-o", "ConnectTimeout=5",
-				fmt.Sprintf("root@%s", node.PublicIP),
+				fmt.Sprintf("%s@%s", sshUserRemove, node.PublicIP),
 				removeCmd,
 			)
 		}

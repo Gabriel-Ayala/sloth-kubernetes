@@ -20,8 +20,10 @@ These flags work with all commands:
 ## Commands Overview
 
 ```bash
-sloth-kubernetes [command] [flags]
+sloth-kubernetes [command] [stack-name] [flags]
 ```
+
+Most commands require a **stack name** as the first argument. The stack name identifies your Pulumi stack (e.g., `production`, `staging`, `my-cluster`). Commands that depend on kubeconfig automatically retrieve it from the stack.
 
 Available Commands:
 
@@ -32,8 +34,13 @@ Available Commands:
 - [`validate`](#validate) - Validate configuration
 - [`stacks`](#stacks) - Manage Pulumi stacks
 - [`salt`](#salt) - Node management with Salt
-- [`kubectl`](#kubectl) - Kubernetes operations
+- [`kubectl`](#kubectl) - Kubernetes operations (stack-aware)
 - [`kubeconfig`](#kubeconfig) - Generate kubeconfig
+- [`health`](#health) - Cluster health checks (stack-aware)
+- [`backup`](#backup) - Velero backup management (stack-aware)
+- [`benchmark`](#benchmark) - Cluster benchmarks (stack-aware)
+- [`upgrade`](#upgrade) - Cluster upgrades (stack-aware)
+- [`argocd`](#argocd) - ArgoCD GitOps (stack-aware)
 - [`addons`](#addons) - Manage cluster addons
 - [`version`](#version) - Show version info
 
@@ -416,31 +423,32 @@ sloth-kubernetes stacks state list --type digitalocean:Droplet
 
 ## `kubeconfig`
 
-Generate kubeconfig for cluster access.
+Generate kubeconfig for cluster access from a stack.
 
 ### Usage
 
 ```bash
-sloth-kubernetes kubeconfig [flags]
+sloth-kubernetes kubeconfig <stack-name> [flags]
 ```
 
 ### Flags
 
 | Flag | Type | Description | Default |
 |------|------|-------------|---------|
-| `--config, -c` | string | Cluster config | `cluster.lisp` |
 | `--output, -o` | string | Output file | stdout |
 
 ### Examples
 
 ```bash
-# Print kubeconfigsloth-kubernetes kubeconfig
+# Print kubeconfig for a stack
+sloth-kubernetes kubeconfig my-cluster
 
 # Save to file
-sloth-kubernetes kubeconfig -o ~/.kube/config
+sloth-kubernetes kubeconfig my-cluster > ~/.kube/config
 
 # Use immediately with kubectl
-export KUBECONFIG=$(sloth-kubernetes kubeconfig -o /tmp/kubeconfig.yaml)
+export KUBECONFIG=~/.kube/config
+sloth-kubernetes kubeconfig production > $KUBECONFIG
 kubectl get nodes
 ```
 
@@ -465,6 +473,228 @@ Git Commit: abc123
 Built: 2025-01-15T10:30:00Z
 Go Version: go1.23.4
 Platform: darwin/arm64
+```
+
+---
+
+## `kubectl`
+
+Run kubectl commands against a stack's cluster. The kubeconfig is automatically retrieved from the Pulumi stack.
+
+### Usage
+
+```bash
+sloth-kubernetes kubectl <stack-name> <kubectl-command>
+```
+
+### Examples
+
+```bash
+# Get nodes
+sloth-kubernetes kubectl my-cluster get nodes
+
+# Get all pods
+sloth-kubernetes kubectl my-cluster get pods -A
+
+# Apply manifest
+sloth-kubernetes kubectl my-cluster apply -f deployment.yaml
+
+# View pod logs
+sloth-kubernetes kubectl my-cluster logs -f nginx-pod
+```
+
+---
+
+## `health`
+
+Run health checks on a stack's cluster.
+
+### Usage
+
+```bash
+sloth-kubernetes health <stack-name> [flags]
+```
+
+### Flags
+
+| Flag | Description | Default |
+|------|-------------|---------|
+| `--verbose`, `-v` | Show verbose output | `false` |
+| `--compact` | Show compact output (only issues) | `false` |
+| `--checks` | Specific checks to run | All |
+
+### Examples
+
+```bash
+# Full health check
+sloth-kubernetes health my-cluster
+
+# Verbose output
+sloth-kubernetes health my-cluster --verbose
+
+# Specific checks only
+sloth-kubernetes health my-cluster --checks nodes,pods,dns
+```
+
+---
+
+## `backup`
+
+Manage Velero backups for a stack's cluster.
+
+### Usage
+
+```bash
+sloth-kubernetes backup <subcommand> <stack-name> [flags]
+```
+
+### Subcommands
+
+| Subcommand | Description |
+|------------|-------------|
+| `status` | Check Velero status |
+| `create` | Create a backup |
+| `list` | List backups |
+| `describe` | Describe a backup |
+| `delete` | Delete a backup |
+| `restore` | Restore from backup |
+| `schedule create` | Create backup schedule |
+| `schedule list` | List schedules |
+| `schedule delete` | Delete schedule |
+
+### Examples
+
+```bash
+# Check Velero status
+sloth-kubernetes backup status my-cluster
+
+# Create backup
+sloth-kubernetes backup create my-cluster my-backup
+
+# List backups
+sloth-kubernetes backup list my-cluster
+
+# Restore from backup
+sloth-kubernetes backup restore my-cluster --from-backup my-backup
+```
+
+---
+
+## `benchmark`
+
+Run performance benchmarks on a stack's cluster.
+
+### Usage
+
+```bash
+sloth-kubernetes benchmark <subcommand> <stack-name> [flags]
+```
+
+### Subcommands
+
+| Subcommand | Description |
+|------------|-------------|
+| `run` | Execute benchmarks |
+| `quick` | Quick benchmark summary |
+| `report` | Display saved report |
+| `compare` | Compare two reports |
+
+### Examples
+
+```bash
+# Run all benchmarks
+sloth-kubernetes benchmark run my-cluster
+
+# Run specific type
+sloth-kubernetes benchmark run my-cluster --type network
+
+# Quick benchmark
+sloth-kubernetes benchmark quick my-cluster
+
+# Save results
+sloth-kubernetes benchmark run my-cluster --output json --save results.json
+```
+
+---
+
+## `upgrade`
+
+Manage Kubernetes version upgrades for a stack's cluster.
+
+### Usage
+
+```bash
+sloth-kubernetes upgrade <subcommand> <stack-name> [flags]
+```
+
+### Subcommands
+
+| Subcommand | Description |
+|------------|-------------|
+| `plan` | Create upgrade plan |
+| `apply` | Execute upgrade |
+| `rollback` | Rollback to previous version |
+| `versions` | List available versions |
+| `status` | Show upgrade status |
+
+### Examples
+
+```bash
+# Check available versions
+sloth-kubernetes upgrade versions my-cluster
+
+# Plan upgrade
+sloth-kubernetes upgrade plan my-cluster --to v1.29.0
+
+# Execute upgrade
+sloth-kubernetes upgrade apply my-cluster --to v1.29.0
+
+# Rollback
+sloth-kubernetes upgrade rollback my-cluster
+```
+
+---
+
+## `argocd`
+
+Manage ArgoCD GitOps integration for a stack's cluster.
+
+### Usage
+
+```bash
+sloth-kubernetes argocd <subcommand> <stack-name> [flags]
+```
+
+### Subcommands
+
+| Subcommand | Description |
+|------------|-------------|
+| `install` | Install ArgoCD |
+| `status` | Check ArgoCD status |
+| `password` | Get admin password |
+| `apps` | List applications |
+| `sync` | Sync applications |
+
+### Examples
+
+```bash
+# Install ArgoCD
+sloth-kubernetes argocd install my-cluster
+
+# With GitOps repo
+sloth-kubernetes argocd install my-cluster --repo https://github.com/org/gitops.git
+
+# Check status
+sloth-kubernetes argocd status my-cluster
+
+# Get password
+sloth-kubernetes argocd password my-cluster
+
+# List apps
+sloth-kubernetes argocd apps my-cluster
+
+# Sync all apps
+sloth-kubernetes argocd sync my-cluster --all
 ```
 
 ---

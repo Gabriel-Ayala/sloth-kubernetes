@@ -19,25 +19,24 @@ The health system provides:
 
 ## Commands
 
+All health commands require the **stack name** as the first argument. The kubeconfig is automatically retrieved from the Pulumi stack.
+
 ### health
 
 Run comprehensive health checks on the cluster.
 
 ```bash
-# Check cluster health via SSH
-sloth-kubernetes health --config cluster.lisp
-
-# Check using local kubeconfig
-sloth-kubernetes health --kubeconfig ~/.kube/config
+# Check cluster health
+sloth-kubernetes health my-cluster
 
 # Run only specific checks
-sloth-kubernetes health --checks nodes,pods,dns
+sloth-kubernetes health my-cluster --checks nodes,pods,dns
 
 # Verbose output with all details
-sloth-kubernetes health --verbose
+sloth-kubernetes health my-cluster --verbose
 
 # Compact output (only show issues)
-sloth-kubernetes health --compact
+sloth-kubernetes health my-cluster --compact
 ```
 
 **Flags:**
@@ -46,7 +45,6 @@ sloth-kubernetes health --compact
 |------|-------------|---------|
 | `--verbose`, `-v` | Show verbose output with all details | `false` |
 | `--compact` | Show compact output (only issues) | `false` |
-| `--kubeconfig` | Path to kubeconfig file | - |
 | `--checks` | Specific checks to run | All |
 
 **Available checks:**
@@ -102,7 +100,7 @@ Recommendations:
 Show a quick one-line health summary.
 
 ```bash
-sloth-kubernetes health summary --config cluster.lisp
+sloth-kubernetes health summary my-cluster
 ```
 
 **Example output:**
@@ -116,8 +114,8 @@ sloth-kubernetes health summary --config cluster.lisp
 Check only node health.
 
 ```bash
-sloth-kubernetes health nodes --config cluster.lisp
-sloth-kubernetes health nodes --verbose
+sloth-kubernetes health nodes my-cluster
+sloth-kubernetes health nodes my-cluster --verbose
 ```
 
 **Example output:**
@@ -143,8 +141,8 @@ sloth-kubernetes health nodes --verbose
 Check only system pods health.
 
 ```bash
-sloth-kubernetes health pods --config cluster.lisp
-sloth-kubernetes health pods --verbose
+sloth-kubernetes health pods my-cluster
+sloth-kubernetes health pods my-cluster --verbose
 ```
 
 **Example output:**
@@ -173,7 +171,7 @@ sloth-kubernetes health pods --verbose
 Check certificate expiration.
 
 ```bash
-sloth-kubernetes health certs --config cluster.lisp
+sloth-kubernetes health certs my-cluster
 ```
 
 **Example output:**
@@ -208,10 +206,10 @@ Checks if all nodes are in `Ready` status.
 **Remediation for failures:**
 ```bash
 # Check node status
-sloth-kubernetes kubectl get nodes
+sloth-kubernetes kubectl my-cluster get nodes
 
 # Describe problematic node
-sloth-kubernetes kubectl describe node <node-name>
+sloth-kubernetes kubectl my-cluster describe node <node-name>
 
 # Check kubelet logs
 sloth-kubernetes nodes ssh <node-name>
@@ -230,13 +228,13 @@ Verifies all pods in `kube-system` namespace are running.
 **Remediation for failures:**
 ```bash
 # Check pod status
-sloth-kubernetes kubectl get pods -n kube-system
+sloth-kubernetes kubectl my-cluster get pods -n kube-system
 
 # Check events for failing pod
-sloth-kubernetes kubectl describe pod <pod-name> -n kube-system
+sloth-kubernetes kubectl my-cluster describe pod <pod-name> -n kube-system
 
 # View pod logs
-sloth-kubernetes kubectl logs <pod-name> -n kube-system
+sloth-kubernetes kubectl my-cluster logs <pod-name> -n kube-system
 ```
 
 ### CoreDNS
@@ -251,13 +249,13 @@ Tests DNS resolution within the cluster.
 **Remediation for failures:**
 ```bash
 # Check CoreDNS pods
-sloth-kubernetes kubectl get pods -n kube-system -l k8s-app=kube-dns
+sloth-kubernetes kubectl my-cluster get pods -n kube-system -l k8s-app=kube-dns
 
 # View CoreDNS logs
-sloth-kubernetes kubectl logs -n kube-system -l k8s-app=kube-dns
+sloth-kubernetes kubectl my-cluster logs -n kube-system -l k8s-app=kube-dns
 
 # Test DNS manually
-sloth-kubernetes kubectl run dns-test --rm -it --image=busybox -- nslookup kubernetes
+sloth-kubernetes kubectl my-cluster run dns-test --rm -it --image=busybox -- nslookup kubernetes
 ```
 
 ### Certificates
@@ -315,10 +313,10 @@ Tests API server responsiveness.
 **Remediation for failures:**
 ```bash
 # Check API server pods
-sloth-kubernetes kubectl get pods -n kube-system -l component=kube-apiserver
+sloth-kubernetes kubectl my-cluster get pods -n kube-system -l component=kube-apiserver
 
 # Test API directly
-sloth-kubernetes kubectl cluster-info
+sloth-kubernetes kubectl my-cluster cluster-info
 
 # Check API server logs
 sloth-kubernetes nodes ssh master-1
@@ -336,13 +334,13 @@ Checks PersistentVolumeClaim status.
 **Remediation for failures:**
 ```bash
 # Check PVC status
-sloth-kubernetes kubectl get pvc --all-namespaces
+sloth-kubernetes kubectl my-cluster get pvc --all-namespaces
 
 # Describe pending PVC
-sloth-kubernetes kubectl describe pvc <pvc-name> -n <namespace>
+sloth-kubernetes kubectl my-cluster describe pvc <pvc-name> -n <namespace>
 
 # Check storage provisioner logs
-sloth-kubernetes kubectl logs -n <storage-namespace> <provisioner-pod>
+sloth-kubernetes kubectl my-cluster logs -n <storage-namespace> <provisioner-pod>
 ```
 
 ### Memory/Disk Pressure
@@ -356,11 +354,11 @@ Checks for resource pressure conditions on nodes.
 **Remediation for failures:**
 ```bash
 # Check node conditions
-sloth-kubernetes kubectl describe node <node-name> | grep -A5 Conditions
+sloth-kubernetes kubectl my-cluster describe node <node-name> | grep -A5 Conditions
 
 # Check resource usage
-sloth-kubernetes kubectl top nodes
-sloth-kubernetes kubectl top pods --all-namespaces
+sloth-kubernetes kubectl my-cluster top nodes
+sloth-kubernetes kubectl my-cluster top pods --all-namespaces
 
 # Free up disk space
 sloth-kubernetes nodes ssh <node-name>
@@ -383,13 +381,14 @@ The health command returns appropriate exit codes for automation:
 ```bash
 #!/bin/bash
 # health-check.sh
+STACK_NAME="production"
 
 # Run health check
-if ! sloth-kubernetes health --config cluster.lisp --compact; then
+if ! sloth-kubernetes health $STACK_NAME --compact; then
   echo "Cluster health check failed!"
 
   # Get detailed report for debugging
-  sloth-kubernetes health --config cluster.lisp --verbose
+  sloth-kubernetes health $STACK_NAME --verbose
 
   exit 1
 fi
@@ -402,12 +401,12 @@ echo "Cluster is healthy, proceeding with deployment..."
 ```yaml
 - name: Check Cluster Health
   run: |
-    sloth-kubernetes health --kubeconfig ${{ secrets.KUBECONFIG }} --checks nodes,pods,dns
+    sloth-kubernetes health production --checks nodes,pods,dns
 
 - name: Deploy Application
   if: success()
   run: |
-    sloth-kubernetes kubectl apply -f manifests/
+    sloth-kubernetes kubectl production apply -f manifests/
 ```
 
 ---
@@ -418,14 +417,14 @@ echo "Cluster is healthy, proceeding with deployment..."
 
 ```bash
 # One-line summary
-sloth-kubernetes health summary --config cluster.lisp
+sloth-kubernetes health summary my-cluster
 ```
 
 ### Pre-Deployment Validation
 
 ```bash
 # Check critical components before deploying
-sloth-kubernetes health --checks nodes,pods,api,storage --config cluster.lisp
+sloth-kubernetes health my-cluster --checks nodes,pods,api,storage
 
 # Exit code will be non-zero if critical issues exist
 ```
@@ -434,11 +433,11 @@ sloth-kubernetes health --checks nodes,pods,api,storage --config cluster.lisp
 
 ```bash
 # 1. Run full health check
-sloth-kubernetes health --verbose --config cluster.lisp
+sloth-kubernetes health my-cluster --verbose
 
 # 2. If issues found, check specific components
-sloth-kubernetes health nodes --verbose
-sloth-kubernetes health pods --verbose
+sloth-kubernetes health nodes my-cluster --verbose
+sloth-kubernetes health pods my-cluster --verbose
 
 # 3. Follow remediation steps in output
 ```
@@ -448,7 +447,8 @@ sloth-kubernetes health pods --verbose
 ```bash
 # Script for monitoring systems (Prometheus, Nagios, etc.)
 #!/bin/bash
-OUTPUT=$(sloth-kubernetes health summary --config cluster.lisp 2>&1)
+STACK_NAME="production"
+OUTPUT=$(sloth-kubernetes health summary $STACK_NAME 2>&1)
 EXIT_CODE=$?
 
 if [ $EXIT_CODE -eq 0 ]; then

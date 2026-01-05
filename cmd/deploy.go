@@ -276,6 +276,7 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 	awsEnvKeys := []string{
 		"AWS_ACCESS_KEY_ID",
 		"AWS_SECRET_ACCESS_KEY",
+		"AWS_SESSION_TOKEN",
 		"AWS_REGION",
 		"AWS_S3_ENDPOINT",
 		"AWS_S3_USE_PATH_STYLE",

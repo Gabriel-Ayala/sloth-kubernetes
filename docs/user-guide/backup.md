@@ -20,14 +20,14 @@ The backup system provides:
 
 ## Prerequisites
 
-Velero must be installed in your cluster before using backup operations:
+Velero must be installed in your cluster before using backup operations. All backup commands require the **stack name** as the first argument.
 
 ```bash
 # Check if Velero is installed
-sloth-kubernetes backup status
+sloth-kubernetes backup status my-cluster
 
 # Install Velero with your storage provider
-sloth-kubernetes backup install \
+sloth-kubernetes backup install my-cluster \
   --provider aws \
   --bucket my-backup-bucket \
   --region us-east-1 \
@@ -43,7 +43,7 @@ sloth-kubernetes backup install \
 Install Velero in the cluster with the specified storage provider.
 
 ```bash
-sloth-kubernetes backup install \
+sloth-kubernetes backup install my-cluster \
   --provider aws \
   --bucket my-velero-bucket \
   --region us-east-1 \
@@ -70,7 +70,7 @@ sloth-kubernetes backup install \
 Check if Velero is installed and show its status.
 
 ```bash
-sloth-kubernetes backup status
+sloth-kubernetes backup status my-cluster
 ```
 
 **Example output:**
@@ -95,28 +95,28 @@ Create a new backup of the cluster or specific namespaces.
 
 ```bash
 # Create a full cluster backup
-sloth-kubernetes backup create my-backup
+sloth-kubernetes backup create my-cluster my-backup
 
 # Backup specific namespaces
-sloth-kubernetes backup create my-backup --namespaces default,app,database
+sloth-kubernetes backup create my-cluster my-backup --namespaces default,app,database
 
 # Exclude certain namespaces
-sloth-kubernetes backup create my-backup --exclude-namespaces kube-system,monitoring
+sloth-kubernetes backup create my-cluster my-backup --exclude-namespaces kube-system,monitoring
 
 # Backup specific resources only
-sloth-kubernetes backup create my-backup --resources deployments,services,configmaps
+sloth-kubernetes backup create my-cluster my-backup --resources deployments,services,configmaps
 
 # Set custom retention period (default: 30 days)
-sloth-kubernetes backup create my-backup --ttl 168h  # 7 days
+sloth-kubernetes backup create my-cluster my-backup --ttl 168h  # 7 days
 
 # Backup without volume snapshots
-sloth-kubernetes backup create my-backup --snapshot-volumes=false
+sloth-kubernetes backup create my-cluster my-backup --snapshot-volumes=false
 
 # Wait for backup to complete
-sloth-kubernetes backup create my-backup --wait
+sloth-kubernetes backup create my-cluster my-backup --wait
 
 # Dry-run to see what would be backed up
-sloth-kubernetes backup create my-backup --dry-run
+sloth-kubernetes backup create my-cluster my-backup --dry-run
 ```
 
 **Flags:**
@@ -140,10 +140,10 @@ sloth-kubernetes backup create my-backup --dry-run
 List all backups in the cluster.
 
 ```bash
-sloth-kubernetes backup list
+sloth-kubernetes backup list my-cluster
 
 # Output as JSON
-sloth-kubernetes backup list --json
+sloth-kubernetes backup list my-cluster --json
 ```
 
 **Example output:**
@@ -168,7 +168,7 @@ Total: 4 backups
 Show detailed information about a specific backup.
 
 ```bash
-sloth-kubernetes backup describe my-backup
+sloth-kubernetes backup describe my-cluster my-backup
 ```
 
 **Example output:**
@@ -196,10 +196,10 @@ sloth-kubernetes backup describe my-backup
 Delete a backup.
 
 ```bash
-sloth-kubernetes backup delete my-backup
+sloth-kubernetes backup delete my-cluster my-backup
 
 # Dry-run to see what would be deleted
-sloth-kubernetes backup delete my-backup --dry-run
+sloth-kubernetes backup delete my-cluster my-backup --dry-run
 ```
 
 ### backup restore
@@ -208,22 +208,22 @@ Restore from an existing backup.
 
 ```bash
 # Restore entire backup
-sloth-kubernetes backup restore --from-backup my-backup
+sloth-kubernetes backup restore my-cluster --from-backup my-backup
 
 # Restore specific namespaces
-sloth-kubernetes backup restore --from-backup my-backup --namespaces app,database
+sloth-kubernetes backup restore my-cluster --from-backup my-backup --namespaces app,database
 
 # Restore without persistent volumes
-sloth-kubernetes backup restore --from-backup my-backup --restore-volumes=false
+sloth-kubernetes backup restore my-cluster --from-backup my-backup --restore-volumes=false
 
 # Preserve NodePort values
-sloth-kubernetes backup restore --from-backup my-backup --preserve-nodeports
+sloth-kubernetes backup restore my-cluster --from-backup my-backup --preserve-nodeports
 
 # Wait for restore to complete
-sloth-kubernetes backup restore --from-backup my-backup --wait
+sloth-kubernetes backup restore my-cluster --from-backup my-backup --wait
 
 # Dry-run to see what would be restored
-sloth-kubernetes backup restore --from-backup my-backup --dry-run
+sloth-kubernetes backup restore my-cluster --from-backup my-backup --dry-run
 ```
 
 **Flags:**
@@ -246,7 +246,7 @@ sloth-kubernetes backup restore --from-backup my-backup --dry-run
 List all restore operations.
 
 ```bash
-sloth-kubernetes backup restore-list
+sloth-kubernetes backup restore-list my-cluster
 ```
 
 **Example output:**
@@ -269,7 +269,7 @@ Total: 2 restores
 List all configured backup storage locations.
 
 ```bash
-sloth-kubernetes backup locations
+sloth-kubernetes backup locations my-cluster
 ```
 
 **Example output:**
@@ -295,29 +295,29 @@ Create automated backup schedules using cron expressions.
 
 ```bash
 # Daily backup at midnight
-sloth-kubernetes backup schedule create daily-backup --schedule "0 0 * * *"
+sloth-kubernetes backup schedule create my-cluster daily-backup --schedule "0 0 * * *"
 
 # Every 6 hours
-sloth-kubernetes backup schedule create frequent-backup --schedule "0 */6 * * *"
+sloth-kubernetes backup schedule create my-cluster frequent-backup --schedule "0 */6 * * *"
 
 # Weekly on Sunday at midnight
-sloth-kubernetes backup schedule create weekly-backup --schedule "0 0 * * 0"
+sloth-kubernetes backup schedule create my-cluster weekly-backup --schedule "0 0 * * 0"
 
 # Monthly on the 1st at midnight
-sloth-kubernetes backup schedule create monthly-backup --schedule "0 0 1 * *"
+sloth-kubernetes backup schedule create my-cluster monthly-backup --schedule "0 0 1 * *"
 
 # Schedule with specific namespaces
-sloth-kubernetes backup schedule create app-backup \
+sloth-kubernetes backup schedule create my-cluster app-backup \
   --schedule "0 0 * * *" \
   --namespaces app,database
 
 # Schedule with custom retention
-sloth-kubernetes backup schedule create short-retention \
+sloth-kubernetes backup schedule create my-cluster short-retention \
   --schedule "0 */12 * * *" \
   --ttl 48h
 
 # Dry-run to preview
-sloth-kubernetes backup schedule create daily-backup \
+sloth-kubernetes backup schedule create my-cluster daily-backup \
   --schedule "0 0 * * *" \
   --dry-run
 ```
@@ -340,7 +340,7 @@ sloth-kubernetes backup schedule create daily-backup \
 List all backup schedules.
 
 ```bash
-sloth-kubernetes backup schedule list
+sloth-kubernetes backup schedule list my-cluster
 ```
 
 **Example output:**
@@ -364,10 +364,10 @@ Total: 3 schedules
 Delete a backup schedule.
 
 ```bash
-sloth-kubernetes backup schedule delete daily-backup
+sloth-kubernetes backup schedule delete my-cluster daily-backup
 
 # Dry-run
-sloth-kubernetes backup schedule delete daily-backup --dry-run
+sloth-kubernetes backup schedule delete my-cluster daily-backup --dry-run
 ```
 
 ### schedule pause
@@ -375,7 +375,7 @@ sloth-kubernetes backup schedule delete daily-backup --dry-run
 Pause a backup schedule.
 
 ```bash
-sloth-kubernetes backup schedule pause daily-backup
+sloth-kubernetes backup schedule pause my-cluster daily-backup
 ```
 
 ### schedule unpause
@@ -383,7 +383,7 @@ sloth-kubernetes backup schedule pause daily-backup
 Resume a paused backup schedule.
 
 ```bash
-sloth-kubernetes backup schedule unpause daily-backup
+sloth-kubernetes backup schedule unpause my-cluster daily-backup
 ```
 
 ---
@@ -408,25 +408,25 @@ Set up comprehensive disaster recovery:
 
 ```bash
 # Install Velero with AWS S3
-sloth-kubernetes backup install \
+sloth-kubernetes backup install my-cluster \
   --provider aws \
   --bucket dr-backups \
   --region us-west-2 \
   --secret-file ./aws-creds
 
 # Create daily full cluster backup
-sloth-kubernetes backup schedule create daily-full \
+sloth-kubernetes backup schedule create my-cluster daily-full \
   --schedule "0 2 * * *" \
   --ttl 720h
 
 # Create hourly app backup
-sloth-kubernetes backup schedule create hourly-apps \
+sloth-kubernetes backup schedule create my-cluster hourly-apps \
   --schedule "0 * * * *" \
   --namespaces app,api,frontend \
   --ttl 72h
 
 # Create weekly long-term backup
-sloth-kubernetes backup schedule create weekly-archive \
+sloth-kubernetes backup schedule create my-cluster weekly-archive \
   --schedule "0 3 * * 0" \
   --ttl 8760h  # 1 year
 ```
@@ -437,15 +437,15 @@ Create a backup before cluster upgrade:
 
 ```bash
 # Create backup with descriptive name
-sloth-kubernetes backup create pre-upgrade-v128-to-v129 \
+sloth-kubernetes backup create my-cluster pre-upgrade-v128-to-v129 \
   --wait \
   --labels env=production,reason=upgrade
 
 # Verify backup completed
-sloth-kubernetes backup describe pre-upgrade-v128-to-v129
+sloth-kubernetes backup describe my-cluster pre-upgrade-v128-to-v129
 
 # Proceed with upgrade
-sloth-kubernetes upgrade apply --to v1.29.0
+sloth-kubernetes upgrade apply my-cluster --to v1.29.0
 ```
 
 ### Application Migration
@@ -454,12 +454,12 @@ Migrate applications between clusters:
 
 ```bash
 # Source cluster: Create application backup
-sloth-kubernetes backup create app-migration \
+sloth-kubernetes backup create source-cluster app-migration \
   --namespaces myapp \
   --wait
 
 # Target cluster: Restore application
-sloth-kubernetes backup restore \
+sloth-kubernetes backup restore target-cluster \
   --from-backup app-migration \
   --wait
 ```
@@ -470,13 +470,13 @@ Restore a specific namespace after accidental deletion:
 
 ```bash
 # Find backup containing the namespace
-sloth-kubernetes backup list
+sloth-kubernetes backup list my-cluster
 
 # Describe backup to verify contents
-sloth-kubernetes backup describe daily-backup-20240115
+sloth-kubernetes backup describe my-cluster daily-backup-20240115
 
 # Restore only the deleted namespace
-sloth-kubernetes backup restore \
+sloth-kubernetes backup restore my-cluster \
   --from-backup daily-backup-20240115 \
   --namespaces deleted-namespace \
   --wait
@@ -488,13 +488,13 @@ Restore specific resources without overwriting existing:
 
 ```bash
 # Restore only ConfigMaps and Secrets
-sloth-kubernetes backup restore \
+sloth-kubernetes backup restore my-cluster \
   --from-backup my-backup \
   --resources configmaps,secrets \
   --namespaces app
 
 # Restore everything except Deployments (keep current versions running)
-sloth-kubernetes backup restore \
+sloth-kubernetes backup restore my-cluster \
   --from-backup my-backup \
   --exclude-resources deployments \
   --namespaces app
@@ -554,7 +554,7 @@ Error: velero is not installed. Run 'sloth-kubernetes backup install' first
 Install Velero with your storage provider:
 
 ```bash
-sloth-kubernetes backup install --provider aws --bucket my-bucket --secret-file ./creds
+sloth-kubernetes backup install my-cluster --provider aws --bucket my-bucket --secret-file ./creds
 ```
 
 ### Backup Stuck in InProgress
@@ -562,8 +562,8 @@ sloth-kubernetes backup install --provider aws --bucket my-bucket --secret-file 
 Check Velero pods:
 
 ```bash
-sloth-kubernetes kubectl get pods -n velero
-sloth-kubernetes kubectl logs -n velero deployment/velero
+sloth-kubernetes kubectl my-cluster get pods -n velero
+sloth-kubernetes kubectl my-cluster logs -n velero deployment/velero
 ```
 
 ### Restore Fails with Conflicts
@@ -572,7 +572,7 @@ If resources already exist:
 
 ```bash
 # Restore with exclude to avoid conflicts
-sloth-kubernetes backup restore \
+sloth-kubernetes backup restore my-cluster \
   --from-backup my-backup \
   --exclude-resources persistentvolumeclaims
 ```
@@ -583,7 +583,7 @@ Ensure your storage provider supports CSI snapshots:
 
 ```bash
 # Check VolumeSnapshotClass exists
-sloth-kubernetes kubectl get volumesnapshotclass
+sloth-kubernetes kubectl my-cluster get volumesnapshotclass
 ```
 
 ### Backup Taking Too Long
@@ -591,7 +591,7 @@ sloth-kubernetes kubectl get volumesnapshotclass
 For large clusters, exclude non-essential namespaces:
 
 ```bash
-sloth-kubernetes backup create quick-backup \
+sloth-kubernetes backup create my-cluster quick-backup \
   --exclude-namespaces monitoring,logging,kube-system \
   --timeout 60m
 ```

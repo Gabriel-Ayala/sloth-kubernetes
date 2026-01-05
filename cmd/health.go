@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"fmt"
-	"os"
 	"strings"
 
 	"github.com/fatih/color"
@@ -12,14 +11,13 @@ import (
 )
 
 var (
-	healthVerbose    bool
-	healthCompact    bool
-	healthKubeconfig string
-	healthChecks     []string
+	healthVerbose bool
+	healthCompact bool
+	healthChecks  []string
 )
 
 var healthCmd = &cobra.Command{
-	Use:   "health",
+	Use:   "health [stack-name]",
 	Short: "Check cluster health status",
 	Long: `Check the health status of your Kubernetes cluster.
 
@@ -35,48 +33,44 @@ This command runs comprehensive health checks including:
   - Memory pressure on nodes
   - Disk pressure on nodes
 
-The health check can be run either via SSH to the master node
-or locally using kubectl with a kubeconfig file.`,
-	Example: `  # Check cluster health via SSH
-  sloth-kubernetes health --config cluster.lisp
-
-  # Check cluster health using local kubeconfig
-  sloth-kubernetes health --kubeconfig ~/.kube/config
+The kubeconfig is automatically retrieved from the specified Pulumi stack.`,
+	Example: `  # Check cluster health
+  sloth-kubernetes health my-cluster
 
   # Run only specific checks
-  sloth-kubernetes health --checks nodes,pods,dns
+  sloth-kubernetes health my-cluster --checks nodes,pods,dns
 
   # Verbose output with all details
-  sloth-kubernetes health --verbose
+  sloth-kubernetes health my-cluster --verbose
 
   # Compact output (only show issues)
-  sloth-kubernetes health --compact`,
+  sloth-kubernetes health my-cluster --compact`,
 	RunE: runHealthCheck,
 }
 
 var healthSummaryCmd = &cobra.Command{
-	Use:   "summary",
+	Use:   "summary [stack-name]",
 	Short: "Quick health summary",
 	Long:  `Show a quick one-line health summary of the cluster.`,
 	RunE:  runHealthSummary,
 }
 
 var healthNodesCmd = &cobra.Command{
-	Use:   "nodes",
+	Use:   "nodes [stack-name]",
 	Short: "Check node health only",
 	Long:  `Check only the health status of cluster nodes.`,
 	RunE:  runHealthNodes,
 }
 
 var healthPodsCmd = &cobra.Command{
-	Use:   "pods",
+	Use:   "pods [stack-name]",
 	Short: "Check system pods health only",
 	Long:  `Check only the health status of system pods in kube-system namespace.`,
 	RunE:  runHealthPods,
 }
 
 var healthCertsCmd = &cobra.Command{
-	Use:   "certs",
+	Use:   "certs [stack-name]",
 	Short: "Check certificate expiration",
 	Long:  `Check only the certificate expiration status.`,
 	RunE:  runHealthCerts,
@@ -90,30 +84,25 @@ func init() {
 	healthCmd.AddCommand(healthCertsCmd)
 
 	// Main health command flags
-	healthCmd.Flags().BoolVarP(&healthVerbose, "verbose", "v", false, "Show verbose output with all details")
+	healthCmd.Flags().BoolVarP(&healthVerbose, "verbose", "V", false, "Show verbose output with all details")
 	healthCmd.Flags().BoolVar(&healthCompact, "compact", false, "Show compact output (only issues)")
-	healthCmd.Flags().StringVar(&healthKubeconfig, "kubeconfig", "", "Path to kubeconfig file (for local checks)")
 	healthCmd.Flags().StringSliceVar(&healthChecks, "checks", []string{}, "Specific checks to run (nodes,pods,dns,certs,etcd,api,storage,network,memory,disk)")
 
-	// Summary command flags
-	healthSummaryCmd.Flags().StringVar(&healthKubeconfig, "kubeconfig", "", "Path to kubeconfig file")
-
-	// Nodes command flags
-	healthNodesCmd.Flags().StringVar(&healthKubeconfig, "kubeconfig", "", "Path to kubeconfig file")
-	healthNodesCmd.Flags().BoolVarP(&healthVerbose, "verbose", "v", false, "Show verbose output")
-
-	// Pods command flags
-	healthPodsCmd.Flags().StringVar(&healthKubeconfig, "kubeconfig", "", "Path to kubeconfig file")
-	healthPodsCmd.Flags().BoolVarP(&healthVerbose, "verbose", "v", false, "Show verbose output")
-
-	// Certs command flags
-	healthCertsCmd.Flags().StringVar(&healthKubeconfig, "kubeconfig", "", "Path to kubeconfig file")
+	// Subcommand flags
+	healthNodesCmd.Flags().BoolVarP(&healthVerbose, "verbose", "V", false, "Show verbose output")
+	healthPodsCmd.Flags().BoolVarP(&healthVerbose, "verbose", "V", false, "Show verbose output")
 }
 
 func runHealthCheck(cmd *cobra.Command, args []string) error {
 	printHeader("Cluster Health Check")
 
-	checker, clusterName, err := createHealthChecker()
+	// Get stack name from args
+	targetStack, err := RequireStackArg(args)
+	if err != nil {
+		return err
+	}
+
+	checker, clusterName, err := createHealthCheckerFromStack(targetStack)
 	if err != nil {
 		return err
 	}
@@ -149,7 +138,12 @@ func runHealthCheck(cmd *cobra.Command, args []string) error {
 }
 
 func runHealthSummary(cmd *cobra.Command, args []string) error {
-	checker, clusterName, err := createHealthChecker()
+	targetStack, err := RequireStackArg(args)
+	if err != nil {
+		return err
+	}
+
+	checker, clusterName, err := createHealthCheckerFromStack(targetStack)
 	if err != nil {
 		return err
 	}
@@ -177,7 +171,12 @@ func runHealthSummary(cmd *cobra.Command, args []string) error {
 func runHealthNodes(cmd *cobra.Command, args []string) error {
 	printHeader("Node Health Check")
 
-	checker, _, err := createHealthChecker()
+	targetStack, err := RequireStackArg(args)
+	if err != nil {
+		return err
+	}
+
+	checker, _, err := createHealthCheckerFromStack(targetStack)
 	if err != nil {
 		return err
 	}
@@ -191,7 +190,12 @@ func runHealthNodes(cmd *cobra.Command, args []string) error {
 func runHealthPods(cmd *cobra.Command, args []string) error {
 	printHeader("System Pods Health Check")
 
-	checker, _, err := createHealthChecker()
+	targetStack, err := RequireStackArg(args)
+	if err != nil {
+		return err
+	}
+
+	checker, _, err := createHealthCheckerFromStack(targetStack)
 	if err != nil {
 		return err
 	}
@@ -205,7 +209,12 @@ func runHealthPods(cmd *cobra.Command, args []string) error {
 func runHealthCerts(cmd *cobra.Command, args []string) error {
 	printHeader("Certificate Health Check")
 
-	checker, _, err := createHealthChecker()
+	targetStack, err := RequireStackArg(args)
+	if err != nil {
+		return err
+	}
+
+	checker, _, err := createHealthCheckerFromStack(targetStack)
 	if err != nil {
 		return err
 	}
@@ -218,39 +227,18 @@ func runHealthCerts(cmd *cobra.Command, args []string) error {
 
 // Helper functions
 
-func createHealthChecker() (*health.Checker, string, error) {
-	var checker *health.Checker
-	var clusterName string
-
-	// Try kubeconfig first (local mode)
-	if healthKubeconfig != "" {
-		checker = health.NewChecker("", "")
-		checker.SetKubeconfig(healthKubeconfig)
-		checker.SetVerbose(healthVerbose)
-		clusterName = "local-cluster"
-		return checker, clusterName, nil
-	}
-
-	// Try loading from cluster config (SSH mode)
-	cfg, masterIP, sshKey, err := loadClusterCredentials()
+func createHealthCheckerFromStack(targetStack string) (*health.Checker, string, error) {
+	// Get kubeconfig from stack
+	kubeconfigPath, err := GetKubeconfigFromStack(targetStack)
 	if err != nil {
-		// Fallback to default kubeconfig
-		defaultKubeconfig := os.ExpandEnv("$HOME/.kube/config")
-		if _, statErr := os.Stat(defaultKubeconfig); statErr == nil {
-			checker = health.NewChecker("", "")
-			checker.SetKubeconfig(defaultKubeconfig)
-			checker.SetVerbose(healthVerbose)
-			clusterName = "default-cluster"
-			return checker, clusterName, nil
-		}
-		return nil, "", fmt.Errorf("failed to get cluster credentials: %w\nTip: Use --kubeconfig flag or set MASTER_NODE_IP environment variable", err)
+		return nil, "", fmt.Errorf("failed to get kubeconfig from stack '%s': %w", targetStack, err)
 	}
 
-	checker = health.NewChecker(masterIP, sshKey)
+	checker := health.NewChecker("", "")
+	checker.SetKubeconfig(kubeconfigPath)
 	checker.SetVerbose(healthVerbose)
-	clusterName = cfg.Metadata.Name
 
-	return checker, clusterName, nil
+	return checker, targetStack, nil
 }
 
 func filterChecks(report *health.HealthReport, checks []string) *health.HealthReport {

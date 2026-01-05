@@ -232,6 +232,10 @@ func runSSHNode(cmd *cobra.Command, args []string) error {
 	// Extract SSH key path
 	sshKeyPath := GetSSHKeyPath(stack)
 
+	// Determine SSH user based on provider
+	// AWS uses "ubuntu", DigitalOcean/Linode use "root"
+	sshUser := getSSHUserForProvider(targetNode.Provider)
+
 	// Build SSH command based on bastion mode
 	var sshArgs []string
 
@@ -248,22 +252,23 @@ func runSSHNode(cmd *cobra.Command, args []string) error {
 			printInfo("⚠️  VPN IP not available, using public IP")
 		}
 
+		// Bastion always uses root (it's a custom image)
 		sshArgs = []string{
 			"-i", sshKeyPath,
 			"-o", "StrictHostKeyChecking=accept-new",
 			"-o", "UserKnownHostsFile=/dev/null",
 			"-o", fmt.Sprintf("ProxyCommand=ssh -i %s -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null -W %%h:%%p root@%s", sshKeyPath, bastionIP),
-			fmt.Sprintf("root@%s", targetIP),
+			fmt.Sprintf("%s@%s", sshUser, targetIP),
 		}
 	} else {
 		// Direct mode: Connect directly to node public IP
-		printInfo(fmt.Sprintf("🌍 Direct mode - connecting to %s (%s)", targetNode.Name, targetNode.PublicIP))
+		printInfo(fmt.Sprintf("🌍 Direct mode - connecting to %s (%s) as %s", targetNode.Name, targetNode.PublicIP, sshUser))
 
 		sshArgs = []string{
 			"-i", sshKeyPath,
 			"-o", "StrictHostKeyChecking=accept-new",
 			"-o", "UserKnownHostsFile=/dev/null",
-			fmt.Sprintf("root@%s", targetNode.PublicIP),
+			fmt.Sprintf("%s@%s", sshUser, targetNode.PublicIP),
 		}
 	}
 
@@ -291,6 +296,22 @@ func runSSHNode(cmd *cobra.Command, args []string) error {
 	execCmd.Stderr = os.Stderr
 
 	return execCmd.Run()
+}
+
+// getSSHUserForProvider returns the appropriate SSH user for a cloud provider
+func getSSHUserForProvider(provider string) string {
+	switch provider {
+	case "aws":
+		return "ubuntu" // AWS Ubuntu AMIs use "ubuntu" user
+	case "azure":
+		return "azureuser" // Azure default user
+	case "gcp":
+		return "ubuntu" // GCP Ubuntu images use "ubuntu" user
+	case "digitalocean", "linode":
+		return "root" // DigitalOcean and Linode use root by default
+	default:
+		return "root" // Default to root for unknown providers
+	}
 }
 
 func runAddNode(cmd *cobra.Command, args []string) error {

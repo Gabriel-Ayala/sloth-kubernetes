@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"fmt"
+	"os"
 	"strings"
 
 	"github.com/chalkan3/sloth-kubernetes/pkg/cloudinit"
@@ -738,11 +739,22 @@ func createAWSNode(ctx *pulumi.Context, name string, nodeConfig *config.NodeConf
 		ctx.Log.Info(fmt.Sprintf("🌍 Creating PUBLIC AWS EC2 instance %s", nodeConfig.Name), nil)
 	}
 
-	// Create AWS provider with explicit region (only once for all instances)
+	// Create AWS provider with explicit region and credentials (only once for all instances)
 	if awsProvider == nil {
-		provider, err := aws.NewProvider(ctx, fmt.Sprintf("%s-aws-node-provider", ctx.Stack()), &aws.ProviderArgs{
+		providerArgs := &aws.ProviderArgs{
 			Region: pulumi.String(region),
-		})
+		}
+		// Explicitly pass credentials if available (needed for temporary STS credentials)
+		if accessKey := os.Getenv("AWS_ACCESS_KEY_ID"); accessKey != "" {
+			providerArgs.AccessKey = pulumi.StringPtr(accessKey)
+		}
+		if secretKey := os.Getenv("AWS_SECRET_ACCESS_KEY"); secretKey != "" {
+			providerArgs.SecretKey = pulumi.StringPtr(secretKey)
+		}
+		if sessionToken := os.Getenv("AWS_SESSION_TOKEN"); sessionToken != "" {
+			providerArgs.Token = pulumi.StringPtr(sessionToken)
+		}
+		provider, err := aws.NewProvider(ctx, fmt.Sprintf("%s-aws-node-provider", ctx.Stack()), providerArgs)
 		if err != nil {
 			return fmt.Errorf("failed to create AWS provider: %w", err)
 		}

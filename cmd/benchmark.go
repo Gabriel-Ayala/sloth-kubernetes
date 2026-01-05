@@ -57,14 +57,14 @@ them against Kubernetes best practices and reference values.`,
 }
 
 var benchmarkRunCmd = &cobra.Command{
-	Use:   "run",
+	Use:   "run [stack-name]",
 	Short: "Execute benchmarks",
 	Long:  `Execute the specified benchmarks and display results.`,
 	RunE:  runBenchmark,
 }
 
 var benchmarkQuickCmd = &cobra.Command{
-	Use:   "quick",
+	Use:   "quick [stack-name]",
 	Short: "Quick benchmark summary",
 	Long:  `Run a quick set of essential benchmarks for a fast performance overview.`,
 	RunE:  runQuickBenchmark,
@@ -110,23 +110,20 @@ func init() {
 	benchmarkCompareCmd.Flags().StringVar(&benchmarkOutput, "output", "text", "Output format (text, json)")
 }
 
-func createBenchmarkManager() (*benchmark.Manager, error) {
-	// Try to get credentials from cluster config
-	_, masterIP, sshKey, err := loadClusterCredentials()
+func createBenchmarkManager(targetStack string) (*benchmark.Manager, error) {
+	// Get stack info including SSH credentials
+	stackInfo, err := GetStackInfo(targetStack)
 	if err != nil {
-		// Use kubeconfig mode if provided
-		if benchmarkKubeconfig != "" {
-			return benchmark.NewManager("", "", benchmarkKubeconfig), nil
-		}
-		// Try default kubeconfig
-		defaultKubeconfig := os.ExpandEnv("$HOME/.kube/config")
-		if _, statErr := os.Stat(defaultKubeconfig); statErr == nil {
-			return benchmark.NewManager("", "", defaultKubeconfig), nil
-		}
-		return nil, fmt.Errorf("failed to get cluster credentials: %w\nTip: Use --kubeconfig flag or --config to specify cluster configuration", err)
+		return nil, fmt.Errorf("failed to get stack info: %w", err)
 	}
 
-	manager := benchmark.NewManager(masterIP, sshKey, benchmarkKubeconfig)
+	// Get kubeconfig from stack
+	kubeconfigPath, err := GetKubeconfigFromStack(targetStack)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get kubeconfig from stack '%s': %w", targetStack, err)
+	}
+
+	manager := benchmark.NewManager(stackInfo.MasterIP, "", kubeconfigPath)
 	manager.SetVerbose(benchmarkVerbose)
 
 	if len(benchmarkNodes) > 0 {
@@ -139,7 +136,13 @@ func createBenchmarkManager() (*benchmark.Manager, error) {
 func runBenchmark(cmd *cobra.Command, args []string) error {
 	printHeader("Cluster Benchmark")
 
-	manager, err := createBenchmarkManager()
+	// Get stack name from args
+	targetStack, err := RequireStackArg(args)
+	if err != nil {
+		return err
+	}
+
+	manager, err := createBenchmarkManager(targetStack)
 	if err != nil {
 		return err
 	}
@@ -208,7 +211,13 @@ func runBenchmark(cmd *cobra.Command, args []string) error {
 func runQuickBenchmark(cmd *cobra.Command, args []string) error {
 	printHeader("Quick Benchmark")
 
-	manager, err := createBenchmarkManager()
+	// Get stack name from args
+	targetStack, err := RequireStackArg(args)
+	if err != nil {
+		return err
+	}
+
+	manager, err := createBenchmarkManager(targetStack)
 	if err != nil {
 		return err
 	}

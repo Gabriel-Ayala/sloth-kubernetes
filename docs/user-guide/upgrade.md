@@ -19,12 +19,14 @@ The upgrade system supports:
 
 ## Commands
 
+All upgrade commands require the **stack name** as the first argument. The kubeconfig is automatically retrieved from the Pulumi stack.
+
 ### upgrade plan
 
 Create an upgrade plan without executing it.
 
 ```bash
-sloth-kubernetes upgrade plan --to v1.29.0
+sloth-kubernetes upgrade plan my-cluster --to v1.29.0
 ```
 
 The plan shows:
@@ -40,7 +42,6 @@ The plan shows:
 |------|-------------|---------|
 | `--to` | Target Kubernetes version (required) | - |
 | `--strategy` | Upgrade strategy | `rolling` |
-| `--kubeconfig` | Path to kubeconfig file | - |
 
 ### upgrade apply
 
@@ -48,16 +49,16 @@ Execute the upgrade plan on the cluster.
 
 ```bash
 # Execute upgrade with rolling strategy
-sloth-kubernetes upgrade apply --to v1.29.0 --strategy rolling
+sloth-kubernetes upgrade apply my-cluster --to v1.29.0 --strategy rolling
 
 # Dry-run to see what would happen
-sloth-kubernetes upgrade apply --to v1.29.0 --dry-run
+sloth-kubernetes upgrade apply my-cluster --to v1.29.0 --dry-run
 
 # Upgrade specific nodes only
-sloth-kubernetes upgrade apply --to v1.29.0 --nodes master-1,worker-1
+sloth-kubernetes upgrade apply my-cluster --to v1.29.0 --nodes master-1,worker-1
 
 # Force upgrade without confirmation
-sloth-kubernetes upgrade apply --to v1.29.0 --force
+sloth-kubernetes upgrade apply my-cluster --to v1.29.0 --force
 ```
 
 **Flags:**
@@ -69,7 +70,6 @@ sloth-kubernetes upgrade apply --to v1.29.0 --force
 | `--dry-run` | Simulate without making changes | `false` |
 | `--verbose`, `-v` | Show verbose output | `false` |
 | `--force` | Skip confirmation prompts | `false` |
-| `--kubeconfig` | Path to kubeconfig file | - |
 | `--nodes` | Specific nodes to upgrade (comma-separated) | - |
 | `--backup-dir` | Directory for etcd backups | `/var/lib/sloth-kubernetes/backups` |
 | `--timeout` | Timeout in seconds per node | `600` |
@@ -79,10 +79,10 @@ sloth-kubernetes upgrade apply --to v1.29.0 --force
 Rollback to the previous Kubernetes version.
 
 ```bash
-sloth-kubernetes upgrade rollback
+sloth-kubernetes upgrade rollback my-cluster
 
 # Force rollback without confirmation
-sloth-kubernetes upgrade rollback --force
+sloth-kubernetes upgrade rollback my-cluster --force
 ```
 
 **Flags:**
@@ -91,14 +91,13 @@ sloth-kubernetes upgrade rollback --force
 |------|-------------|---------|
 | `--force` | Skip confirmation prompts | `false` |
 | `--verbose`, `-v` | Show verbose output | `false` |
-| `--kubeconfig` | Path to kubeconfig file | - |
 
 ### upgrade versions
 
 List current cluster version and available upgrade targets.
 
 ```bash
-sloth-kubernetes upgrade versions
+sloth-kubernetes upgrade versions my-cluster
 ```
 
 **Example output:**
@@ -123,7 +122,7 @@ All Supported Versions:
 Show the status of an ongoing or recent upgrade.
 
 ```bash
-sloth-kubernetes upgrade status
+sloth-kubernetes upgrade status my-cluster
 ```
 
 **Example output:**
@@ -149,7 +148,7 @@ worker-2                       v1.28.2+rke2r1  Ready           worker
 Upgrades one node at a time. Safest strategy with minimal disruption.
 
 ```bash
-sloth-kubernetes upgrade apply --to v1.29.0 --strategy rolling
+sloth-kubernetes upgrade apply my-cluster --to v1.29.0 --strategy rolling
 ```
 
 **Process:**
@@ -170,7 +169,7 @@ sloth-kubernetes upgrade apply --to v1.29.0 --strategy rolling
 Creates new nodes with the new version, migrates workloads, then removes old nodes.
 
 ```bash
-sloth-kubernetes upgrade apply --to v1.29.0 --strategy blue-green
+sloth-kubernetes upgrade apply my-cluster --to v1.29.0 --strategy blue-green
 ```
 
 **Process:**
@@ -186,7 +185,7 @@ sloth-kubernetes upgrade apply --to v1.29.0 --strategy blue-green
 Upgrades a subset of nodes first, validates, then proceeds with the rest.
 
 ```bash
-sloth-kubernetes upgrade apply --to v1.29.0 --strategy canary
+sloth-kubernetes upgrade apply my-cluster --to v1.29.0 --strategy canary
 ```
 
 **Process:**
@@ -202,7 +201,7 @@ sloth-kubernetes upgrade apply --to v1.29.0 --strategy canary
 Upgrades all nodes simultaneously. Fastest but riskiest.
 
 ```bash
-sloth-kubernetes upgrade apply --to v1.29.0 --strategy in-place
+sloth-kubernetes upgrade apply my-cluster --to v1.29.0 --strategy in-place
 ```
 
 **Process:**
@@ -234,33 +233,33 @@ Before any upgrade, the following checks are performed:
 
 ```bash
 # 1. Check available versions
-sloth-kubernetes upgrade versions
+sloth-kubernetes upgrade versions my-cluster
 
 # 2. Create upgrade plan
-sloth-kubernetes upgrade plan --to v1.29.0
+sloth-kubernetes upgrade plan my-cluster --to v1.29.0
 
 # 3. Review the plan, then apply
-sloth-kubernetes upgrade apply --to v1.29.0 --strategy rolling
+sloth-kubernetes upgrade apply my-cluster --to v1.29.0 --strategy rolling
 
 # 4. Verify upgrade
-sloth-kubernetes upgrade status
+sloth-kubernetes upgrade status my-cluster
 ```
 
 ### Upgrade Specific Nodes
 
 ```bash
 # Upgrade only master nodes first
-sloth-kubernetes upgrade apply --to v1.29.0 --nodes master-1,master-2,master-3
+sloth-kubernetes upgrade apply my-cluster --to v1.29.0 --nodes master-1,master-2,master-3
 
 # Then upgrade workers
-sloth-kubernetes upgrade apply --to v1.29.0 --nodes worker-1,worker-2,worker-3
+sloth-kubernetes upgrade apply my-cluster --to v1.29.0 --nodes worker-1,worker-2,worker-3
 ```
 
 ### Dry-Run Before Upgrade
 
 ```bash
 # See what would happen without making changes
-sloth-kubernetes upgrade apply --to v1.29.0 --dry-run
+sloth-kubernetes upgrade apply my-cluster --to v1.29.0 --dry-run
 ```
 
 **Example dry-run output:**
@@ -283,10 +282,10 @@ Planned Steps:
 
 ```bash
 # If upgrade fails, rollback
-sloth-kubernetes upgrade rollback
+sloth-kubernetes upgrade rollback my-cluster
 
 # Force rollback without confirmation
-sloth-kubernetes upgrade rollback --force
+sloth-kubernetes upgrade rollback my-cluster --force
 ```
 
 ---
@@ -299,13 +298,13 @@ If an upgrade appears stuck:
 
 ```bash
 # Check upgrade status
-sloth-kubernetes upgrade status
+sloth-kubernetes upgrade status my-cluster
 
 # Check node status directly
-sloth-kubernetes kubectl get nodes
+sloth-kubernetes kubectl my-cluster get nodes
 
 # Check for stuck pods
-sloth-kubernetes kubectl get pods --all-namespaces | grep -v Running
+sloth-kubernetes kubectl my-cluster get pods --all-namespaces | grep -v Running
 ```
 
 ### Node Won't Drain
@@ -314,10 +313,10 @@ If a node won't drain during upgrade:
 
 ```bash
 # Check what's blocking drain
-sloth-kubernetes kubectl get pods -o wide | grep <node-name>
+sloth-kubernetes kubectl my-cluster get pods -o wide | grep <node-name>
 
 # Force drain if necessary (may cause data loss)
-sloth-kubernetes kubectl drain <node-name> --force --ignore-daemonsets --delete-emptydir-data
+sloth-kubernetes kubectl my-cluster drain <node-name> --force --ignore-daemonsets --delete-emptydir-data
 ```
 
 ### Rollback Failed

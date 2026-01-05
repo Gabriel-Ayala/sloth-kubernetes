@@ -312,8 +312,8 @@ Sloth Kubernetes provides a rich set of built-in functions for dynamic configura
 # Get kubeconfig
 sloth-kubernetes kubeconfig production > ~/.kube/config
 
-# Verify nodes
-sloth-kubernetes kubectl get nodes
+# Verify nodes (stack-aware command)
+sloth-kubernetes kubectl production get nodes
 ```
 
 ---
@@ -849,14 +849,28 @@ type AuditSummary struct {
 | `salt system disk` | Check disk usage |
 | `salt system memory` | Check memory usage |
 
-### Kubernetes (Embedded kubectl)
+### Kubernetes (Embedded kubectl - Stack-Aware)
+
+All kubectl commands require the stack name as the first argument:
 
 | Command | Description |
 |---------|-------------|
-| `kubectl get nodes` | List nodes |
-| `kubectl get pods -A` | List all pods |
-| `kubectl apply -f <file>` | Apply manifest |
-| `kubectl logs <pod>` | View pod logs |
+| `kubectl <stack> get nodes` | List nodes |
+| `kubectl <stack> get pods -A` | List all pods |
+| `kubectl <stack> apply -f <file>` | Apply manifest |
+| `kubectl <stack> logs <pod>` | View pod logs |
+
+### Health, Backup, Upgrade, Benchmark (Stack-Aware)
+
+| Command | Description |
+|---------|-------------|
+| `health <stack>` | Check cluster health |
+| `backup status <stack>` | Check Velero status |
+| `backup create <stack> <name>` | Create backup |
+| `upgrade versions <stack>` | List available versions |
+| `upgrade apply <stack> --to <version>` | Upgrade cluster |
+| `benchmark run <stack>` | Run benchmarks |
+| `argocd install <stack>` | Install ArgoCD |
 
 ---
 
