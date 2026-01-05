@@ -18,7 +18,6 @@ builds:
       - CGO_ENABLED=0
     goos:
       - linux
-      - darwin
     goarch:
       - amd64
       - arm64
@@ -110,10 +109,10 @@ release:
     sudo mv sloth /usr/local/bin/
     ```
 
-    **macOS (Apple Silicon):**
+    **Linux (arm64):**
     ```bash
-    curl -LO https://github.com/chalkan3/sloth-kubernetes/releases/download/{{ .Tag }}/sloth-kubernetes_{{ .Version }}_darwin_arm64.tar.gz
-    tar -xzf sloth-kubernetes_{{ .Version }}_darwin_arm64.tar.gz
+    curl -LO https://github.com/chalkan3/sloth-kubernetes/releases/download/{{ .Tag }}/sloth-kubernetes_{{ .Version }}_linux_arm64.tar.gz
+    tar -xzf sloth-kubernetes_{{ .Version }}_linux_arm64.tar.gz
     sudo mv sloth /usr/local/bin/
     ```
 

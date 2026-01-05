@@ -12,6 +12,7 @@ require (
 	github.com/briandowns/spinner v1.23.2
 	github.com/digitalocean/godo v1.167.0
 	github.com/fatih/color v1.18.0
+	github.com/google/uuid v1.6.0
 	github.com/linode/linodego v1.60.0
 	github.com/pulumi/pulumi-aws/sdk/v6 v6.83.2
 	github.com/pulumi/pulumi-azure-native-sdk/compute/v2 v2.90.0
@@ -93,7 +94,6 @@ require (
 	github.com/google/gnostic-models v0.7.0 // indirect
 	github.com/google/go-cmp v0.7.0 // indirect
 	github.com/google/go-querystring v1.1.0 // indirect
-	github.com/google/uuid v1.6.0 // indirect
 	github.com/gorilla/websocket v1.5.4-0.20250319132907-e064f32e3674 // indirect
 	github.com/gregjones/httpcache v0.0.0-20190611155906-901d90724c79 // indirect
 	github.com/grpc-ecosystem/grpc-opentracing v0.0.0-20180507213350-8e809c8a8645 // indirect
