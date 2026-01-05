@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.1](https://github.com/chalkan3/sloth-kubernetes/compare/v0.5.0...v0.5.1) (2026-01-05)
+
+
+### Bug Fixes
+
+* resolve gofmt formatting issue in cluster_orchestrator.go ([fc5c9e5](https://github.com/chalkan3/sloth-kubernetes/commit/fc5c9e5054aacb50d0bf23766977acd00d4c339c))
+
 ## [0.5.0](https://github.com/chalkan3/sloth-kubernetes/compare/v0.4.1...v0.5.0) (2026-01-05)
 
 
