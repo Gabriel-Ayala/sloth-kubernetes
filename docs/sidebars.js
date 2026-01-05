@@ -17,6 +17,7 @@ const sidebars = {
       label: 'Configuration',
       items: [
         'configuration/lisp-format',
+        'configuration/builtin-functions',
         'configuration/backend',
         'configuration/examples',
       ],
