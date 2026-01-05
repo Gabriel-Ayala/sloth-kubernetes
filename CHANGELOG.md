@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.8.0](https://github.com/chalkan3/sloth-kubernetes/compare/v0.7.0...v0.8.0) (2026-01-05)
+
+
+### Features
+
+* **argocd:** persist credentials to Pulumi state for automatic retrieval ([#75](https://github.com/chalkan3/sloth-kubernetes/issues/75)) ([34365a2](https://github.com/chalkan3/sloth-kubernetes/commit/34365a2))
+
+
+### Bug Fixes
+
+* **argocd:** correct SSH user detection and RKE2 kubeconfig path ([20be2d5](https://github.com/chalkan3/sloth-kubernetes/commit/20be2d5))
+
 ## [0.7.0](https://github.com/chalkan3/sloth-kubernetes/compare/v0.6.1...v0.7.0) (2026-01-05)
 
 
