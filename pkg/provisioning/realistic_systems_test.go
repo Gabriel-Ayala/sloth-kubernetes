@@ -1224,9 +1224,11 @@ func TestRealistic_Hooks_TimeoutHandling(t *testing.T) {
 
 func TestRealistic_E2E_ClusterLifecycle(t *testing.T) {
 	// Setup all simulators
+	// Note: APIErrorRate set to 0 for deterministic E2E testing
+	// Error handling is tested in dedicated error tests
 	k8sSim := NewK8sAPISimulator(&K8sAPIConfig{
 		APILatency:   10 * time.Millisecond,
-		APIErrorRate: 0.01,
+		APIErrorRate: 0.0,
 	})
 
 	backupStorage := NewRealisticBackupStorage()
