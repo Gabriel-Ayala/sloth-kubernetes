@@ -19,13 +19,9 @@ builds:
     goos:
       - linux
       - darwin
-      - windows
     goarch:
       - amd64
       - arm64
-    ignore:
-      - goos: windows
-        goarch: arm64
     ldflags:
       - -s -w
       - -X main.version={{.Version}}
@@ -38,7 +34,6 @@ archives:
   - id: default
     formats:
       - tar.gz
-      - zip
     name_template: >-
       {{ .ProjectName }}_
       {{- .Version }}_
@@ -119,12 +114,6 @@ release:
     curl -LO https://github.com/chalkan3/sloth-kubernetes/releases/download/{{ .Tag }}/sloth-kubernetes_{{ .Version }}_darwin_x86_64.tar.gz
     tar -xzf sloth-kubernetes_{{ .Version }}_darwin_x86_64.tar.gz
     sudo mv sloth /usr/local/bin/
-    ```
-
-    **Windows (amd64):**
-    ```powershell
-    Invoke-WebRequest -Uri "https://github.com/chalkan3/sloth-kubernetes/releases/download/{{ .Tag }}/sloth-kubernetes_{{ .Version }}_windows_x86_64.zip" -OutFile "sloth-kubernetes.zip"
-    Expand-Archive -Path "sloth-kubernetes.zip" -DestinationPath "."
     ```
 
   footer: |
