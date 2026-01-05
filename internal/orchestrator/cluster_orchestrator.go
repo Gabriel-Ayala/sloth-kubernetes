@@ -44,9 +44,9 @@ type DeploymentMetadata struct {
 	SchemaVersion string                    `json:"schemaVersion,omitempty"` // Current schema version (e.g., "2.0")
 
 	// Manifest tracking (new fields)
-	ManifestCount    int                      `json:"manifestCount,omitempty"`    // Number of tracked manifests
-	ManifestRegistry *ManifestRegistryState   `json:"manifestRegistry,omitempty"` // Serialized manifest registry state
-	ManifestHashes   map[string]string        `json:"manifestHashes,omitempty"`   // Map of manifest name to hash
+	ManifestCount    int                    `json:"manifestCount,omitempty"`    // Number of tracked manifests
+	ManifestRegistry *ManifestRegistryState `json:"manifestRegistry,omitempty"` // Serialized manifest registry state
+	ManifestHashes   map[string]string      `json:"manifestHashes,omitempty"`   // Map of manifest name to hash
 
 	// Deployment history (new fields)
 	PreviousDeployments []DeploymentHistoryEntry `json:"previousDeployments,omitempty"` // History of past deployments
