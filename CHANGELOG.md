@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.6.1](https://github.com/chalkan3/sloth-kubernetes/compare/v0.6.0...v0.6.1) (2026-01-05)
+
+
+### Bug Fixes
+
+* **release:** simplify goreleaser build targets ([5c01a88](https://github.com/chalkan3/sloth-kubernetes/commit/5c01a889c76a39031301dca964c7c422e35c9bdd))
+* **test:** make backup tests deterministic ([d955d0b](https://github.com/chalkan3/sloth-kubernetes/commit/d955d0b3f97004995c0eb15b87bf0f4eea1154c1))
+
 ## [0.6.0](https://github.com/chalkan3/sloth-kubernetes/compare/v0.5.1...v0.6.0) (2026-01-05)
 
 
