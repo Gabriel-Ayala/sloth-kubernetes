@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.8.1](https://github.com/chalkan3/sloth-kubernetes/compare/v0.8.0...v0.8.1) (2026-01-05)
+
+
+### Documentation
+
+* add comprehensive CLI reference for all commands ([c3a6f2e](https://github.com/chalkan3/sloth-kubernetes/commit/c3a6f2e))
+  - helm, kustomize, addons, history, login, export-config, pulumi commands
+  - Updated environment variables section
+  - Reorganized commands by category
+
 ## [0.8.0](https://github.com/chalkan3/sloth-kubernetes/compare/v0.7.0...v0.8.0) (2026-01-05)
 
 
