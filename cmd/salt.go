@@ -368,6 +368,21 @@ func autoLoginFromStack() error {
 		return fmt.Errorf("no Salt API URL found in stack outputs")
 	}
 
+	// Save credentials to operations history for future auto-login
+	// This makes subsequent calls faster by avoiding stack output lookup
+	saltCreds := &operations.SaltCredentials{
+		APIURL:      saltAPIURL,
+		Username:    saltUsername,
+		Password:    saltPassword,
+		BastionIP:   saltIP,
+		AuthMethod:  "sharedsecret",
+		InstalledAt: time.Now().UTC(),
+	}
+	if err := operations.SaveSaltCredentials(targetStack, saltCreds); err != nil {
+		// Non-fatal: just log warning
+		color.Yellow("⚠️  Could not cache credentials to state: %v", err)
+	}
+
 	// Check if Salt IP is on VPN network (10.8.0.x)
 	if isVPNIP(saltIP) {
 		color.Cyan("🔐 Salt API is on VPN network: %s", saltAPIURL)
