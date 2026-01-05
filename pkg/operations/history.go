@@ -24,6 +24,7 @@ type OperationsHistory struct {
 	AddonsHistory     []AddonsEntry     `json:"addonsHistory"`
 	SaltHistory       []SaltEntry       `json:"saltHistory"`
 	ValidationHistory []ValidationEntry `json:"validationHistory"`
+	Credentials       *AddonsCredentials `json:"credentials,omitempty"`
 	MaxEntries        int               `json:"maxEntries"`
 	LastUpdated       time.Time         `json:"lastUpdated"`
 	mu                sync.Mutex        `json:"-"`
@@ -220,6 +221,42 @@ type ValidationCheck struct {
 	Status      string `json:"status"` // passed, failed, warning, skipped
 	Message     string `json:"message,omitempty"`
 	Remediation string `json:"remediation,omitempty"`
+}
+
+// AddonsCredentials stores credentials for installed addons
+type AddonsCredentials struct {
+	ArgoCD    *ArgoCDCredentials  `json:"argocd,omitempty"`
+	Grafana   *GrafanaCredentials `json:"grafana,omitempty"`
+	Salt      *SaltCredentials    `json:"salt,omitempty"`
+	UpdatedAt time.Time           `json:"updatedAt"`
+}
+
+// ArgoCDCredentials stores ArgoCD access credentials
+type ArgoCDCredentials struct {
+	Username    string    `json:"username"`
+	Password    string    `json:"password"`
+	Namespace   string    `json:"namespace"`
+	InstalledAt time.Time `json:"installedAt"`
+	GitOpsRepo  string    `json:"gitopsRepo,omitempty"`
+	Version     string    `json:"version,omitempty"`
+}
+
+// GrafanaCredentials stores Grafana access credentials
+type GrafanaCredentials struct {
+	Username    string    `json:"username"`
+	Password    string    `json:"password"`
+	Namespace   string    `json:"namespace"`
+	InstalledAt time.Time `json:"installedAt"`
+}
+
+// SaltCredentials stores Salt API access credentials
+type SaltCredentials struct {
+	APIURL      string    `json:"apiUrl"`
+	Username    string    `json:"username"`
+	Password    string    `json:"password"`
+	BastionIP   string    `json:"bastionIp,omitempty"`
+	AuthMethod  string    `json:"authMethod,omitempty"` // sharedsecret, pam, ldap
+	InstalledAt time.Time `json:"installedAt"`
 }
 
 // NewOperationsHistory creates a new OperationsHistory with default settings
@@ -524,4 +561,76 @@ func (h *OperationsHistory) Clear() {
 	h.SaltHistory = make([]SaltEntry, 0)
 	h.ValidationHistory = make([]ValidationEntry, 0)
 	h.LastUpdated = time.Now().UTC()
+}
+
+// SetSaltCredentials stores Salt API credentials
+func (h *OperationsHistory) SetSaltCredentials(creds *SaltCredentials) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+
+	if h.Credentials == nil {
+		h.Credentials = &AddonsCredentials{}
+	}
+	h.Credentials.Salt = creds
+	h.Credentials.UpdatedAt = time.Now().UTC()
+	h.LastUpdated = time.Now().UTC()
+}
+
+// GetSaltCredentials retrieves Salt API credentials
+func (h *OperationsHistory) GetSaltCredentials() *SaltCredentials {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+
+	if h.Credentials == nil {
+		return nil
+	}
+	return h.Credentials.Salt
+}
+
+// SetArgoCDCredentials stores ArgoCD credentials
+func (h *OperationsHistory) SetArgoCDCredentials(creds *ArgoCDCredentials) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+
+	if h.Credentials == nil {
+		h.Credentials = &AddonsCredentials{}
+	}
+	h.Credentials.ArgoCD = creds
+	h.Credentials.UpdatedAt = time.Now().UTC()
+	h.LastUpdated = time.Now().UTC()
+}
+
+// GetArgoCDCredentials retrieves ArgoCD credentials
+func (h *OperationsHistory) GetArgoCDCredentials() *ArgoCDCredentials {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+
+	if h.Credentials == nil {
+		return nil
+	}
+	return h.Credentials.ArgoCD
+}
+
+// SetGrafanaCredentials stores Grafana credentials
+func (h *OperationsHistory) SetGrafanaCredentials(creds *GrafanaCredentials) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+
+	if h.Credentials == nil {
+		h.Credentials = &AddonsCredentials{}
+	}
+	h.Credentials.Grafana = creds
+	h.Credentials.UpdatedAt = time.Now().UTC()
+	h.LastUpdated = time.Now().UTC()
+}
+
+// GetGrafanaCredentials retrieves Grafana credentials
+func (h *OperationsHistory) GetGrafanaCredentials() *GrafanaCredentials {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+
+	if h.Credentials == nil {
+		return nil
+	}
+	return h.Credentials.Grafana
 }

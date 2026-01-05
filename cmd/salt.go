@@ -217,10 +217,24 @@ func init() {
 }
 
 func getSaltClient() (*salt.Client, error) {
-	// If no URL provided, try to auto-login from stack
+	// If no URL provided, try to auto-login from saved credentials
 	if saltAPIURL == "" {
-		if err := autoLoginFromStack(); err != nil {
-			return nil, fmt.Errorf(`Salt API URL is required.
+		// First, try to load credentials from Pulumi state
+		targetStack := stackName
+		if targetStack == "" {
+			targetStack = "production"
+		}
+
+		creds, err := operations.GetSaltCredentialsFromStack(targetStack)
+		if err == nil && creds != nil {
+			saltAPIURL = creds.APIURL
+			saltUsername = creds.Username
+			saltPassword = creds.Password
+			color.Green("🔐 Auto-login: Using Salt credentials from Pulumi state")
+		} else {
+			// Fallback to auto-login from stack outputs
+			if err := autoLoginFromStack(); err != nil {
+				return nil, fmt.Errorf(`Salt API URL is required.
 
 Please run one of the following:
 
@@ -239,9 +253,10 @@ Please run one of the following:
      --url "http://master-ip:8000" --username saltapi --password saltapi123
 
 Auto-login error: %v`,
-				color.CyanString("sloth-kubernetes salt ping -s <stack-name>"),
-				color.CyanString("sloth-kubernetes salt login"),
-				err)
+					color.CyanString("sloth-kubernetes salt ping -s <stack-name>"),
+					color.CyanString("sloth-kubernetes salt login"),
+					err)
+			}
 		}
 	}
 

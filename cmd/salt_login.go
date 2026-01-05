@@ -6,8 +6,10 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/chalkan3/sloth-kubernetes/internal/common"
+	"github.com/chalkan3/sloth-kubernetes/pkg/operations"
 	"github.com/chalkan3/sloth-kubernetes/pkg/salt"
 	"github.com/fatih/color"
 	"github.com/pulumi/pulumi/sdk/v3/go/auto"
@@ -185,7 +187,24 @@ func runSaltLogin(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	// Save configuration
+	// Save credentials to Pulumi state for auto-login
+	printInfo("💾 Saving credentials to Pulumi state...")
+	saltCreds := &operations.SaltCredentials{
+		APIURL:      saltAPIURL,
+		Username:    saltUsername,
+		Password:    saltPassword,
+		BastionIP:   bastionIP,
+		AuthMethod:  "sharedsecret",
+		InstalledAt: time.Now().UTC(),
+	}
+
+	if err := operations.SaveSaltCredentials(stackName, saltCreds); err != nil {
+		printWarning(fmt.Sprintf("⚠️  Could not save to Pulumi state: %v", err))
+	} else {
+		printSuccess("✓ Credentials saved to Pulumi state (auto-login enabled)")
+	}
+
+	// Save configuration to local file as backup
 	config := SaltConfig{
 		APIURL:     saltAPIURL,
 		Username:   saltUsername,
@@ -196,7 +215,7 @@ func runSaltLogin(cmd *cobra.Command, args []string) error {
 	}
 
 	if err := saveSaltConfig(config); err != nil {
-		printWarning(fmt.Sprintf("⚠️  Could not save configuration: %v", err))
+		printWarning(fmt.Sprintf("⚠️  Could not save local configuration: %v", err))
 		printInfo("You can still use Salt commands by setting environment variables:")
 		fmt.Printf("\n  export SALT_API_URL=%s\n", saltAPIURL)
 		fmt.Printf("  export SALT_USERNAME=%s\n", saltUsername)
