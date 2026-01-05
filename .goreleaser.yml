@@ -22,6 +22,8 @@ builds:
     goarch:
       - amd64
       - arm64
+    flags:
+      - -trimpath
     ldflags:
       - -s -w
       - -X main.version={{.Version}}
@@ -93,7 +95,13 @@ release:
 
     Multi-cloud Kubernetes cluster provisioning with WireGuard mesh networking.
 
-    ### Installation
+    ### Quick Install
+
+    ```bash
+    curl -fsSL https://raw.githubusercontent.com/chalkan3/sloth-kubernetes/main/install.sh | bash
+    ```
+
+    ### Manual Installation
 
     **Linux (amd64):**
     ```bash
@@ -106,13 +114,6 @@ release:
     ```bash
     curl -LO https://github.com/chalkan3/sloth-kubernetes/releases/download/{{ .Tag }}/sloth-kubernetes_{{ .Version }}_darwin_arm64.tar.gz
     tar -xzf sloth-kubernetes_{{ .Version }}_darwin_arm64.tar.gz
-    sudo mv sloth /usr/local/bin/
-    ```
-
-    **macOS (Intel):**
-    ```bash
-    curl -LO https://github.com/chalkan3/sloth-kubernetes/releases/download/{{ .Tag }}/sloth-kubernetes_{{ .Version }}_darwin_x86_64.tar.gz
-    tar -xzf sloth-kubernetes_{{ .Version }}_darwin_x86_64.tar.gz
     sudo mv sloth /usr/local/bin/
     ```
 
