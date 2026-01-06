@@ -31,12 +31,13 @@ func TestNewProviderFactory(t *testing.T) {
 
 	// Verify all providers are registered
 	providers := factory.GetSupportedProviders()
-	assert.Len(t, providers, 5)
+	assert.Len(t, providers, 6)
 	assert.Contains(t, providers, "digitalocean")
 	assert.Contains(t, providers, "linode")
 	assert.Contains(t, providers, "aws")
 	assert.Contains(t, providers, "gcp")
 	assert.Contains(t, providers, "azure")
+	assert.Contains(t, providers, "hetzner")
 }
 
 // TestProviderFactory_registerAllProviders tests provider registration
@@ -44,7 +45,7 @@ func TestProviderFactory_registerAllProviders(t *testing.T) {
 	factory := NewProviderFactory()
 
 	// Verify each provider can be retrieved
-	providerNames := []string{"digitalocean", "linode", "aws", "gcp", "azure"}
+	providerNames := []string{"digitalocean", "linode", "aws", "gcp", "azure", "hetzner"}
 	for _, name := range providerNames {
 		provider, err := factory.GetProvider(name)
 		assert.NoError(t, err)
@@ -105,6 +106,12 @@ func TestProviderFactory_GetProvider(t *testing.T) {
 			providerName: "azure",
 			expectError:  false,
 			expectedName: "azure",
+		},
+		{
+			name:         "Hetzner provider",
+			providerName: "hetzner",
+			expectError:  false,
+			expectedName: "hetzner",
 		},
 		{
 			name:         "Non-existent provider",
@@ -500,12 +507,13 @@ func TestProviderFactory_GetSupportedProviders(t *testing.T) {
 
 	providers := factory.GetSupportedProviders()
 
-	assert.Len(t, providers, 5)
+	assert.Len(t, providers, 6)
 	assert.Contains(t, providers, "digitalocean")
 	assert.Contains(t, providers, "linode")
 	assert.Contains(t, providers, "aws")
 	assert.Contains(t, providers, "gcp")
 	assert.Contains(t, providers, "azure")
+	assert.Contains(t, providers, "hetzner")
 }
 
 // TestProviderFactory_GetProviderInfo tests getting provider information
@@ -514,7 +522,7 @@ func TestProviderFactory_GetProviderInfo(t *testing.T) {
 
 	providerInfo := factory.GetProviderInfo()
 
-	assert.Len(t, providerInfo, 5)
+	assert.Len(t, providerInfo, 6)
 
 	// Test DigitalOcean info
 	doInfo, exists := providerInfo["digitalocean"]
@@ -548,6 +556,12 @@ func TestProviderFactory_GetProviderInfo(t *testing.T) {
 	assert.True(t, exists)
 	assert.Equal(t, "Microsoft Azure", azureInfo.Name)
 	assert.Equal(t, "azure", azureInfo.Code)
+
+	// Test Hetzner info
+	hetznerInfo, exists := providerInfo["hetzner"]
+	assert.True(t, exists)
+	assert.Equal(t, "Hetzner Cloud", hetznerInfo.Name)
+	assert.Equal(t, "hetzner", hetznerInfo.Code)
 }
 
 // TestJoinErrors tests the joinErrors helper function

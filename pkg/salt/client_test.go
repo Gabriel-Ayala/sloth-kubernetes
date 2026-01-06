@@ -59,7 +59,7 @@ func TestClient_Login_Success(t *testing.T) {
 
 		assert.Equal(t, "testuser", loginReq.Username)
 		assert.Equal(t, "testpass", loginReq.Password)
-		assert.Equal(t, "sharedsecret", loginReq.Eauth)
+		assert.Equal(t, "pam", loginReq.Eauth)
 
 		// Send response
 		resp := LoginResponse{
