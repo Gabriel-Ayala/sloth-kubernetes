@@ -82,7 +82,7 @@ func init() {
 
 func runHistory(cmd *cobra.Command, args []string) error {
 	// Require stack name as first argument
-	targetStack, err := RequireStackArg(args)
+	targetStack, err := RequireStack(args)
 	if err != nil {
 		return err
 	}

@@ -44,10 +44,10 @@ func init() {
 func runKubeconfig(cmd *cobra.Command, args []string) error {
 	ctx := context.Background()
 
-	// Get stack name from argument or flag
-	targetStack := stackName
-	if len(args) > 0 {
-		targetStack = args[0]
+	// Require a valid stack
+	targetStack, err := RequireStack(args)
+	if err != nil {
+		return err
 	}
 
 	s := spinner.New(spinner.CharSets[14], 100*time.Millisecond)

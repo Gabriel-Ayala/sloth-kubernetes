@@ -98,8 +98,8 @@ func init() {
 func runHealthCheck(cmd *cobra.Command, args []string) error {
 	printHeader("Cluster Health Check")
 
-	// Get stack name from args
-	targetStack, err := RequireStackArg(args)
+	// Require a valid stack
+	targetStack, err := RequireStack(args)
 	if err != nil {
 		return err
 	}
@@ -146,7 +146,7 @@ func runHealthCheck(cmd *cobra.Command, args []string) error {
 }
 
 func runHealthSummary(cmd *cobra.Command, args []string) error {
-	targetStack, err := RequireStackArg(args)
+	targetStack, err := RequireStack(args)
 	if err != nil {
 		return err
 	}
@@ -179,7 +179,7 @@ func runHealthSummary(cmd *cobra.Command, args []string) error {
 func runHealthNodes(cmd *cobra.Command, args []string) error {
 	printHeader("Node Health Check")
 
-	targetStack, err := RequireStackArg(args)
+	targetStack, err := RequireStack(args)
 	if err != nil {
 		return err
 	}
@@ -198,7 +198,7 @@ func runHealthNodes(cmd *cobra.Command, args []string) error {
 func runHealthPods(cmd *cobra.Command, args []string) error {
 	printHeader("System Pods Health Check")
 
-	targetStack, err := RequireStackArg(args)
+	targetStack, err := RequireStack(args)
 	if err != nil {
 		return err
 	}
@@ -217,7 +217,7 @@ func runHealthPods(cmd *cobra.Command, args []string) error {
 func runHealthCerts(cmd *cobra.Command, args []string) error {
 	printHeader("Certificate Health Check")
 
-	targetStack, err := RequireStackArg(args)
+	targetStack, err := RequireStack(args)
 	if err != nil {
 		return err
 	}

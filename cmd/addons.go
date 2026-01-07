@@ -195,6 +195,12 @@ func runAddonsBootstrap(cmd *cobra.Command, args []string) error {
 		}
 	}
 
+	// Require a valid stack
+	targetStack, err := RequireStack(nil)
+	if err != nil {
+		return err
+	}
+
 	// Get stack and kubeconfig
 	s := spinner.New(spinner.CharSets[14], 100*time.Millisecond)
 	s.Suffix = " Getting cluster information..."
@@ -208,7 +214,7 @@ func runAddonsBootstrap(cmd *cobra.Command, args []string) error {
 	}
 
 	// Use fully qualified stack name for S3 backend
-	fullyQualifiedStackName := fmt.Sprintf("organization/sloth-kubernetes/%s", stackName)
+	fullyQualifiedStackName := fmt.Sprintf("organization/sloth-kubernetes/%s", targetStack)
 	stack, err := auto.SelectStack(ctx, fullyQualifiedStackName, workspace)
 	if err != nil {
 		s.Stop()
@@ -300,13 +306,19 @@ func runAddonsBootstrap(cmd *cobra.Command, args []string) error {
 
 	// Record the operation
 	details := fmt.Sprintf("GitOps Repo: %s, Branch: %s, Path: %s", gitopsRepo, gitopsBranch, gitopsPath)
-	operations.RecordAddonsOperation(stackName, "bootstrap", "argocd", "gitops", "success", details, 1, 0, time.Since(startTime), nil)
+	operations.RecordAddonsOperation(targetStack, "bootstrap", "argocd", "gitops", "success", details, 1, 0, time.Since(startTime), nil)
 
 	return nil
 }
 
 func runAddonsList(cmd *cobra.Command, args []string) error {
 	ctx := context.Background()
+
+	// Require a valid stack
+	targetStack, err := RequireStack(nil)
+	if err != nil {
+		return err
+	}
 
 	printHeader("📦 Installed Addons")
 
@@ -322,7 +334,7 @@ func runAddonsList(cmd *cobra.Command, args []string) error {
 	}
 
 	// Use fully qualified stack name for S3 backend
-	fullyQualifiedStackName := fmt.Sprintf("organization/sloth-kubernetes/%s", stackName)
+	fullyQualifiedStackName := fmt.Sprintf("organization/sloth-kubernetes/%s", targetStack)
 	stack, err := auto.SelectStack(ctx, fullyQualifiedStackName, workspace)
 	if err != nil {
 		s.Stop()
@@ -367,12 +379,15 @@ func runAddonsSync(cmd *cobra.Command, args []string) error {
 	fmt.Println("   kubernetes-create addons status")
 	fmt.Println("   kubectl get applications -n argocd")
 
+	// Require a valid stack for recording
+	targetStack, _ := RequireStack(nil)
+
 	// Record the operation
 	addonName := addonNamespace // --app flag value
 	if addonName == "" {
 		addonName = "--all"
 	}
-	operations.RecordAddonsOperation(stackName, "sync", addonName, "argocd", "success", "Sync triggered", 0, 0, time.Since(startTime), nil)
+	operations.RecordAddonsOperation(targetStack, "sync", addonName, "argocd", "success", "Sync triggered", 0, 0, time.Since(startTime), nil)
 
 	return nil
 }

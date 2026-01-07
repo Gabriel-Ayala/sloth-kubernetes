@@ -269,10 +269,13 @@ func runValidate(cmd *cobra.Command, args []string) error {
 	}
 
 	// Record the validation (6 checks: syntax, metadata, providers, nodes, network, kubernetes)
+	// Note: validate command doesn't require a stack, but we try to use it if available for recording
 	totalChecks := 6
 	passedChecks := totalChecks
 	warningChecks := len(warnings)
-	operations.RecordValidation(stackName, "config", "passed", totalChecks, passedChecks, 0, warningChecks, time.Since(startTime), nil)
+	if stackName != "" {
+		operations.RecordValidation(stackName, "config", "passed", totalChecks, passedChecks, 0, warningChecks, time.Since(startTime), nil)
+	}
 
 	return nil
 }

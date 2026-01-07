@@ -77,17 +77,13 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 	// before any Pulumi API calls that might initialize AWS SDK
 	_ = common.LoadSavedConfig()
 
-	// Parse stack name from args (first positional argument)
-	if len(args) > 0 {
-		stackName = args[0]
-		printInfo(fmt.Sprintf("📦 Using stack: %s", stackName))
-	} else {
-		// Use default stack name if not provided
-		if stackName == "" {
-			stackName = "production"
-		}
-		printInfo(fmt.Sprintf("📦 Using default stack: %s", stackName))
+	// Require a valid stack
+	targetStack, err := RequireStack(args)
+	if err != nil {
+		return err
 	}
+	stackName = targetStack
+	printInfo(fmt.Sprintf("📦 Using stack: %s", stackName))
 
 	// Print header
 	printHeader("🚀 Kubernetes Multi-Cloud Deployment")

@@ -38,10 +38,10 @@ func init() {
 func runDestroy(cmd *cobra.Command, args []string) error {
 	ctx := context.Background()
 
-	// Use stack name from args if provided, otherwise use global stackName
-	targetStack := stackName
-	if len(args) > 0 {
-		targetStack = args[0]
+	// Require a valid stack
+	targetStack, err := RequireStack(args)
+	if err != nil {
+		return err
 	}
 
 	// Print warning header

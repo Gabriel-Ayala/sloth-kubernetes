@@ -170,7 +170,7 @@ func runUpgradePlan(cmd *cobra.Command, args []string) error {
 	printHeader("Upgrade Plan")
 
 	// Get stack name from args
-	targetStack, err := RequireStackArg(args)
+	targetStack, err := RequireStack(args)
 	if err != nil {
 		return err
 	}
@@ -206,7 +206,7 @@ func runUpgradeApply(cmd *cobra.Command, args []string) error {
 	printHeader("Cluster Upgrade")
 
 	// Get stack name from args
-	targetStack, err := RequireStackArg(args)
+	targetStack, err := RequireStack(args)
 	if err != nil {
 		return err
 	}
@@ -289,7 +289,7 @@ func runUpgradeRollback(cmd *cobra.Command, args []string) error {
 	printHeader("Cluster Rollback")
 
 	// Get stack name from args
-	targetStack, err := RequireStackArg(args)
+	targetStack, err := RequireStack(args)
 	if err != nil {
 		return err
 	}
@@ -337,7 +337,7 @@ func runUpgradeVersions(cmd *cobra.Command, args []string) error {
 	printHeader("Available Versions")
 
 	// Get stack name from args
-	targetStack, err := RequireStackArg(args)
+	targetStack, err := RequireStack(args)
 	if err != nil {
 		return err
 	}
@@ -394,7 +394,7 @@ func runUpgradeStatus(cmd *cobra.Command, args []string) error {
 	printHeader("Upgrade Status")
 
 	// Get stack name from args
-	targetStack, err := RequireStackArg(args)
+	targetStack, err := RequireStack(args)
 	if err != nil {
 		return err
 	}

@@ -55,7 +55,7 @@ func init() {
 
 	// Global flags
 	rootCmd.PersistentFlags().StringVarP(&cfgFile, "config", "c", "", "Config file (default: ./cluster-config.lisp)")
-	rootCmd.PersistentFlags().StringVarP(&stackName, "stack", "s", "production", "Pulumi stack name")
+	rootCmd.PersistentFlags().StringVarP(&stackName, "stack", "s", "", "Pulumi stack name (required for most commands)")
 	rootCmd.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "Verbose output")
 	rootCmd.PersistentFlags().BoolVarP(&autoApprove, "yes", "y", false, "Auto-approve without prompting")
 

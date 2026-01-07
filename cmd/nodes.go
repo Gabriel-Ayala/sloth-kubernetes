@@ -517,5 +517,5 @@ func getStackFromArgs(args []string, index int) string {
 	if stackName != "" {
 		return stackName
 	}
-	return "production"
+	return "" // No default - stack must be explicitly specified
 }

@@ -222,7 +222,15 @@ func getSaltClient() (*salt.Client, error) {
 		// First, try to load credentials from Pulumi state
 		targetStack := stackName
 		if targetStack == "" {
-			targetStack = "production"
+			return nil, fmt.Errorf(`stack name is required for Salt API auto-login
+
+Specify a stack with:
+  sloth-kubernetes salt <command> --stack <stack-name>
+
+Or set Salt API credentials manually:
+  export SALT_API_URL="http://master-ip:8000"
+  export SALT_USERNAME="saltapi"
+  export SALT_PASSWORD="your-password"`)
 		}
 
 		creds, err := operations.GetSaltCredentialsFromStack(targetStack)
@@ -278,7 +286,7 @@ func autoLoginFromStack() error {
 	// Get stack name from global flag
 	targetStack := stackName
 	if targetStack == "" {
-		targetStack = "production"
+		return fmt.Errorf("stack name is required for Salt API auto-login")
 	}
 
 	// Try to select the stack

@@ -74,13 +74,10 @@ func runExportConfig(cmd *cobra.Command, args []string) error {
 	// Load saved S3 backend configuration
 	_ = common.LoadSavedConfig()
 
-	// Parse stack name
-	targetStack := stackName
-	if len(args) > 0 {
-		targetStack = args[0]
-	}
-	if targetStack == "" {
-		return fmt.Errorf("stack name is required")
+	// Require a valid stack
+	targetStack, err := RequireStack(args)
+	if err != nil {
+		return err
 	}
 
 	color.Cyan("📦 Exporting configuration from stack: %s\n", targetStack)

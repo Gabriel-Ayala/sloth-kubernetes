@@ -291,7 +291,7 @@ func runBackupCreate(cmd *cobra.Command, args []string) error {
 	printHeader("Create Backup")
 
 	// Get stack name from args
-	targetStack, err := RequireStackArg(args)
+	targetStack, err := RequireStack(args)
 	if err != nil {
 		return err
 	}
@@ -407,7 +407,7 @@ func runBackupCreate(cmd *cobra.Command, args []string) error {
 
 func runBackupList(cmd *cobra.Command, args []string) error {
 	// Get stack name from args
-	targetStack, err := RequireStackArg(args)
+	targetStack, err := RequireStack(args)
 	if err != nil {
 		return err
 	}
@@ -454,7 +454,7 @@ func runBackupList(cmd *cobra.Command, args []string) error {
 
 func runBackupDescribe(cmd *cobra.Command, args []string) error {
 	// Get stack name from args
-	targetStack, err := RequireStackArg(args)
+	targetStack, err := RequireStack(args)
 	if err != nil {
 		return err
 	}
@@ -482,7 +482,7 @@ func runBackupDescribe(cmd *cobra.Command, args []string) error {
 
 func runBackupDelete(cmd *cobra.Command, args []string) error {
 	// Get stack name from args
-	targetStack, err := RequireStackArg(args)
+	targetStack, err := RequireStack(args)
 	if err != nil {
 		return err
 	}
@@ -536,7 +536,7 @@ func runBackupRestore(cmd *cobra.Command, args []string) error {
 	printHeader("Restore from Backup")
 
 	// Get stack name from args
-	targetStack, err := RequireStackArg(args)
+	targetStack, err := RequireStack(args)
 	if err != nil {
 		return err
 	}
@@ -650,7 +650,7 @@ func runBackupRestore(cmd *cobra.Command, args []string) error {
 
 func runRestoreList(cmd *cobra.Command, args []string) error {
 	// Get stack name from args
-	targetStack, err := RequireStackArg(args)
+	targetStack, err := RequireStack(args)
 	if err != nil {
 		return err
 	}
@@ -695,7 +695,7 @@ func runScheduleCreate(cmd *cobra.Command, args []string) error {
 	printHeader("Create Backup Schedule")
 
 	// Get stack name from args
-	targetStack, err := RequireStackArg(args)
+	targetStack, err := RequireStack(args)
 	if err != nil {
 		return err
 	}
@@ -769,7 +769,7 @@ func runScheduleCreate(cmd *cobra.Command, args []string) error {
 
 func runScheduleList(cmd *cobra.Command, args []string) error {
 	// Get stack name from args
-	targetStack, err := RequireStackArg(args)
+	targetStack, err := RequireStack(args)
 	if err != nil {
 		return err
 	}
@@ -817,7 +817,7 @@ func runScheduleList(cmd *cobra.Command, args []string) error {
 
 func runScheduleDelete(cmd *cobra.Command, args []string) error {
 	// Get stack name from args
-	targetStack, err := RequireStackArg(args)
+	targetStack, err := RequireStack(args)
 	if err != nil {
 		return err
 	}
@@ -879,7 +879,7 @@ func runScheduleDelete(cmd *cobra.Command, args []string) error {
 
 func runSchedulePause(cmd *cobra.Command, args []string) error {
 	// Get stack name from args
-	targetStack, err := RequireStackArg(args)
+	targetStack, err := RequireStack(args)
 	if err != nil {
 		return err
 	}
@@ -902,7 +902,7 @@ func runSchedulePause(cmd *cobra.Command, args []string) error {
 
 func runScheduleUnpause(cmd *cobra.Command, args []string) error {
 	// Get stack name from args
-	targetStack, err := RequireStackArg(args)
+	targetStack, err := RequireStack(args)
 	if err != nil {
 		return err
 	}
@@ -925,7 +925,7 @@ func runScheduleUnpause(cmd *cobra.Command, args []string) error {
 
 func runBackupLocations(cmd *cobra.Command, args []string) error {
 	// Get stack name from args
-	targetStack, err := RequireStackArg(args)
+	targetStack, err := RequireStack(args)
 	if err != nil {
 		return err
 	}
@@ -970,7 +970,7 @@ func runBackupInstall(cmd *cobra.Command, args []string) error {
 	printHeader("Install Velero")
 
 	// Get stack name from args
-	targetStack, err := RequireStackArg(args)
+	targetStack, err := RequireStack(args)
 	if err != nil {
 		return err
 	}
@@ -1009,7 +1009,7 @@ func runBackupStatus(cmd *cobra.Command, args []string) error {
 	printHeader("Velero Status")
 
 	// Get stack name from args
-	targetStack, err := RequireStackArg(args)
+	targetStack, err := RequireStack(args)
 	if err != nil {
 		return err
 	}

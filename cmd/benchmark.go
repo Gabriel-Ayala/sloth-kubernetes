@@ -138,7 +138,7 @@ func runBenchmark(cmd *cobra.Command, args []string) error {
 	printHeader("Cluster Benchmark")
 
 	// Get stack name from args
-	targetStack, err := RequireStackArg(args)
+	targetStack, err := RequireStack(args)
 	if err != nil {
 		return err
 	}
@@ -217,7 +217,7 @@ func runQuickBenchmark(cmd *cobra.Command, args []string) error {
 	printHeader("Quick Benchmark")
 
 	// Get stack name from args
-	targetStack, err := RequireStackArg(args)
+	targetStack, err := RequireStack(args)
 	if err != nil {
 		return err
 	}

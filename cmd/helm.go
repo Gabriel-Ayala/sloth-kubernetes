@@ -78,6 +78,11 @@ func runHelm(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("stack name is required\nUsage: sloth-kubernetes helm <stack-name> [helm-args...]")
 	}
 
+	// Validate stack exists
+	if err := EnsureStackExists(targetStack); err != nil {
+		return err
+	}
+
 	// Get kubeconfig from stack
 	kubeconfigPath, err := GetKubeconfigFromStack(targetStack)
 	if err != nil {

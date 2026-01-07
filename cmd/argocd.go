@@ -138,7 +138,7 @@ func runArgocdInstall(cmd *cobra.Command, args []string) error {
 	printHeader("Installing ArgoCD GitOps")
 
 	// Get stack name
-	targetStack, err := RequireStackArg(args)
+	targetStack, err := RequireStack(args)
 	if err != nil {
 		return err
 	}
@@ -217,7 +217,7 @@ func runArgocdStatus(cmd *cobra.Command, args []string) error {
 	printHeader("ArgoCD Status")
 
 	// Get stack name
-	targetStack, err := RequireStackArg(args)
+	targetStack, err := RequireStack(args)
 	if err != nil {
 		return err
 	}
@@ -276,7 +276,7 @@ func runArgocdStatus(cmd *cobra.Command, args []string) error {
 
 func runArgocdPassword(cmd *cobra.Command, args []string) error {
 	// Get stack name
-	targetStack, err := RequireStackArg(args)
+	targetStack, err := RequireStack(args)
 	if err != nil {
 		return err
 	}
@@ -314,7 +314,7 @@ func runArgocdApps(cmd *cobra.Command, args []string) error {
 	printHeader("ArgoCD Applications")
 
 	// Get stack name
-	targetStack, err := RequireStackArg(args)
+	targetStack, err := RequireStack(args)
 	if err != nil {
 		return err
 	}
@@ -373,7 +373,7 @@ func runArgocdSync(cmd *cobra.Command, args []string) error {
 	syncAll, _ := cmd.Flags().GetBool("all")
 
 	// Get stack name
-	targetStack, err := RequireStackArg(args)
+	targetStack, err := RequireStack(args)
 	if err != nil {
 		return err
 	}

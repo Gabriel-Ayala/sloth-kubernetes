@@ -74,6 +74,11 @@ func runKubectl(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("stack name is required\nUsage: sloth-kubernetes kubectl <stack-name> [kubectl-args...]")
 	}
 
+	// Validate stack exists
+	if err := EnsureStackExists(targetStack); err != nil {
+		return err
+	}
+
 	// Get kubeconfig from stack
 	kubeconfigPath, err := GetKubeconfigFromStack(targetStack)
 	if err != nil {
