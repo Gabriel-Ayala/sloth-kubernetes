@@ -19,11 +19,15 @@ import (
 )
 
 var (
-	saltAPIURL     string
-	saltUsername   string
-	saltPassword   string
-	saltTarget     string
-	saltOutputJSON bool
+	saltAPIURL        string
+	saltUsername      string
+	saltPassword      string
+	saltTarget        string
+	saltOutputJSON    bool
+	pushApplyAfter    bool
+	pushRefreshAfter  bool
+	pushDryRun        bool
+	pushExcludes      []string
 )
 
 var saltCmd = &cobra.Command{
@@ -145,6 +149,62 @@ var saltStateHighstateCmd = &cobra.Command{
 	RunE: runSaltHighstate,
 }
 
+var saltStatePushCmd = &cobra.Command{
+	Use:   "push <path>",
+	Short: "Push local Salt states to the Salt master",
+	Long: `Upload local Salt state files to /srv/salt/ on the Salt master.
+
+This command transfers your local Salt state files to the Salt master node
+using SCP (via bastion if configured). The files will be extracted to
+/srv/salt/ on the master.`,
+	Example: `  # Push states from local directory
+  sloth-kubernetes salt state push ./salt/states/
+
+  # Push and apply highstate immediately
+  sloth-kubernetes salt state push ./salt/states/ --apply
+
+  # Dry run - show what would be transferred
+  sloth-kubernetes salt state push ./salt/states/ --dry-run
+
+  # Exclude certain patterns
+  sloth-kubernetes salt state push ./salt/states/ --exclude "*.pyc" --exclude "__pycache__"`,
+	Args: cobra.ExactArgs(1),
+	RunE: runStatePush,
+}
+
+var saltPillarCmd = &cobra.Command{
+	Use:   "pillar",
+	Short: "Manage Salt pillars",
+	Long:  `Manage Salt pillar data for minion configuration`,
+}
+
+var saltPillarPushCmd = &cobra.Command{
+	Use:   "push <path>",
+	Short: "Push local Salt pillars to the Salt master",
+	Long: `Upload local Salt pillar files to /srv/pillar/ on the Salt master.
+
+This command transfers your local pillar files to the Salt master node
+using SCP (via bastion if configured). The files will be extracted to
+/srv/pillar/ on the master.`,
+	Example: `  # Push pillars from local directory
+  sloth-kubernetes salt pillar push ./salt/pillars/
+
+  # Push and refresh pillars on all minions
+  sloth-kubernetes salt pillar push ./salt/pillars/ --refresh
+
+  # Dry run - show what would be transferred
+  sloth-kubernetes salt pillar push ./salt/pillars/ --dry-run`,
+	Args: cobra.ExactArgs(1),
+	RunE: runPillarPush,
+}
+
+var saltPillarRefreshCmd = &cobra.Command{
+	Use:   "refresh",
+	Short: "Refresh pillars on all minions",
+	Long:  `Refresh pillar data on all minions to pick up changes`,
+	RunE:  runPillarRefresh,
+}
+
 var keysCmd = &cobra.Command{
 	Use:   "keys",
 	Short: "Manage minion keys",
@@ -181,14 +241,29 @@ func init() {
 	saltCmd.AddCommand(grainsCmd)
 	saltCmd.AddCommand(saltStateCmd)
 	saltCmd.AddCommand(keysCmd)
+	saltCmd.AddCommand(saltPillarCmd)
 
 	// State subcommands
 	saltStateCmd.AddCommand(saltStateApplyCmd)
 	saltStateCmd.AddCommand(saltStateHighstateCmd)
+	saltStateCmd.AddCommand(saltStatePushCmd)
+
+	// Pillar subcommands
+	saltPillarCmd.AddCommand(saltPillarPushCmd)
+	saltPillarCmd.AddCommand(saltPillarRefreshCmd)
 
 	// Keys subcommands
 	keysCmd.AddCommand(keysListCmd)
 	keysCmd.AddCommand(keysAcceptCmd)
+
+	// State push flags
+	saltStatePushCmd.Flags().BoolVar(&pushApplyAfter, "apply", false, "Apply highstate after pushing states")
+	saltStatePushCmd.Flags().BoolVar(&pushDryRun, "dry-run", false, "Show what would be transferred without actually transferring")
+	saltStatePushCmd.Flags().StringSliceVar(&pushExcludes, "exclude", nil, "Patterns to exclude from transfer (can be specified multiple times)")
+
+	// Pillar push flags
+	saltPillarPushCmd.Flags().BoolVar(&pushRefreshAfter, "refresh", false, "Refresh pillars on all minions after pushing")
+	saltPillarPushCmd.Flags().BoolVar(&pushDryRun, "dry-run", false, "Show what would be transferred without actually transferring")
 
 	// Load saved configuration if available
 	defaultURL := getEnvOrDefault("SALT_API_URL", "")
@@ -269,6 +344,26 @@ Auto-login error: %v`,
 	}
 
 	client := salt.NewClient(saltAPIURL, saltUsername, saltPassword)
+
+	// Try to set SSH config for push operations
+	targetStack := stackName
+	if targetStack != "" {
+		sshKeyPath := GetSSHKeyPath(targetStack)
+		if sshKeyPath != "" {
+			if _, err := os.Stat(sshKeyPath); err == nil {
+				// Extract master IP from Salt API URL
+				masterIP := extractIPFromURL(saltAPIURL)
+				if masterIP != "" {
+					client.SetSSHConfig(&salt.SSHConfig{
+						Host:    masterIP,
+						User:    "root",
+						KeyPath: sshKeyPath,
+					})
+				}
+			}
+		}
+	}
+
 	return client, nil
 }
 
@@ -998,6 +1093,373 @@ func runSaltKeysAccept(cmd *cobra.Command, args []string) error {
 	fmt.Println()
 
 	return nil
+}
+
+// PushConnectionInfo holds connection info for push operations
+type PushConnectionInfo struct {
+	SSHKeyPath     string
+	MasterIP       string
+	BastionIP      string
+	BastionEnabled bool
+}
+
+// getPushConnectionInfo retrieves connection info from stack for push operations
+func getPushConnectionInfo() (*PushConnectionInfo, error) {
+	targetStack := stackName
+	if targetStack == "" {
+		return nil, fmt.Errorf("stack name is required for Salt push operations\n\nSpecify a stack with:\n  sloth-kubernetes salt state push <path> --stack <stack-name>")
+	}
+
+	ctx := context.Background()
+
+	// Create workspace with S3 support
+	workspace, err := createWorkspaceWithS3Support(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create workspace: %w", err)
+	}
+
+	// Use fully qualified stack name
+	fullyQualifiedStackName := fmt.Sprintf("organization/sloth-kubernetes/%s", targetStack)
+	stack, err := auto.SelectStack(ctx, fullyQualifiedStackName, workspace)
+	if err != nil {
+		return nil, fmt.Errorf("stack '%s' not found: %w", targetStack, err)
+	}
+
+	// Get outputs
+	outputs, err := stack.Outputs(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get stack outputs: %w", err)
+	}
+
+	info := &PushConnectionInfo{}
+
+	// Get SSH key path
+	sshKeyPath := GetSSHKeyPath(targetStack)
+	if sshKeyPath == "" {
+		return nil, fmt.Errorf("SSH key path not found in stack outputs")
+	}
+	if _, err := os.Stat(sshKeyPath); os.IsNotExist(err) {
+		return nil, fmt.Errorf("SSH key not found at %s. Please ensure the cluster was deployed from this machine", sshKeyPath)
+	}
+	info.SSHKeyPath = sshKeyPath
+
+	// Get bastion info
+	if bastionEnabledOutput, ok := outputs["bastion_enabled"]; ok {
+		if bastionEnabledOutput.Value != nil {
+			info.BastionEnabled = bastionEnabledOutput.Value == true
+		}
+	}
+
+	if info.BastionEnabled {
+		if bastionOutput, ok := outputs["bastion"]; ok {
+			if bastionMap, ok := bastionOutput.Value.(map[string]interface{}); ok {
+				if pubIP, ok := bastionMap["public_ip"].(string); ok {
+					info.BastionIP = pubIP
+				}
+			}
+		}
+	}
+
+	// Check if Salt is enabled and where the master is
+	// By default, Salt Master is installed on the bastion host
+	saltOnBastion := true // Default: Salt Master is on bastion
+	if saltEnabledOutput, ok := outputs["salt_enabled"]; ok {
+		if saltEnabledOutput.Value == true {
+			// Salt is enabled, check if master is on bastion (default) or separate node
+			// For now, assume Salt Master is always on bastion when bastion is enabled
+			saltOnBastion = info.BastionEnabled
+		}
+	}
+
+	if saltOnBastion && info.BastionIP != "" {
+		// Salt Master is on bastion - connect directly to bastion
+		info.MasterIP = info.BastionIP
+		// Clear bastion IP so we don't use ProxyCommand (direct connection)
+		info.BastionIP = ""
+	} else {
+		// Salt Master is on a separate node - find it from nodes
+		nodes, _ := ParseNodeOutputs(outputs)
+		for _, node := range nodes {
+			for _, role := range node.Roles {
+				if role == "master" || role == "controlplane" {
+					// Prefer WireGuard IP, then private IP, then public IP
+					if node.WireGuardIP != "" {
+						info.MasterIP = node.WireGuardIP
+					} else if node.PrivateIP != "" {
+						info.MasterIP = node.PrivateIP
+					} else if node.PublicIP != "" {
+						info.MasterIP = node.PublicIP
+					}
+					break
+				}
+			}
+			if info.MasterIP != "" {
+				break
+			}
+		}
+	}
+
+	if info.MasterIP == "" {
+		return nil, fmt.Errorf("no Salt master found in stack outputs")
+	}
+
+	return info, nil
+}
+
+func runStatePush(cmd *cobra.Command, args []string) error {
+	localPath := args[0]
+
+	// Validate local path exists
+	fileInfo, err := os.Stat(localPath)
+	if os.IsNotExist(err) {
+		return fmt.Errorf("path does not exist: %s", localPath)
+	}
+	if !fileInfo.IsDir() {
+		return fmt.Errorf("path must be a directory: %s", localPath)
+	}
+
+	// Get Salt API client
+	client, err := getSaltClient()
+	if err != nil {
+		return err
+	}
+
+	fmt.Println()
+	if pushDryRun {
+		color.Yellow("🔍 Dry run - showing what would be transferred:")
+	} else {
+		color.Cyan("📦 Pushing Salt states via Salt API")
+	}
+	fmt.Printf("   Source: %s\n", localPath)
+	fmt.Printf("   Destination: /srv/salt\n")
+	fmt.Println()
+
+	// Configure API push
+	cfg := salt.APIPushConfig{
+		Client:     client,
+		LocalPath:  localPath,
+		RemotePath: "/srv/salt",
+		Excludes:   pushExcludes,
+		DryRun:     pushDryRun,
+	}
+
+	// Execute push via API
+	result, err := salt.PushDirectoryViaAPI(cfg)
+	if err != nil {
+		color.Red("❌ Push failed: %v", err)
+		return err
+	}
+
+	// Show results
+	if pushDryRun {
+		color.Cyan("📋 Files that would be transferred (%d files, %s):",
+			result.FilesTransferred, formatBytes(result.BytesTransferred))
+		for _, file := range result.Files {
+			fmt.Printf("   • %s\n", file)
+		}
+	} else {
+		color.Green("✅ Transferred %d files (%s) in %s",
+			result.FilesTransferred,
+			formatBytes(result.BytesTransferred),
+			result.Duration.Round(time.Millisecond))
+
+		// Show any errors
+		if len(result.Errors) > 0 {
+			color.Yellow("⚠️  Some files had errors:")
+			for _, e := range result.Errors {
+				fmt.Printf("   • %s\n", e)
+			}
+		}
+
+		// Track in history
+		if err := trackSaltPushAPI("state", localPath, "/srv/salt", result, pushApplyAfter); err != nil {
+			color.Yellow("⚠️  Failed to save push history: %v", err)
+		}
+	}
+	fmt.Println()
+
+	// Optionally apply highstate
+	if pushApplyAfter && !pushDryRun {
+		color.Cyan("🔄 Applying highstate...")
+		fmt.Println()
+		return runSaltHighstate(cmd, []string{})
+	}
+
+	return nil
+}
+
+func runPillarPush(cmd *cobra.Command, args []string) error {
+	localPath := args[0]
+
+	// Validate local path exists
+	fileInfo, err := os.Stat(localPath)
+	if os.IsNotExist(err) {
+		return fmt.Errorf("path does not exist: %s", localPath)
+	}
+	if !fileInfo.IsDir() {
+		return fmt.Errorf("path must be a directory: %s", localPath)
+	}
+
+	// Get Salt API client
+	client, err := getSaltClient()
+	if err != nil {
+		return err
+	}
+
+	fmt.Println()
+	if pushDryRun {
+		color.Yellow("🔍 Dry run - showing what would be transferred:")
+	} else {
+		color.Cyan("📦 Pushing Salt pillars via Salt API")
+	}
+	fmt.Printf("   Source: %s\n", localPath)
+	fmt.Printf("   Destination: /srv/pillar\n")
+	fmt.Println()
+
+	// Configure API push
+	cfg := salt.APIPushConfig{
+		Client:     client,
+		LocalPath:  localPath,
+		RemotePath: "/srv/pillar",
+		Excludes:   pushExcludes,
+		DryRun:     pushDryRun,
+	}
+
+	// Execute push via API
+	result, err := salt.PushDirectoryViaAPI(cfg)
+	if err != nil {
+		color.Red("❌ Push failed: %v", err)
+		return err
+	}
+
+	// Show results
+	if pushDryRun {
+		color.Cyan("📋 Files that would be transferred (%d files, %s):",
+			result.FilesTransferred, formatBytes(result.BytesTransferred))
+		for _, file := range result.Files {
+			fmt.Printf("   • %s\n", file)
+		}
+	} else {
+		color.Green("✅ Transferred %d files (%s) in %s",
+			result.FilesTransferred,
+			formatBytes(result.BytesTransferred),
+			result.Duration.Round(time.Millisecond))
+
+		// Show any errors
+		if len(result.Errors) > 0 {
+			color.Yellow("⚠️  Some files had errors:")
+			for _, e := range result.Errors {
+				fmt.Printf("   • %s\n", e)
+			}
+		}
+
+		// Track in history
+		if err := trackSaltPushAPI("pillar", localPath, "/srv/pillar", result, pushRefreshAfter); err != nil {
+			color.Yellow("⚠️  Failed to save push history: %v", err)
+		}
+	}
+	fmt.Println()
+
+	// Optionally refresh pillars
+	if pushRefreshAfter && !pushDryRun {
+		color.Cyan("🔄 Refreshing pillars on all minions...")
+		fmt.Println()
+		return runPillarRefresh(cmd, []string{})
+	}
+
+	return nil
+}
+
+func runPillarRefresh(cmd *cobra.Command, args []string) error {
+	client, err := getSaltClient()
+	if err != nil {
+		return err
+	}
+
+	fmt.Println()
+	color.Cyan("🔄 Refreshing pillars on all minions...")
+	fmt.Println()
+
+	resp, err := client.RunCommand(saltTarget, "saltutil.refresh_pillar", nil)
+	if err != nil {
+		color.Red("❌ Failed to refresh pillars: %v", err)
+		return err
+	}
+
+	// Parse and display results
+	if saltOutputJSON {
+		jsonBytes, _ := json.MarshalIndent(resp, "", "  ")
+		fmt.Println(string(jsonBytes))
+	} else {
+		for minion, result := range resp.Return[0] {
+			if result == true {
+				color.Green("  ✅ %s: refreshed", minion)
+			} else {
+				color.Yellow("  ⚠️  %s: %v", minion, result)
+			}
+		}
+	}
+
+	fmt.Println()
+	color.Green("✅ Pillar refresh complete")
+	return nil
+}
+
+func trackSaltPush(pushType, localPath, remotePath string, result *salt.PushResult, applied bool) error {
+	targetStack := stackName
+	if targetStack == "" {
+		return nil // Skip tracking if no stack
+	}
+
+	history, err := operations.GetOperationsHistory(targetStack)
+	if err != nil {
+		return err
+	}
+
+	entry := operations.SaltEntry{
+		ID:        fmt.Sprintf("push-%d", time.Now().UnixNano()),
+		Timestamp: time.Now(),
+		Operation: fmt.Sprintf("%s-push", pushType),
+		Target:    remotePath,
+		Function:  fmt.Sprintf("push %s -> %s", localPath, remotePath),
+		Status:    "success",
+		Duration:  result.Duration.String(),
+	}
+
+	history.AddSalt(entry)
+	return operations.SaveOperationsHistory(targetStack, history)
+}
+
+func trackSaltPushAPI(pushType, localPath, remotePath string, result *salt.APIPushResult, applied bool) error {
+	targetStack := stackName
+	if targetStack == "" {
+		return nil // Skip tracking if no stack
+	}
+
+	history, err := operations.GetOperationsHistory(targetStack)
+	if err != nil {
+		return err
+	}
+
+	status := "success"
+	if len(result.Errors) > 0 {
+		status = "partial"
+	}
+
+	entry := operations.SaltEntry{
+		ID:           fmt.Sprintf("push-%d", time.Now().UnixNano()),
+		Timestamp:    time.Now(),
+		Operation:    fmt.Sprintf("%s-push-api", pushType),
+		Target:       remotePath,
+		Function:     fmt.Sprintf("push %s -> %s (%d files)", localPath, remotePath, result.FilesTransferred),
+		Status:       status,
+		NodesSuccess: result.FilesTransferred - len(result.Errors),
+		NodesFailed:  len(result.Errors),
+		Duration:     result.Duration.String(),
+	}
+
+	history.AddSalt(entry)
+	return operations.SaveOperationsHistory(targetStack, history)
 }
 
 func getEnvOrDefault(key, defaultValue string) string {

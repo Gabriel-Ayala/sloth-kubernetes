@@ -10,6 +10,13 @@ import (
 	"time"
 )
 
+// SSHConfig holds SSH connection configuration for direct file transfer
+type SSHConfig struct {
+	Host    string // Salt master IP/hostname
+	User    string // SSH user (typically root)
+	KeyPath string // Path to SSH private key
+}
+
 // Client represents a Salt API client
 type Client struct {
 	BaseURL    string
@@ -17,6 +24,17 @@ type Client struct {
 	Password   string
 	Token      string
 	HTTPClient *http.Client
+	sshConfig  *SSHConfig
+}
+
+// SetSSHConfig configures SSH connection details for direct file operations
+func (c *Client) SetSSHConfig(cfg *SSHConfig) {
+	c.sshConfig = cfg
+}
+
+// GetSSHConfig returns the SSH configuration if available
+func (c *Client) GetSSHConfig() *SSHConfig {
+	return c.sshConfig
 }
 
 // NewClient creates a new Salt API client
