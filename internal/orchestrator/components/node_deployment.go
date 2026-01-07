@@ -230,7 +230,7 @@ func NewRealNodeDeploymentComponent(ctx *pulumi.Context, name string, clusterCon
 		len(realNodeComponents))
 
 	// Store real node components for later use (WireGuard, RKE, etc)
-	secrets.Export(ctx,"__realNodes", pulumi.ToOutput(realNodeComponents))
+	secrets.Export(ctx, "__realNodes", pulumi.ToOutput(realNodeComponents))
 
 	if err := ctx.RegisterResourceOutputs(component, pulumi.Map{
 		"nodes":  component.Nodes,
@@ -1116,9 +1116,9 @@ func createHetznerNode(ctx *pulumi.Context, name string, nodeConfig *config.Node
 	component.Status = server.Status
 
 	// Export outputs
-	secrets.Export(ctx,fmt.Sprintf("%s_id", name), server.ID())
-	secrets.Export(ctx,fmt.Sprintf("%s_public_ip", name), server.Ipv4Address)
-	secrets.Export(ctx,fmt.Sprintf("%s_status", name), server.Status)
+	secrets.Export(ctx, fmt.Sprintf("%s_id", name), server.ID())
+	secrets.Export(ctx, fmt.Sprintf("%s_public_ip", name), server.Ipv4Address)
+	secrets.Export(ctx, fmt.Sprintf("%s_status", name), server.Status)
 
 	ctx.Log.Info(fmt.Sprintf("   ✅ Hetzner server %s created (%s) in %s", name, serverType, location), nil)
 
