@@ -18,6 +18,7 @@ import (
 	"golang.org/x/crypto/curve25519"
 
 	"github.com/chalkan3/sloth-kubernetes/pkg/operations"
+	"github.com/chalkan3/sloth-kubernetes/pkg/vpn"
 )
 
 var (
@@ -867,7 +868,6 @@ func printVPNPeersTable(outputs auto.OutputMap) {
 
 func runVPNJoin(cmd *cobra.Command, args []string) error {
 	startTime := time.Now()
-
 	ctx := context.Background()
 
 	// Require a valid stack
@@ -878,13 +878,12 @@ func runVPNJoin(cmd *cobra.Command, args []string) error {
 
 	printHeader(fmt.Sprintf("🔗 Joining VPN - Stack: %s", stack))
 
-	// Create workspace with S3 support (loads config from ~/.sloth-kubernetes/config)
+	// Create workspace with S3 support
 	workspace, err := createWorkspaceWithS3Support(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to create workspace: %w", err)
 	}
 
-	// Use fully qualified stack name for S3 backend
 	fullyQualifiedStackName := fmt.Sprintf("organization/sloth-kubernetes/%s", stack)
 	s, err := auto.SelectStack(ctx, fullyQualifiedStackName, workspace)
 	if err != nil {
@@ -896,7 +895,7 @@ func runVPNJoin(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to get stack outputs: %w", err)
 	}
 
-	// Parse nodes to get cluster info
+	// Parse nodes
 	nodes, err := ParseNodeOutputs(outputs)
 	if err != nil {
 		return fmt.Errorf("failed to parse nodes: %w", err)
@@ -909,15 +908,14 @@ func runVPNJoin(cmd *cobra.Command, args []string) error {
 	fmt.Println()
 	printInfo(fmt.Sprintf("Found %d cluster nodes", len(nodes)))
 
-	// Determine target (local or remote)
+	// Target info
 	target := "local machine"
 	if vpnJoinRemote != "" {
 		target = vpnJoinRemote
 	}
-
 	printInfo(fmt.Sprintf("Target: %s", target))
 
-	// Get SSH key and bastion info early (needed for peer discovery)
+	// Get SSH key and bastion info
 	sshKeyPath := GetSSHKeyPath(stack)
 	bastionEnabled := false
 	bastionIP := ""
@@ -938,411 +936,239 @@ func runVPNJoin(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	// STEP 0.5: Discover existing VPN clients early (needed for IP auto-assignment)
-	var existingPeersForIPAssign []VPNPeerInfo
+	// Initialize VPN Manager with robust retry policy
+	fmt.Println()
+	printInfo("Initializing VPN manager...")
 
-	// Get first master node to query peers  (all masters are peers)
-	var firstMaster NodeInfo
-	for _, node := range nodes {
-		// Just get the first node - all have the same peer list
-		firstMaster = node
-		break
+	vpnMgr, err := vpn.NewManager(vpn.ManagerConfig{
+		SSHKeyPath:     sshKeyPath,
+		RetryPolicy:    vpn.NewDefaultRetryPolicy(),
+		ConnectTimeout: 30 * time.Second,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to initialize VPN manager: %w", err)
 	}
 
-	if firstMaster.Name != "" {
-		targetIP := firstMaster.WireGuardIP
-		if targetIP == "" {
-			targetIP = firstMaster.PrivateIP
-			if targetIP == "" {
-				targetIP = firstMaster.PublicIP
-			}
+	// STEP 1: Health check bastion if enabled
+	if bastionEnabled && bastionIP != "" {
+		printInfo("Step 1/5: Checking bastion connectivity...")
+		if err := vpnMgr.GetHealthChecker().CheckBastion(ctx, bastionIP); err != nil {
+			return fmt.Errorf("bastion health check failed: %w", err)
 		}
+		printSuccess("Bastion is reachable")
+	} else {
+		printInfo("Step 1/5: No bastion configured, skipping...")
+	}
 
-		listPeersScript := `sudo wg show wg0 dump | tail -n +2 | while IFS=$'\t' read -r pubkey _ endpoint allowed_ips _; do
-			first_ip=$(echo "$allowed_ips" | cut -d, -f1 | cut -d/ -f1)
-			if [ -n "$first_ip" ] && [ "$first_ip" != "(none)" ]; then
-				echo "$pubkey|$first_ip"
-			fi
-		done`
-		sshUserDiscover := getSSHUserForProvider(firstMaster.Provider)
+	// STEP 2: Check for existing peer registration (stable IP)
+	fmt.Println()
+	printInfo("Step 2/5: Checking peer registry...")
 
-		var listCmd *exec.Cmd
-		if bastionEnabled && bastionIP != "" {
-			listCmd = exec.Command("ssh",
-				"-i", sshKeyPath,
-				"-o", "StrictHostKeyChecking=accept-new",
-				"-o", "UserKnownHostsFile=/dev/null",
-				"-o", fmt.Sprintf("ProxyCommand=ssh -i %s -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null -W %%h:%%p root@%s", sshKeyPath, bastionIP),
-				fmt.Sprintf("%s@%s", sshUserDiscover, targetIP),
-				listPeersScript,
-			)
-		} else {
-			listCmd = exec.Command("ssh",
-				"-i", sshKeyPath,
-				"-o", "StrictHostKeyChecking=accept-new",
-				"-o", "UserKnownHostsFile=/dev/null",
-				fmt.Sprintf("%s@%s", sshUserDiscover, targetIP),
-				listPeersScript,
-			)
-		}
-
-		output, err := listCmd.CombinedOutput()
-		if err == nil {
-			lines := strings.Split(strings.TrimSpace(string(output)), "\n")
-			for _, line := range lines {
-				parts := strings.Split(line, "|")
-				if len(parts) == 2 {
-					peerIP := strings.TrimSpace(parts[1])
-					peerKey := strings.TrimSpace(parts[0])
-
-					if peerIP == "" || peerIP == "(none)" {
-						continue
-					}
-
-					// Filter out cluster node IPs (10.8.0.10-99)
-					if strings.HasPrefix(peerIP, "10.8.0.") {
-						ipParts := strings.Split(peerIP, ".")
-						if len(ipParts) == 4 {
-							var lastOctet int
-							if _, err := fmt.Sscanf(ipParts[3], "%d", &lastOctet); err == nil {
-								if lastOctet >= 10 && lastOctet < 100 {
-									continue
-								}
-							}
-						}
-					}
-
-					existingPeersForIPAssign = append(existingPeersForIPAssign, VPNPeerInfo{
-						PublicKey:  peerKey,
-						VPNAddress: peerIP,
-					})
-				}
-			}
+	if vpnJoinIP == "" && vpnJoinLabel != "" {
+		// Try to get existing registration for this label
+		if existingPeer, err := vpnMgr.GetPeerByLabel(stack, vpnJoinLabel); err == nil {
+			vpnJoinIP = existingPeer.VPNIP
+			printInfo(fmt.Sprintf("Found existing registration for '%s', using IP %s", vpnJoinLabel, vpnJoinIP))
 		}
 	}
 
-	// Auto-assign VPN IP if not specified
+	// Auto-assign IP if not specified
 	if vpnJoinIP == "" {
-		// Find next available IP in 10.8.0.x range (100-254)
-		// Check existing peers to avoid collisions
-		usedIPs := make(map[string]bool)
-		for _, peer := range existingPeersForIPAssign {
-			usedIPs[peer.VPNAddress] = true
+		// Generate reserved IPs for cluster nodes (10.8.0.10-99)
+		var reservedIPs []string
+		for i := 1; i < 100; i++ {
+			reservedIPs = append(reservedIPs, fmt.Sprintf("10.8.0.%d", i))
 		}
 
-		// Start from 100 and find first available
-		for i := 100; i < 255; i++ {
-			candidateIP := fmt.Sprintf("10.8.0.%d", i)
-			if !usedIPs[candidateIP] {
-				vpnJoinIP = candidateIP
-				break
-			}
+		assignedIP, err := vpnMgr.GetPeerRegistry().NextAvailableIP(stack, "10.8.0.0/24", reservedIPs)
+		if err != nil {
+			return fmt.Errorf("failed to assign VPN IP: %w", err)
 		}
-
-		if vpnJoinIP == "" {
-			return fmt.Errorf("no available VPN IPs in range 10.8.0.100-254")
-		}
-
+		vpnJoinIP = assignedIP
 		printInfo(fmt.Sprintf("Auto-assigned VPN IP: %s", vpnJoinIP))
 	} else {
-		printInfo(fmt.Sprintf("Using custom VPN IP: %s", vpnJoinIP))
+		printInfo(fmt.Sprintf("Using VPN IP: %s", vpnJoinIP))
 	}
 
-	// STEP 1: Generate WireGuard keypair
+	// STEP 3: Generate WireGuard keypair
 	fmt.Println()
-	printInfo("Step 1/4: Generating WireGuard keypair...")
+	printInfo("Step 3/5: Generating WireGuard keypair...")
 	privateKey, publicKey, err := generateWireGuardKeypair()
 	if err != nil {
 		return fmt.Errorf("failed to generate keypair: %w", err)
 	}
 	printSuccess(fmt.Sprintf("Generated keypair (public key: %s...)", publicKey[:16]))
-	printInfo(fmt.Sprintf("Using SSH key: %s", sshKeyPath))
 
-	// Get bastion info if enabled
-	if bastionEnabled {
-		if bastionOutput, ok := outputs["bastion"]; ok {
-			if bastionMap, ok := bastionOutput.Value.(map[string]interface{}); ok {
-				if pubIP, ok := bastionMap["public_ip"].(string); ok {
-					bastionIP = pubIP
-				}
-			}
-		}
-	}
-
-	// STEP 3: Get list of existing VPN peers (external clients)
+	// STEP 4: Add peer to all cluster nodes using VPN manager
 	fmt.Println()
-	printInfo("Step 2/5: Discovering existing VPN clients...")
+	printInfo("Step 4/5: Adding peer to cluster nodes...")
 
-	var existingPeers []VPNPeerInfo
-	if len(nodes) > 0 {
-		// Get list of all peers from first master node
-		firstMaster := nodes[0]
-		targetIP := firstMaster.WireGuardIP
-		if targetIP == "" {
-			targetIP = firstMaster.PrivateIP
-			if targetIP == "" {
-				targetIP = firstMaster.PublicIP
-			}
-		}
-
-		listPeersScript := `sudo wg show wg0 dump | tail -n +2 | while IFS=$'\t' read -r pubkey _ endpoint allowed_ips _; do
-			# Extract first IP from allowed-ips (format: 10.8.0.x/32,10.0.0.0/8)
-			first_ip=$(echo "$allowed_ips" | cut -d, -f1 | cut -d/ -f1)
-			if [ -n "$first_ip" ] && [ "$first_ip" != "(none)" ]; then
-				echo "$pubkey|$first_ip"
-			fi
-		done`
-		sshUserPeers := getSSHUserForProvider(firstMaster.Provider)
-
-		var listCmd *exec.Cmd
-		if bastionEnabled && bastionIP != "" {
-			listCmd = exec.Command("ssh",
-				"-i", sshKeyPath,
-				"-o", "StrictHostKeyChecking=accept-new",
-				"-o", "UserKnownHostsFile=/dev/null",
-				"-o", fmt.Sprintf("ProxyCommand=ssh -i %s -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null -W %%h:%%p root@%s", sshKeyPath, bastionIP),
-				fmt.Sprintf("%s@%s", sshUserPeers, targetIP),
-				listPeersScript,
-			)
-		} else {
-			listCmd = exec.Command("ssh",
-				"-i", sshKeyPath,
-				"-o", "StrictHostKeyChecking=accept-new",
-				"-o", "UserKnownHostsFile=/dev/null",
-				fmt.Sprintf("%s@%s", sshUserPeers, targetIP),
-				listPeersScript,
-			)
-		}
-
-		output, err := listCmd.CombinedOutput()
-		if err == nil {
-			lines := strings.Split(strings.TrimSpace(string(output)), "\n")
-			for _, line := range lines {
-				if line == "" {
-					continue
-				}
-				parts := strings.Split(line, "|")
-				if len(parts) == 2 {
-					peerIP := strings.TrimSpace(parts[1])
-					peerKey := strings.TrimSpace(parts[0])
-
-					// Skip if no IP
-					if peerIP == "" || peerIP == "(none)" {
-						continue
-					}
-
-					// Filter out cluster node IPs (10.8.0.10-99 are reserved for cluster)
-					if strings.HasPrefix(peerIP, "10.8.0.") {
-						ipParts := strings.Split(peerIP, ".")
-						if len(ipParts) == 4 {
-							var lastOctet int
-							if _, err := fmt.Sscanf(ipParts[3], "%d", &lastOctet); err == nil {
-								if lastOctet >= 10 && lastOctet < 100 {
-									continue // Skip cluster nodes (10-99)
-								}
-							}
-						}
-					}
-
-					existingPeers = append(existingPeers, VPNPeerInfo{
-						PublicKey:  peerKey,
-						VPNAddress: peerIP,
-					})
-				}
-			}
+	// Convert NodeInfo to vpn.NodeInfo
+	vpnNodes := make([]vpn.NodeInfo, len(nodes))
+	for i, n := range nodes {
+		vpnNodes[i] = vpn.NodeInfo{
+			Name:     n.Name,
+			PublicIP: n.PublicIP,
+			VPNIP:    n.WireGuardIP,
+			Provider: n.Provider,
 		}
 	}
 
-	if len(existingPeers) > 0 {
-		printInfo(fmt.Sprintf("Found %d existing VPN client(s)", len(existingPeers)))
-	} else {
-		printInfo("No existing VPN clients found")
-	}
+	// Use the robust connection manager for adding peers
+	connMgr := vpnMgr.GetConnectionManager()
+	configMgr := vpnMgr.GetConfigManager()
+	successCount := 0
+	failCount := 0
 
-	// STEP 4: Add peer to all cluster nodes
-	fmt.Println()
-	printInfo("Step 3/5: Adding peer to all cluster nodes...")
+	peerConfig := vpn.PeerConfig{
+		PublicKey:  publicKey,
+		AllowedIPs: []string{vpnJoinIP + "/32"},
+		Keepalive:  25,
+		Label:      vpnJoinLabel,
+	}
 
 	for i, node := range nodes {
-		nodeTarget := node.PublicIP
-		peerAddScript := generatePeerAddScript(vpnJoinIP, publicKey, vpnJoinLabel)
+		printInfo(fmt.Sprintf("  [%d/%d] Adding peer to %s...", i+1, len(nodes), node.Name))
 
-		// Try up to 3 times to handle transient SSH connection issues
-		maxRetries := 3
-		var output []byte
-		var err error
-		var attemptSucceeded bool
-
-		for attempt := 1; attempt <= maxRetries; attempt++ {
-			// Build SSH command based on bastion mode
-			var sshCmd *exec.Cmd
-			if bastionEnabled && bastionIP != "" {
-				// Use ProxyJump through bastion
-				if attempt == 1 {
-					printInfo(fmt.Sprintf("  [%d/%d] Adding peer to %s (via bastion)...", i+1, len(nodes), node.Name))
-				}
-				// Use WireGuard VPN IP for bastion ProxyJump (all nodes in VPN mesh)
-				targetIP := node.WireGuardIP
-				if targetIP == "" {
-					// Fallback to PrivateIP, then PublicIP
-					targetIP = node.PrivateIP
-					if targetIP == "" {
-						targetIP = node.PublicIP
-					}
-				}
-
-				sshUser := getSSHUserForNode(node.Provider)
-				sshCmd = exec.Command("ssh",
-					"-i", sshKeyPath,
-					"-o", "StrictHostKeyChecking=accept-new",
-					"-o", "UserKnownHostsFile=/dev/null",
-					"-o", "ConnectTimeout=10",
-					"-o", fmt.Sprintf("ProxyCommand=ssh -i %s -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null -W %%h:%%p root@%s", sshKeyPath, bastionIP),
-					fmt.Sprintf("%s@%s", sshUser, targetIP),
-					"bash", "-s",
-				)
-				// Pipe the script via stdin
-				sshCmd.Stdin = strings.NewReader(peerAddScript)
-			} else {
-				// Direct SSH
-				if attempt == 1 {
-					printInfo(fmt.Sprintf("  [%d/%d] Adding peer to %s...", i+1, len(nodes), node.Name))
-				}
-				sshUser := getSSHUserForNode(node.Provider)
-				sshCmd = exec.Command("ssh",
-					"-i", sshKeyPath,
-					"-o", "StrictHostKeyChecking=accept-new",
-					"-o", "UserKnownHostsFile=/dev/null",
-					"-o", "ConnectTimeout=10",
-					fmt.Sprintf("%s@%s", sshUser, nodeTarget),
-					"bash", "-s",
-				)
-				// Pipe the script via stdin
-				sshCmd.Stdin = strings.NewReader(peerAddScript)
+		// Determine target IP based on connectivity:
+		// - If bastion is enabled: connect through bastion to VPN IP (bastion is inside the mesh)
+		// - If no bastion: connect directly to public IP (we're outside the mesh)
+		var targetIP string
+		if bastionEnabled && bastionIP != "" {
+			// Through bastion: prefer VPN IP, then private IP
+			targetIP = node.WireGuardIP
+			if targetIP == "" {
+				targetIP = node.PrivateIP
 			}
-
-			output, err = sshCmd.CombinedOutput()
-			if err == nil {
-				attemptSucceeded = true
-				break // Success
-			}
-
-			// If this was the last attempt, log the failure
-			if attempt == maxRetries {
-				color.Yellow(fmt.Sprintf("  ⚠️  Failed to add peer to %s after %d attempts: %v (output: %s)", node.Name, maxRetries, err, string(output)))
-				continue
-			}
-
-			// Wait before retrying (exponential backoff)
-			time.Sleep(time.Duration(attempt) * time.Second)
-		}
-
-		if attemptSucceeded {
-			printSuccess(fmt.Sprintf("  ✓ Added peer to %s", node.Name))
-		}
-
-		// Small delay to avoid overwhelming bastion with simultaneous connections
-		if bastionEnabled && i < len(nodes)-1 {
-			time.Sleep(2 * time.Second)
-		}
-	}
-
-	// STEP 5: Add new peer to all existing VPN clients (including local machine if on VPN)
-	fmt.Println()
-	printInfo("Step 4/5: Adding peer to existing VPN clients...")
-
-	// Check if local machine has WireGuard running (cross-platform: Linux and macOS)
-	localHasWG := false
-	localWGInterface := ""
-
-	// Try to detect WireGuard by running 'wg show' which works on both Linux and macOS
-	checkLocalWG := exec.Command("sh", "-c", "sudo wg show 2>/dev/null | head -1 | awk '{print $2}'")
-	if output, err := checkLocalWG.CombinedOutput(); err == nil && len(output) > 0 {
-		iface := strings.TrimSpace(string(output))
-		if iface != "" {
-			localHasWG = true
-			localWGInterface = iface
-		}
-	}
-
-	// Always try to add to local machine if it has WireGuard running
-	if localHasWG {
-		printInfo(fmt.Sprintf("  [local] Adding peer to local WireGuard interface (%s)...", localWGInterface))
-		localAddCmd := exec.Command("sudo", "wg", "set", localWGInterface,
-			"peer", publicKey,
-			"allowed-ips", fmt.Sprintf("%s/32", vpnJoinIP),
-			"persistent-keepalive", "25")
-
-		if output, err := localAddCmd.CombinedOutput(); err != nil {
-			color.Yellow(fmt.Sprintf("  ⚠️  Failed to add peer locally: %v (output: %s)", err, string(output)))
-			color.Yellow(fmt.Sprintf("      You may need to run: sudo wg set %s peer %s allowed-ips %s/32 persistent-keepalive 25", localWGInterface, publicKey, vpnJoinIP))
 		} else {
-			printSuccess("  ✓ Added peer to local machine")
+			// Direct connection: must use public IP (we're outside the VPN)
+			targetIP = node.PublicIP
+		}
+
+		if targetIP == "" {
+			color.Yellow(fmt.Sprintf("  ⚠️  No reachable IP for %s, skipping", node.Name))
+			failCount++
+			continue
+		}
+
+		// Connect with retry
+		connCfg := vpn.ConnectionConfig{
+			Host:        targetIP,
+			User:        getSSHUserForNode(node.Provider),
+			UseBastion:  bastionEnabled && bastionIP != "",
+			BastionHost: bastionIP,
+			BastionUser: "root",
+			Timeout:     30 * time.Second,
+		}
+
+		conn, err := connMgr.Connect(ctx, connCfg)
+		if err != nil {
+			color.Yellow(fmt.Sprintf("  ⚠️  Failed to connect to %s: %v", node.Name, err))
+			failCount++
+			continue
+		}
+
+		// Add peer using ConfigManager (uses wg set - atomic operation)
+		if err := configMgr.AddPeer(ctx, conn, peerConfig); err != nil {
+			color.Yellow(fmt.Sprintf("  ⚠️  Failed to add peer to %s: %v", node.Name, err))
+			conn.Close()
+			failCount++
+			continue
+		}
+
+		conn.Close()
+		successCount++
+		printSuccess(fmt.Sprintf("  ✓ Added peer to %s", node.Name))
+
+		// Small delay between nodes
+		if bastionEnabled && i < len(nodes)-1 {
+			time.Sleep(1 * time.Second)
 		}
 	}
 
-	// Add to other existing VPN clients
-	if len(existingPeers) > 0 {
-
-		// For each existing peer, we need to add the new peer to their config
-		// This requires SSH access to those machines
-		for i, peer := range existingPeers {
-			printInfo(fmt.Sprintf("  [%d/%d] Updating VPN client at %s...", i+1, len(existingPeers), peer.VPNAddress))
-
-			// Try to add peer via SSH to the VPN IP
-			// Note: This assumes the existing clients are reachable via VPN
-			addPeerScript := fmt.Sprintf(`
-if command -v wg &> /dev/null; then
-    sudo wg set wg0 peer %s allowed-ips %s/32 persistent-keepalive 25 2>/dev/null || true
-    echo "✓ Peer added"
-else
-    echo "⚠️  WireGuard not installed"
-fi
-`, publicKey, vpnJoinIP)
-
-			// Try direct connection to VPN IP (requires being on VPN or having access)
-			sshCmd := exec.Command("ssh",
-				"-o", "StrictHostKeyChecking=accept-new",
-				"-o", "UserKnownHostsFile=/dev/null",
-				"-o", "ConnectTimeout=5",
-				fmt.Sprintf("root@%s", peer.VPNAddress),
-				addPeerScript,
-			)
-
-			output, err := sshCmd.CombinedOutput()
-			if err != nil {
-				// Try with different username (might not be root)
-				sshCmd2 := exec.Command("ssh",
-					"-o", "StrictHostKeyChecking=accept-new",
-					"-o", "UserKnownHostsFile=/dev/null",
-					"-o", "ConnectTimeout=5",
-					peer.VPNAddress,
-					addPeerScript,
-				)
-				output2, err2 := sshCmd2.CombinedOutput()
-				if err2 != nil {
-					color.Yellow(fmt.Sprintf("  ⚠️  Could not reach client at %s: %v", peer.VPNAddress, err))
-					color.Yellow(fmt.Sprintf("      Client will need to add peer manually: sudo wg set wg0 peer %s allowed-ips %s/32 persistent-keepalive 25", publicKey, vpnJoinIP))
-				} else {
-					if strings.Contains(string(output2), "✓") {
-						printSuccess(fmt.Sprintf("  ✓ Updated client at %s", peer.VPNAddress))
-					} else {
-						color.Yellow(fmt.Sprintf("  ⚠️  Unexpected response from %s: %s", peer.VPNAddress, string(output2)))
-					}
-				}
-			} else {
-				if strings.Contains(string(output), "✓") {
-					printSuccess(fmt.Sprintf("  ✓ Updated client at %s", peer.VPNAddress))
-				} else {
-					color.Yellow(fmt.Sprintf("  ⚠️  Unexpected response from %s: %s", peer.VPNAddress, string(output)))
-				}
-			}
-		}
+	if successCount == 0 {
+		return fmt.Errorf("failed to add peer to any cluster node")
 	}
 
-	// STEP 6: Generate client configuration
+	// Register peer in local registry
+	registeredPeer := vpn.RegisteredPeer{
+		PublicKey:  publicKey,
+		VPNIP:      vpnJoinIP,
+		Label:      vpnJoinLabel,
+		AllowedIPs: []string{vpnJoinIP + "/32"},
+	}
+	if err := vpnMgr.GetPeerRegistry().Register(stack, registeredPeer); err != nil {
+		color.Yellow(fmt.Sprintf("  ⚠️  Failed to register peer locally: %v", err))
+	}
+
+	// STEP 5: Discover existing peers and generate client config
 	fmt.Println()
 	printInfo("Step 5/5: Generating client configuration...")
+
+	// Fetch existing peers from cluster
+	var existingPeers []VPNPeerInfo
+	if len(nodes) > 0 {
+		firstNode := nodes[0]
+		targetIP := firstNode.WireGuardIP
+		if targetIP == "" {
+			targetIP = firstNode.PrivateIP
+			if targetIP == "" {
+				targetIP = firstNode.PublicIP
+			}
+		}
+
+		connCfg := vpn.ConnectionConfig{
+			Host:        targetIP,
+			User:        getSSHUserForNode(firstNode.Provider),
+			UseBastion:  bastionEnabled && bastionIP != "",
+			BastionHost: bastionIP,
+			BastionUser: "root",
+		}
+
+		if conn, err := connMgr.Connect(ctx, connCfg); err == nil {
+			listScript := `sudo wg show wg0 dump | tail -n +2 | while IFS=$'\t' read -r pubkey _ endpoint allowed_ips _; do
+				first_ip=$(echo "$allowed_ips" | cut -d, -f1 | cut -d/ -f1)
+				if [ -n "$first_ip" ] && [ "$first_ip" != "(none)" ]; then
+					echo "$pubkey|$first_ip"
+				fi
+			done`
+
+			if output, err := conn.Execute(listScript); err == nil {
+				lines := strings.Split(strings.TrimSpace(output), "\n")
+				for _, line := range lines {
+					if line == "" {
+						continue
+					}
+					parts := strings.Split(line, "|")
+					if len(parts) == 2 {
+						peerIP := strings.TrimSpace(parts[1])
+						peerKey := strings.TrimSpace(parts[0])
+						if peerIP != "" && peerIP != "(none)" {
+							// Filter cluster nodes (10.8.0.10-99)
+							if strings.HasPrefix(peerIP, "10.8.0.") {
+								ipParts := strings.Split(peerIP, ".")
+								if len(ipParts) == 4 {
+									var lastOctet int
+									if _, err := fmt.Sscanf(ipParts[3], "%d", &lastOctet); err == nil {
+										if lastOctet >= 10 && lastOctet < 100 {
+											continue
+										}
+									}
+								}
+							}
+							existingPeers = append(existingPeers, VPNPeerInfo{
+								PublicKey:  peerKey,
+								VPNAddress: peerIP,
+							})
+						}
+					}
+				}
+			}
+			conn.Close()
+		}
+	}
+
+	// Generate client config
 	clientConfig := generateClientConfig(privateKey, vpnJoinIP, vpnJoinLabel, nodes, existingPeers, sshKeyPath, bastionEnabled, bastionIP)
 
 	configPath := "./wg0-client.conf"
@@ -1351,30 +1177,45 @@ fi
 	}
 	printSuccess(fmt.Sprintf("Client configuration saved to: %s", configPath))
 
-	// STEP 5: Optionally install
+	// Optional: Install configuration
 	if vpnJoinInstall {
 		fmt.Println()
-		printInfo("Step 4/4: Installing WireGuard configuration...")
+		installVPNConfig(configPath, clientConfig, vpnJoinRemote)
+	} else {
+		fmt.Println()
+		printVPNInstallInstructions(configPath)
+	}
 
-		if vpnJoinRemote != "" {
-			// Remote installation via SSH
-			printInfo(fmt.Sprintf("Installing WireGuard on remote host: %s", vpnJoinRemote))
+	fmt.Println()
+	printSuccess(fmt.Sprintf("Successfully joined VPN with IP %s!", vpnJoinIP))
+	printInfo(fmt.Sprintf("Configured %d/%d nodes", successCount, len(nodes)))
+	printInfo("You can now access cluster nodes via their VPN IPs (10.8.0.x)")
 
-			// Install script for remote host
-			installScript := fmt.Sprintf(`
-# Install WireGuard if not present
+	// Record operation
+	details := fmt.Sprintf("Joined with IP %s, %d/%d nodes configured", vpnJoinIP, successCount, len(nodes))
+	operations.RecordVPNOperation(stack, "join", vpnJoinLabel, "", "success", details, len(nodes), time.Since(startTime), nil)
+
+	return nil
+}
+
+// installVPNConfig handles WireGuard configuration installation
+func installVPNConfig(configPath, clientConfig, remoteHost string) {
+	printInfo("Installing WireGuard configuration...")
+
+	if remoteHost != "" {
+		// Remote installation via SSH
+		printInfo(fmt.Sprintf("Installing WireGuard on remote host: %s", remoteHost))
+
+		installScript := fmt.Sprintf(`
 if ! command -v wg &> /dev/null; then
     echo "Installing WireGuard..."
     if [ -f /etc/debian_version ]; then
-        # Debian/Ubuntu
         export DEBIAN_FRONTEND=noninteractive
         apt-get update -qq
         apt-get install -y -qq wireguard-tools >/dev/null 2>&1
     elif [ -f /etc/redhat-release ]; then
-        # RHEL/CentOS/Fedora
         yum install -y -q wireguard-tools
     elif [ -f /etc/arch-release ]; then
-        # Arch Linux
         pacman -S --noconfirm wireguard-tools
     else
         echo "⚠️  Unsupported OS. Please install WireGuard manually."
@@ -1382,26 +1223,20 @@ if ! command -v wg &> /dev/null; then
     fi
 fi
 
-# Create WireGuard directory
 mkdir -p /etc/wireguard
 chmod 700 /etc/wireguard
 
-# Write configuration
 cat > /etc/wireguard/wg0.conf << 'WGEOF'
 %s
 WGEOF
 
 chmod 600 /etc/wireguard/wg0.conf
-
-# Enable IP forwarding (if needed)
 echo "net.ipv4.ip_forward=1" >> /etc/sysctl.conf
 sysctl -p >/dev/null 2>&1
 
-# Start WireGuard
 wg-quick down wg0 2>/dev/null || true
 wg-quick up wg0
 
-# Enable on boot
 if command -v systemctl &> /dev/null; then
     systemctl enable wg-quick@wg0 2>/dev/null || true
 fi
@@ -1409,150 +1244,106 @@ fi
 echo "✓ WireGuard installed and started"
 `, clientConfig)
 
-			// Execute installation via SSH using stdin to avoid shell escaping issues
-			sshCmd := exec.Command("ssh",
-				"-o", "StrictHostKeyChecking=accept-new",
-				"-o", "UserKnownHostsFile=/dev/null",
-				vpnJoinRemote,
-				"sudo", "bash",
-			)
-			sshCmd.Stdin = strings.NewReader(installScript)
+		sshCmd := exec.Command("ssh",
+			"-o", "StrictHostKeyChecking=accept-new",
+			"-o", "UserKnownHostsFile=/dev/null",
+			remoteHost,
+			"sudo", "bash",
+		)
+		sshCmd.Stdin = strings.NewReader(installScript)
 
-			output, err := sshCmd.CombinedOutput()
-			if err != nil {
-				color.Yellow(fmt.Sprintf("⚠️  Remote installation failed: %v", err))
-				color.Yellow(fmt.Sprintf("Output: %s", string(output)))
-				fmt.Println()
-				fmt.Println("Please install manually on remote host:")
-				fmt.Println("  1. Install WireGuard: sudo apt install wireguard-tools")
-				fmt.Printf("  2. Copy config to remote: scp wg0-client.conf %s:/tmp/wg0.conf\n", vpnJoinRemote)
-				fmt.Printf("  3. On remote: sudo mv /tmp/wg0.conf /etc/wireguard/wg0.conf\n")
-				fmt.Println("  4. On remote: sudo wg-quick up wg0")
-			} else {
-				printSuccess("✓ WireGuard installed and activated on remote host!")
-				fmt.Println(string(output))
-				fmt.Println()
-				fmt.Println("To check VPN status on remote:")
-				fmt.Printf("  ssh %s sudo wg show\n", vpnJoinRemote)
-			}
+		output, err := sshCmd.CombinedOutput()
+		if err != nil {
+			color.Yellow(fmt.Sprintf("⚠️  Remote installation failed: %v", err))
+			color.Yellow(fmt.Sprintf("Output: %s", string(output)))
 		} else {
-			// Detect OS
-			osType := detectOS()
-
-			switch osType {
-			case "darwin": // macOS
-				printInfo("Detected macOS - installing WireGuard VPN")
-
-				// Try to install automatically (requires sudo)
-				// Create WireGuard directory
-				mkdirCmd := exec.Command("sudo", "mkdir", "-p", "/opt/homebrew/etc/wireguard")
-				if err := mkdirCmd.Run(); err != nil {
-					color.Yellow("⚠️  Failed to create WireGuard directory. Please run manually:")
-					fmt.Println("  sudo mkdir -p /opt/homebrew/etc/wireguard")
-					fmt.Printf("  sudo cp %s /opt/homebrew/etc/wireguard/wg0.conf\n", configPath)
-					fmt.Println("  sudo wg-quick up wg0")
-					return nil
-				}
-
-				// Copy configuration
-				cpCmd := exec.Command("sudo", "cp", configPath, "/opt/homebrew/etc/wireguard/wg0.conf")
-				if err := cpCmd.Run(); err != nil {
-					color.Yellow("⚠️  Failed to copy configuration. Please run manually:")
-					fmt.Printf("  sudo cp %s /opt/homebrew/etc/wireguard/wg0.conf\n", configPath)
-					fmt.Println("  sudo wg-quick up wg0")
-					return nil
-				}
-
-				// Start WireGuard
-				printInfo("Starting WireGuard VPN...")
-				upCmd := exec.Command("sudo", "wg-quick", "up", "wg0")
-				if output, err := upCmd.CombinedOutput(); err != nil {
-					color.Yellow(fmt.Sprintf("⚠️  Failed to start WireGuard: %v", err))
-					color.Yellow(fmt.Sprintf("Output: %s", string(output)))
-					fmt.Println()
-					fmt.Println("Please try manually:")
-					fmt.Println("  sudo wg-quick up wg0")
-					return nil
-				}
-
-				printSuccess("✓ WireGuard VPN activated successfully!")
-				fmt.Println()
-				fmt.Println("To check VPN status:")
-				fmt.Println("  sudo wg show")
-				fmt.Println()
-				fmt.Println("To stop VPN:")
-				fmt.Println("  sudo wg-quick down wg0")
-
-			case "linux":
-				// Check if running as root
-				if os.Geteuid() != 0 {
-					color.Yellow("⚠️  Installation requires root privileges. Please run:")
-					fmt.Println()
-					fmt.Printf("  sudo cp %s /etc/wireguard/wg0.conf\n", configPath)
-					fmt.Println("  sudo wg-quick up wg0")
-					fmt.Println("  sudo systemctl enable wg-quick@wg0")
-				} else {
-					// Install configuration
-					if err := exec.Command("cp", configPath, "/etc/wireguard/wg0.conf").Run(); err != nil {
-						return fmt.Errorf("failed to copy config: %w", err)
-					}
-
-					if err := exec.Command("wg-quick", "up", "wg0").Run(); err != nil {
-						return fmt.Errorf("failed to start WireGuard: %w", err)
-					}
-
-					if err := exec.Command("systemctl", "enable", "wg-quick@wg0").Run(); err != nil {
-						color.Yellow("⚠️  Failed to enable WireGuard service on boot")
-					}
-
-					printSuccess("WireGuard installed and started")
-				}
-
-			default:
-				color.Yellow(fmt.Sprintf("⚠️  Unsupported OS: %s", osType))
-				color.Cyan(fmt.Sprintf("\nConfiguration saved to: %s", configPath))
-				color.Cyan("Please install WireGuard manually for your platform")
-			}
+			printSuccess("✓ WireGuard installed and activated on remote host!")
+			fmt.Println(string(output))
 		}
 	} else {
-		fmt.Println()
+		// Local installation
 		osType := detectOS()
 
-		if osType == "darwin" {
-			color.Cyan("To install the configuration on macOS:")
-			fmt.Println()
-			fmt.Println("  1. Install WireGuard app: https://www.wireguard.com/install/")
-			fmt.Printf("  2. Import tunnel from file: %s\n", configPath)
-			fmt.Println("  3. Click 'Activate' to connect")
-			fmt.Println()
-			color.Cyan("Or use command line:")
-			fmt.Printf("  sudo mkdir -p /opt/homebrew/etc/wireguard\n")
-			fmt.Printf("  sudo cp %s /opt/homebrew/etc/wireguard/wg0.conf\n", configPath)
-			fmt.Printf("  wg-quick up /opt/homebrew/etc/wireguard/wg0.conf\n")
-		} else {
-			color.Cyan("To install the configuration manually:")
-			fmt.Println()
-			fmt.Printf("  sudo cp %s /etc/wireguard/wg0.conf\n", configPath)
-			fmt.Println("  sudo wg-quick up wg0")
-			fmt.Println("  sudo systemctl enable wg-quick@wg0")
+		switch osType {
+		case "darwin":
+			printInfo("Detected macOS - installing WireGuard VPN")
+
+			mkdirCmd := exec.Command("sudo", "mkdir", "-p", "/opt/homebrew/etc/wireguard")
+			if err := mkdirCmd.Run(); err != nil {
+				color.Yellow("⚠️  Failed to create WireGuard directory")
+				printVPNInstallInstructions(configPath)
+				return
+			}
+
+			cpCmd := exec.Command("sudo", "cp", configPath, "/opt/homebrew/etc/wireguard/wg0.conf")
+			if err := cpCmd.Run(); err != nil {
+				color.Yellow("⚠️  Failed to copy configuration")
+				printVPNInstallInstructions(configPath)
+				return
+			}
+
+			printInfo("Starting WireGuard VPN...")
+			upCmd := exec.Command("sudo", "wg-quick", "up", "wg0")
+			if output, err := upCmd.CombinedOutput(); err != nil {
+				color.Yellow(fmt.Sprintf("⚠️  Failed to start WireGuard: %v", err))
+				color.Yellow(fmt.Sprintf("Output: %s", string(output)))
+				return
+			}
+
+			printSuccess("✓ WireGuard VPN activated successfully!")
+
+		case "linux":
+			if os.Geteuid() != 0 {
+				color.Yellow("⚠️  Installation requires root privileges")
+				printVPNInstallInstructions(configPath)
+			} else {
+				if err := exec.Command("cp", configPath, "/etc/wireguard/wg0.conf").Run(); err != nil {
+					color.Yellow(fmt.Sprintf("⚠️  Failed to copy config: %v", err))
+					return
+				}
+
+				if err := exec.Command("wg-quick", "up", "wg0").Run(); err != nil {
+					color.Yellow(fmt.Sprintf("⚠️  Failed to start WireGuard: %v", err))
+					return
+				}
+
+				exec.Command("systemctl", "enable", "wg-quick@wg0").Run()
+				printSuccess("WireGuard installed and started")
+			}
+
+		default:
+			color.Yellow(fmt.Sprintf("⚠️  Unsupported OS: %s", osType))
+			printVPNInstallInstructions(configPath)
 		}
 	}
+}
 
-	fmt.Println()
-	printSuccess(fmt.Sprintf("Successfully joined VPN with IP %s!", vpnJoinIP))
-	printInfo("You can now access cluster nodes via their VPN IPs (10.8.0.x)")
+// printVPNInstallInstructions prints manual installation instructions
+func printVPNInstallInstructions(configPath string) {
+	osType := detectOS()
 
-	// Record the operation
-	nodeCount := len(nodes)
-	details := fmt.Sprintf("Joined with IP %s, %d cluster nodes configured", vpnJoinIP, nodeCount)
-	operations.RecordVPNOperation(stack, "join", vpnJoinLabel, "", "success", details, nodeCount, time.Since(startTime), nil)
-
-	return nil
+	if osType == "darwin" {
+		color.Cyan("To install the configuration on macOS:")
+		fmt.Println()
+		fmt.Println("  1. Install WireGuard app: https://www.wireguard.com/install/")
+		fmt.Printf("  2. Import tunnel from file: %s\n", configPath)
+		fmt.Println("  3. Click 'Activate' to connect")
+		fmt.Println()
+		color.Cyan("Or use command line:")
+		fmt.Printf("  sudo mkdir -p /opt/homebrew/etc/wireguard\n")
+		fmt.Printf("  sudo cp %s /opt/homebrew/etc/wireguard/wg0.conf\n", configPath)
+		fmt.Printf("  wg-quick up /opt/homebrew/etc/wireguard/wg0.conf\n")
+	} else {
+		color.Cyan("To install the configuration manually:")
+		fmt.Println()
+		fmt.Printf("  sudo cp %s /etc/wireguard/wg0.conf\n", configPath)
+		fmt.Println("  sudo wg-quick up wg0")
+		fmt.Println("  sudo systemctl enable wg-quick@wg0")
+	}
 }
 
 func runVPNLeave(cmd *cobra.Command, args []string) error {
 	startTime := time.Now()
-
 	ctx := context.Background()
 
 	// Require a valid stack
@@ -1564,35 +1355,31 @@ func runVPNLeave(cmd *cobra.Command, args []string) error {
 	printHeader(fmt.Sprintf("👋 Leaving VPN - Stack: %s", stack))
 
 	// Determine which peer to remove
-	var targetIP string
+	var targetVPNIP string
 	if vpnLeaveIP != "" {
-		// Remove specific peer by IP
-		targetIP = vpnLeaveIP
-		printInfo(fmt.Sprintf("Removing peer with VPN IP: %s", targetIP))
+		targetVPNIP = vpnLeaveIP
+		printInfo(fmt.Sprintf("Removing peer with VPN IP: %s", targetVPNIP))
 	} else {
-		// Remove local machine - detect VPN IP from local WireGuard interface
 		fmt.Println()
 		printInfo("Detecting local VPN IP address...")
 
-		// Try to get local VPN IP from wg0 interface
-		cmd := exec.Command("sh", "-c", "ip addr show wg0 2>/dev/null | grep 'inet ' | awk '{print $2}' | cut -d/ -f1")
-		output, err := cmd.CombinedOutput()
+		// Try to get local VPN IP from wg0 interface (cross-platform)
+		detectCmd := exec.Command("sh", "-c", "ip addr show wg0 2>/dev/null | grep 'inet ' | awk '{print $2}' | cut -d/ -f1 || ifconfig wg0 2>/dev/null | grep 'inet ' | awk '{print $2}'")
+		output, err := detectCmd.CombinedOutput()
 		if err != nil || len(output) == 0 {
 			return fmt.Errorf("could not detect local VPN IP. Use --vpn-ip flag to specify manually, or ensure WireGuard is running locally")
 		}
 
-		targetIP = strings.TrimSpace(string(output))
-		printInfo(fmt.Sprintf("Detected local VPN IP: %s", targetIP))
-		printInfo("Removing local machine from VPN mesh...")
+		targetVPNIP = strings.TrimSpace(string(output))
+		printInfo(fmt.Sprintf("Detected local VPN IP: %s", targetVPNIP))
 	}
 
-	// Create workspace with S3 support
+	// Create workspace
 	workspace, err := createWorkspaceWithS3Support(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to create workspace: %w", err)
 	}
 
-	// Use fully qualified stack name for S3 backend
 	fullyQualifiedStackName := fmt.Sprintf("organization/sloth-kubernetes/%s", stack)
 	s, err := auto.SelectStack(ctx, fullyQualifiedStackName, workspace)
 	if err != nil {
@@ -1604,7 +1391,6 @@ func runVPNLeave(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to get stack outputs: %w", err)
 	}
 
-	// Parse nodes
 	nodes, err := ParseNodeOutputs(outputs)
 	if err != nil {
 		return fmt.Errorf("failed to parse nodes: %w", err)
@@ -1635,113 +1421,139 @@ func runVPNLeave(cmd *cobra.Command, args []string) error {
 		}
 	}
 
+	// Initialize VPN Manager
+	vpnMgr, err := vpn.NewManager(vpn.ManagerConfig{
+		SSHKeyPath:     sshKeyPath,
+		RetryPolicy:    vpn.NewDefaultRetryPolicy(),
+		ConnectTimeout: 30 * time.Second,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to initialize VPN manager: %w", err)
+	}
+
+	// STEP 1: Check peer registry first
 	fmt.Println()
-	printInfo(fmt.Sprintf("Removing peer from %d cluster nodes...", len(nodes)))
+	printInfo("Step 1/3: Looking up peer in registry...")
 
-	// First, get the public key for this VPN IP from one of the nodes
 	var peerPublicKey string
-	if len(nodes) > 0 {
-		firstNode := nodes[0]
-		targetIP := firstNode.WireGuardIP
-		if targetIP == "" {
-			targetIP = firstNode.PrivateIP
-			if targetIP == "" {
-				targetIP = firstNode.PublicIP
+
+	// Try to find in local registry
+	if peer, err := vpnMgr.GetPeerRegistry().GetByIP(stack, targetVPNIP); err == nil {
+		peerPublicKey = peer.PublicKey
+		printInfo(fmt.Sprintf("Found peer in registry: %s...", peerPublicKey[:16]))
+	} else {
+		// Query cluster for public key
+		printInfo("Peer not in local registry, querying cluster...")
+
+		if len(nodes) > 0 {
+			firstNode := nodes[0]
+			// Determine target IP based on connectivity
+			var nodeIP string
+			if bastionEnabled && bastionIP != "" {
+				nodeIP = firstNode.WireGuardIP
+				if nodeIP == "" {
+					nodeIP = firstNode.PrivateIP
+				}
+			} else {
+				nodeIP = firstNode.PublicIP
 			}
-		}
 
-		// Get public key for this VPN IP
-		getPubKeyCmd := fmt.Sprintf("sudo wg show wg0 dump | awk '$5 ~ /%s\\/32/ {print $1; exit}'", strings.ReplaceAll(targetIP, ".", "\\."))
-		sshUserLeave := getSSHUserForProvider(firstNode.Provider)
+			connCfg := vpn.ConnectionConfig{
+				Host:        nodeIP,
+				User:        getSSHUserForNode(firstNode.Provider),
+				UseBastion:  bastionEnabled && bastionIP != "",
+				BastionHost: bastionIP,
+				BastionUser: "root",
+			}
 
-		var sshCmd *exec.Cmd
-		if bastionEnabled && bastionIP != "" {
-			sshCmd = exec.Command("ssh",
-				"-q",
-				"-i", sshKeyPath,
-				"-o", "StrictHostKeyChecking=accept-new",
-				"-o", "UserKnownHostsFile=/dev/null",
-				"-o", "ConnectTimeout=5",
-				"-o", fmt.Sprintf("ProxyCommand=ssh -q -i %s -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null -W %%h:%%p root@%s", sshKeyPath, bastionIP),
-				fmt.Sprintf("%s@%s", sshUserLeave, targetIP),
-				getPubKeyCmd,
-			)
-		} else {
-			sshCmd = exec.Command("ssh",
-				"-q",
-				"-i", sshKeyPath,
-				"-o", "StrictHostKeyChecking=accept-new",
-				"-o", "UserKnownHostsFile=/dev/null",
-				"-o", "ConnectTimeout=5",
-				fmt.Sprintf("%s@%s", sshUserLeave, firstNode.PublicIP),
-				getPubKeyCmd,
-			)
-		}
+			conn, err := vpnMgr.GetConnectionManager().Connect(ctx, connCfg)
+			if err != nil {
+				return fmt.Errorf("failed to connect to cluster: %w", err)
+			}
 
-		output, err := sshCmd.CombinedOutput()
-		if err == nil && len(output) > 0 {
-			peerPublicKey = strings.TrimSpace(string(output))
+			// Query for public key by VPN IP
+			getPubKeyCmd := fmt.Sprintf("sudo wg show wg0 dump | awk '$4 ~ /%s\\/32/ {print $1; exit}'", strings.ReplaceAll(targetVPNIP, ".", "\\."))
+			output, err := conn.Execute(getPubKeyCmd)
+			conn.Close()
+
+			if err != nil || strings.TrimSpace(output) == "" {
+				return fmt.Errorf("peer with VPN IP %s not found in cluster", targetVPNIP)
+			}
+
+			peerPublicKey = strings.TrimSpace(output)
 			printInfo(fmt.Sprintf("Found peer public key: %s...", peerPublicKey[:16]))
-		} else {
-			color.Yellow(fmt.Sprintf("⚠️  Could not find peer with VPN IP %s", targetIP))
-			return fmt.Errorf("peer not found in cluster")
 		}
 	}
 
-	// Remove peer from all nodes
+	// STEP 2: Remove peer from all cluster nodes
+	fmt.Println()
+	printInfo("Step 2/3: Removing peer from cluster nodes...")
+
+	connMgr := vpnMgr.GetConnectionManager()
+	configMgr := vpnMgr.GetConfigManager()
 	successCount := 0
+	failCount := 0
+
 	for i, node := range nodes {
-		if node.WireGuardIP == "" {
+		// Determine target IP based on connectivity
+		var nodeIP string
+		if bastionEnabled && bastionIP != "" {
+			nodeIP = node.WireGuardIP
+			if nodeIP == "" {
+				nodeIP = node.PrivateIP
+			}
+		} else {
+			nodeIP = node.PublicIP
+		}
+
+		if nodeIP == "" {
+			color.Yellow(fmt.Sprintf("  ⚠️  No reachable IP for %s, skipping", node.Name))
+			failCount++
 			continue
 		}
 
-		targetIP := node.WireGuardIP
-		if targetIP == "" {
-			targetIP = node.PrivateIP
-			if targetIP == "" {
-				targetIP = node.PublicIP
-			}
+		printInfo(fmt.Sprintf("  [%d/%d] Removing peer from %s...", i+1, len(nodes), node.Name))
+
+		connCfg := vpn.ConnectionConfig{
+			Host:        nodeIP,
+			User:        getSSHUserForNode(node.Provider),
+			UseBastion:  bastionEnabled && bastionIP != "",
+			BastionHost: bastionIP,
+			BastionUser: "root",
+			Timeout:     30 * time.Second,
 		}
 
-		// Remove peer using public key
-		removeCmd := fmt.Sprintf("wg set wg0 peer %s remove 2>/dev/null && wg-quick save wg0 && echo 'SUCCESS' || echo 'FAILED'", peerPublicKey)
-		sshUserRemove := getSSHUserForProvider(node.Provider)
-
-		var sshCmd *exec.Cmd
-		if bastionEnabled && bastionIP != "" {
-			sshCmd = exec.Command("ssh",
-				"-q",
-				"-i", sshKeyPath,
-				"-o", "StrictHostKeyChecking=accept-new",
-				"-o", "UserKnownHostsFile=/dev/null",
-				"-o", "ConnectTimeout=5",
-				"-o", fmt.Sprintf("ProxyCommand=ssh -q -i %s -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null -W %%h:%%p root@%s", sshKeyPath, bastionIP),
-				fmt.Sprintf("%s@%s", sshUserRemove, targetIP),
-				removeCmd,
-			)
-		} else {
-			sshCmd = exec.Command("ssh",
-				"-q",
-				"-i", sshKeyPath,
-				"-o", "StrictHostKeyChecking=accept-new",
-				"-o", "UserKnownHostsFile=/dev/null",
-				"-o", "ConnectTimeout=5",
-				fmt.Sprintf("%s@%s", sshUserRemove, node.PublicIP),
-				removeCmd,
-			)
+		conn, err := connMgr.Connect(ctx, connCfg)
+		if err != nil {
+			color.Yellow(fmt.Sprintf("  ⚠️  Failed to connect to %s: %v", node.Name, err))
+			failCount++
+			continue
 		}
 
-		output, err := sshCmd.CombinedOutput()
-		result := strings.TrimSpace(string(output))
-
-		if err == nil && result == "SUCCESS" {
-			fmt.Printf("  [%d/%d] ✓ Removed peer from %s\n", i+1, len(nodes), node.Name)
-			successCount++
-		} else {
-			fmt.Printf("  [%d/%d] ✗ Failed to remove peer from %s\n", i+1, len(nodes), node.Name)
+		if err := configMgr.RemovePeer(ctx, conn, peerPublicKey); err != nil {
+			color.Yellow(fmt.Sprintf("  ⚠️  Failed to remove peer from %s: %v", node.Name, err))
+			conn.Close()
+			failCount++
+			continue
 		}
+
+		conn.Close()
+		successCount++
+		printSuccess(fmt.Sprintf("  ✓ Removed peer from %s", node.Name))
 	}
 
+	// STEP 3: Cleanup
+	fmt.Println()
+	printInfo("Step 3/3: Cleanup...")
+
+	// Remove from local registry
+	if err := vpnMgr.GetPeerRegistry().Unregister(stack, peerPublicKey); err != nil {
+		color.Yellow(fmt.Sprintf("  ⚠️  Failed to remove from registry: %v", err))
+	} else {
+		printSuccess("  ✓ Removed from local registry")
+	}
+
+	// Summary
 	fmt.Println()
 	if successCount == len(nodes) {
 		color.Green("✓ Successfully removed peer from all nodes!")
@@ -1752,40 +1564,27 @@ func runVPNLeave(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to remove peer")
 	}
 
-	fmt.Println()
-	printInfo("Peer has been removed from the cluster VPN mesh")
-
-	// If removing local machine (no --vpn-ip flag), try to stop WireGuard locally
+	// If removing local machine, try to stop WireGuard
 	if vpnLeaveIP == "" {
 		fmt.Println()
 		printInfo("Stopping local WireGuard interface...")
 
-		// Try to stop WireGuard
 		osType := detectOS()
 		var stopCmd *exec.Cmd
 
 		switch osType {
-		case "darwin":
-			stopCmd = exec.Command("sudo", "wg-quick", "down", "wg0")
-		case "linux":
+		case "darwin", "linux":
 			stopCmd = exec.Command("sudo", "wg-quick", "down", "wg0")
 		default:
 			color.Yellow("⚠️  Unsupported OS - please stop WireGuard manually")
-			fmt.Println()
-			color.Cyan("To stop WireGuard manually:")
-			fmt.Println("  sudo wg-quick down wg0")
-			fmt.Println("  sudo rm /etc/wireguard/wg0.conf")
+			printWireGuardStopInstructions(targetVPNIP)
 			return nil
 		}
 
-		output, err := stopCmd.CombinedOutput()
-		if err != nil {
+		if output, err := stopCmd.CombinedOutput(); err != nil {
 			color.Yellow(fmt.Sprintf("⚠️  Failed to stop WireGuard: %v", err))
 			color.Yellow(fmt.Sprintf("Output: %s", string(output)))
-			fmt.Println()
-			color.Cyan("Please stop WireGuard manually:")
-			fmt.Println("  sudo wg-quick down wg0")
-			fmt.Println("  sudo rm /etc/wireguard/wg0.conf")
+			printWireGuardStopInstructions(targetVPNIP)
 		} else {
 			printSuccess("✓ WireGuard interface stopped successfully!")
 			fmt.Println()
@@ -1793,23 +1592,26 @@ func runVPNLeave(cmd *cobra.Command, args []string) error {
 			fmt.Println("  sudo rm /etc/wireguard/wg0.conf")
 		}
 	} else {
-		// Remote peer removal
-		fmt.Println()
-		color.Cyan(fmt.Sprintf("To stop WireGuard on the removed machine (%s):", targetIP))
-		fmt.Println("  sudo wg-quick down wg0")
-		fmt.Println("  sudo rm /etc/wireguard/wg0.conf")
+		printWireGuardStopInstructions(targetVPNIP)
 	}
 
-	// Record the operation
-	nodeCount := len(nodes)
-	details := fmt.Sprintf("Removed peer %s from %d nodes", targetIP, successCount)
+	// Record operation
+	details := fmt.Sprintf("Removed peer %s from %d/%d nodes", targetVPNIP, successCount, len(nodes))
 	status := "success"
 	if successCount < len(nodes) {
 		status = "partial"
 	}
-	operations.RecordVPNOperation(stack, "leave", "", "", status, details, nodeCount, time.Since(startTime), nil)
+	operations.RecordVPNOperation(stack, "leave", "", "", status, details, len(nodes), time.Since(startTime), nil)
 
 	return nil
+}
+
+// printWireGuardStopInstructions prints instructions for stopping WireGuard
+func printWireGuardStopInstructions(vpnIP string) {
+	fmt.Println()
+	color.Cyan(fmt.Sprintf("To stop WireGuard on the removed machine (%s):", vpnIP))
+	fmt.Println("  sudo wg-quick down wg0")
+	fmt.Println("  sudo rm /etc/wireguard/wg0.conf")
 }
 
 func runVPNClientConfig(cmd *cobra.Command, args []string) error {
