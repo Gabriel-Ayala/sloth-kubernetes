@@ -68,9 +68,9 @@ func (p *DigitalOceanProvider) setupSSHKeys(ctx *pulumi.Context) error {
 		p.sshKeys = pulumi.StringArray{doSSHKey.Fingerprint}
 
 		// Export SSH key info
-		secrets.Export(ctx,"do_ssh_key_id", doSSHKey.ID())
-		secrets.Export(ctx,"do_ssh_key_fingerprint", doSSHKey.Fingerprint)
-		secrets.Export(ctx,"do_ssh_key_name", doSSHKey.Name)
+		secrets.Export(ctx, "do_ssh_key_id", doSSHKey.ID())
+		secrets.Export(ctx, "do_ssh_key_fingerprint", doSSHKey.Fingerprint)
+		secrets.Export(ctx, "do_ssh_key_name", doSSHKey.Name)
 	} else if len(p.config.SSHKeys) > 0 {
 		// Use existing SSH keys
 		keys := make(pulumi.StringArray, len(p.config.SSHKeys))
@@ -157,10 +157,10 @@ func (p *DigitalOceanProvider) CreateNode(ctx *pulumi.Context, node *config.Node
 	}
 
 	// Export node information
-	secrets.Export(ctx,fmt.Sprintf("%s_public_ip", node.Name), droplet.Ipv4Address)
-	secrets.Export(ctx,fmt.Sprintf("%s_private_ip", node.Name), droplet.Ipv4AddressPrivate)
-	secrets.Export(ctx,fmt.Sprintf("%s_id", node.Name), droplet.ID())
-	secrets.Export(ctx,fmt.Sprintf("%s_status", node.Name), droplet.Status)
+	secrets.Export(ctx, fmt.Sprintf("%s_public_ip", node.Name), droplet.Ipv4Address)
+	secrets.Export(ctx, fmt.Sprintf("%s_private_ip", node.Name), droplet.Ipv4AddressPrivate)
+	secrets.Export(ctx, fmt.Sprintf("%s_id", node.Name), droplet.ID())
+	secrets.Export(ctx, fmt.Sprintf("%s_status", node.Name), droplet.Status)
 
 	p.nodes = append(p.nodes, output)
 	return output, nil
@@ -245,8 +245,8 @@ func (p *DigitalOceanProvider) CreateNetwork(ctx *pulumi.Context, network *confi
 		Region: p.config.VPC.Region,
 	}
 
-	secrets.Export(ctx,"do_vpc_id", vpc.ID())
-	secrets.Export(ctx,"do_vpc_cidr", pulumi.String(p.config.VPC.CIDR))
+	secrets.Export(ctx, "do_vpc_id", vpc.ID())
+	secrets.Export(ctx, "do_vpc_cidr", pulumi.String(p.config.VPC.CIDR))
 
 	return output, nil
 }
@@ -338,7 +338,7 @@ func (p *DigitalOceanProvider) CreateFirewall(ctx *pulumi.Context, firewall *con
 	}
 
 	p.firewall = fw
-	secrets.Export(ctx,"do_firewall_id", fw.ID())
+	secrets.Export(ctx, "do_firewall_id", fw.ID())
 
 	return nil
 }
@@ -393,8 +393,8 @@ func (p *DigitalOceanProvider) CreateLoadBalancer(ctx *pulumi.Context, lb *confi
 		Status: loadBalancer.Status,
 	}
 
-	secrets.Export(ctx,fmt.Sprintf("%s_ip", lb.Name), loadBalancer.Ip)
-	secrets.Export(ctx,fmt.Sprintf("%s_status", lb.Name), loadBalancer.Status)
+	secrets.Export(ctx, fmt.Sprintf("%s_ip", lb.Name), loadBalancer.Ip)
+	secrets.Export(ctx, fmt.Sprintf("%s_status", lb.Name), loadBalancer.Status)
 
 	return output, nil
 }
