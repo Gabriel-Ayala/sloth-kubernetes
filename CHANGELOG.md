@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.0.0](https://github.com/chalkan3/sloth-kubernetes/compare/v0.11.0...v1.0.0) (2026-01-07)
+
+
+### ⚠ BREAKING CHANGES
+
+* **cli:** Commands no longer default to "production" stack. Users must explicitly specify a stack name or create one first.
+
+### Features
+
+* **cli:** implement stack-first architecture with mandatory encryption ([749bcd1](https://github.com/chalkan3/sloth-kubernetes/commit/749bcd1208956fec3185d6da608f2df36fa23cb4))
+* **cli:** implement stack-first architecture with mandatory encryption ([7dfb339](https://github.com/chalkan3/sloth-kubernetes/commit/7dfb33990a586ebfdcc8d12031743abd49f5fe41))
+
 ## [0.10.1](https://github.com/chalkan3/sloth-kubernetes/compare/v0.10.0...v0.10.1) (2026-01-06)
 
 
