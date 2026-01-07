@@ -79,12 +79,23 @@ export DIGITALOCEAN_TOKEN="your-token"
 
 # Linode
 export LINODE_TOKEN="your-token"
-
-# Pulumi passphrase (for state encryption)
-export PULUMI_CONFIG_PASSPHRASE="your-secure-passphrase"
 ```
 
-### 2. Create Configuration
+### 2. Create Encrypted Stack (Required First)
+
+Before deploying any cluster, you must create an encrypted stack. This is mandatory for security:
+
+```bash
+# Option A: Passphrase encryption (simpler)
+echo "your-secure-passphrase" | sloth-kubernetes stacks create my-cluster --password-stdin
+
+# Option B: AWS KMS encryption (recommended for production)
+sloth-kubernetes stacks create my-cluster --kms-key alias/sloth-secrets
+```
+
+> **Important:** All CLI operations require a valid encrypted stack. The stack stores your cluster state, configuration, and credentials securely.
+
+### 3. Create Configuration
 
 ```lisp
 ; cluster.lisp
@@ -127,10 +138,10 @@ export PULUMI_CONFIG_PASSPHRASE="your-secure-passphrase"
     (version "v1.29.0+rke2r1")))
 ```
 
-### 3. Deploy
+### 4. Deploy
 
 ```bash
-sloth-kubernetes deploy production --config cluster.lisp --verbose
+sloth-kubernetes deploy my-cluster --config cluster.lisp --verbose
 ```
 
 ---
@@ -309,14 +320,14 @@ Sloth Kubernetes provides a rich set of built-in functions for dynamic configura
     (version (concat "v1." (env "K8S_MINOR" "29") ".0+rke2r1"))))
 ```
 
-### 4. Access Cluster
+### 5. Access Cluster
 
 ```bash
 # Get kubeconfig
-sloth-kubernetes kubeconfig production > ~/.kube/config
+sloth-kubernetes kubeconfig my-cluster > ~/.kube/config
 
 # Verify nodes (stack-aware command)
-sloth-kubernetes kubectl production get nodes
+sloth-kubernetes kubectl my-cluster get nodes
 ```
 
 ---

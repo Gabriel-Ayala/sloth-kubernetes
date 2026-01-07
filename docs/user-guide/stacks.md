@@ -2,6 +2,39 @@
 
 sloth-kubernetes uses Pulumi stacks to manage infrastructure state. Each cluster deployment creates a stack that tracks all resources.
 
+## Stack-First Architecture
+
+**Important:** All CLI operations require a valid encrypted stack. You must create a stack before any other operation:
+
+```bash
+# Create stack with passphrase encryption
+echo "your-secure-passphrase" | sloth-kubernetes stacks create my-cluster --password-stdin
+
+# Or with AWS KMS encryption (recommended for production)
+sloth-kubernetes stacks create my-cluster --kms-key alias/sloth-secrets
+```
+
+**Why encryption is mandatory:**
+
+- Stacks store sensitive data (kubeconfig, SSH keys, cloud credentials)
+- Encryption protects your cluster configuration at rest
+- Supports both passphrase (AES-256-GCM) and AWS KMS encryption
+- The stack acts as a secure database for all cluster operations
+
+Without a stack, commands will fail with a helpful message:
+
+```
+Error: No stack found.
+
+Create an encrypted stack first:
+  sloth-kubernetes stacks create <name> --password-stdin
+
+Or with AWS KMS:
+  sloth-kubernetes stacks create <name> --kms-key <arn-or-alias>
+```
+
+---
+
 ## What is a Stack?
 
 A stack represents a single deployment of your cluster configuration. It contains:
@@ -10,8 +43,33 @@ A stack represents a single deployment of your cluster configuration. It contain
 - Resource metadata and dependencies
 - Output values (IPs, kubeconfig, etc.)
 - State history
+- Encrypted secrets and credentials
 
 ## Stack Commands
+
+### Create Stack
+
+Create a new encrypted stack (required before any operation):
+
+```bash
+# Passphrase encryption (development)
+echo "your-passphrase" | sloth-kubernetes stacks create my-cluster --password-stdin
+
+# AWS KMS encryption (production)
+sloth-kubernetes stacks create my-cluster --kms-key alias/sloth-secrets
+sloth-kubernetes stacks create my-cluster --kms-key arn:aws:kms:us-east-1:123456789:key/key-id
+```
+
+**Output:**
+```
+Creating encrypted stack: my-cluster
+Encryption: Passphrase (AES-256-GCM)
+
+✓ Stack created successfully
+
+Next steps:
+  sloth-kubernetes deploy my-cluster --config cluster.lisp
+```
 
 ### List Stacks
 

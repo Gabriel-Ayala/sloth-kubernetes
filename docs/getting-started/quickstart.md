@@ -17,11 +17,14 @@ export LINODE_TOKEN="your-token"              # Linode
 # OR
 export AWS_ACCESS_KEY_ID="xxx" AWS_SECRET_ACCESS_KEY="yyy"  # AWS
 
-# 3. Deploy (downloads example config automatically)
+# 3. Create encrypted stack (REQUIRED FIRST!)
+echo "your-secure-passphrase" | sloth-kubernetes stacks create my-cluster --password-stdin
+
+# 4. Deploy (downloads example config automatically)
 curl -sO https://raw.githubusercontent.com/chalkan3/sloth-kubernetes/main/examples/minimal-do.lisp
 sloth-kubernetes deploy my-cluster --config minimal-do.lisp
 
-# 4. Use your cluster
+# 5. Use your cluster
 sloth-kubernetes kubectl my-cluster get nodes
 ```
 
@@ -75,18 +78,36 @@ export AWS_SECRET_ACCESS_KEY="wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"
 export AWS_REGION="us-east-1"
 ```
 
-#### State Encryption (Required)
-
-```bash
-# This passphrase encrypts your cluster state - don't lose it!
-export PULUMI_CONFIG_PASSPHRASE="choose-a-strong-passphrase"
-```
-
 > **Tip:** Add these exports to your `~/.bashrc` or `~/.zshrc` for persistence.
 
 ---
 
-### Step 3: Create Your First Cluster Configuration
+### Step 3: Create Encrypted Stack (Required First!)
+
+Before any deployment, you must create an encrypted stack. All CLI operations require a valid stack:
+
+```bash
+# Option A: Passphrase encryption (simpler, good for development)
+echo "your-secure-passphrase" | sloth-kubernetes stacks create my-cluster --password-stdin
+
+# Option B: AWS KMS encryption (recommended for production)
+sloth-kubernetes stacks create my-cluster --kms-key alias/sloth-secrets
+# or with full ARN:
+sloth-kubernetes stacks create my-cluster --kms-key arn:aws:kms:us-east-1:123456789:key/your-key-id
+```
+
+**Why is this required?**
+
+- All cluster state, credentials, and configuration are stored in the stack
+- Encryption protects sensitive data (kubeconfig, SSH keys, API tokens)
+- The stack acts as a secure database for your cluster
+- Without a stack, no CLI commands will work
+
+> **Important:** Remember your passphrase! You'll need it for future operations with this stack.
+
+---
+
+### Step 4: Create Your First Cluster Configuration
 
 Create a file named `cluster.lisp` with the configuration for your chosen provider:
 
@@ -221,7 +242,7 @@ Create a file named `cluster.lisp` with the configuration for your chosen provid
 
 ---
 
-### Step 4: Deploy the Cluster
+### Step 5: Deploy the Cluster
 
 Run the deploy command with your **stack name** and configuration file:
 
@@ -277,7 +298,7 @@ Distribution: RKE2 v1.29.0
 
 ---
 
-### Step 5: Access Your Cluster
+### Step 6: Access Your Cluster
 
 All kubectl commands in sloth-kubernetes are **stack-aware** - you specify the stack name first:
 
@@ -310,7 +331,7 @@ kubectl get nodes
 
 ---
 
-### Step 6: Deploy a Test Application
+### Step 7: Deploy a Test Application
 
 Let's deploy nginx to verify everything works:
 
@@ -340,7 +361,7 @@ curl http://164.90.xxx.xxx
 
 ---
 
-### Step 7: Manage Nodes with Salt
+### Step 8: Manage Nodes with Salt
 
 sloth-kubernetes includes Salt for powerful node management:
 
@@ -368,7 +389,7 @@ sloth-kubernetes salt my-cluster cmd "df -h" --target="workers-1"
 
 ---
 
-### Step 8: Explore Your Stack
+### Step 9: Explore Your Stack
 
 View information about your deployed cluster:
 

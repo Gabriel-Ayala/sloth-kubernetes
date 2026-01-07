@@ -205,14 +205,15 @@ func GetStackInfo(targetStack string) (*StackKubeconfig, error) {
 	return result, nil
 }
 
-// RequireStackArg validates that a stack name is provided either as argument or flag
+// RequireStackArg validates that a stack name is provided either as argument or flag.
+// Deprecated: Use RequireStack instead, which also validates the stack exists.
 func RequireStackArg(args []string) (string, error) {
 	targetStack := stackName
 	if len(args) > 0 {
 		targetStack = args[0]
 	}
 
-	if targetStack == "" || targetStack == "production" {
+	if targetStack == "" {
 		// Check if there's only one stack available
 		ctx := context.Background()
 		workspace, err := createWorkspaceWithS3Support(ctx)
@@ -241,4 +242,98 @@ func getStackNames(stacks []auto.StackSummary) []string {
 		names[i] = s.Name
 	}
 	return names
+}
+
+// EnsureStackExists verifies a stack exists and is properly configured.
+// Returns nil if stack exists, error with helpful message if not.
+func EnsureStackExists(targetStack string) error {
+	if targetStack == "" {
+		return fmt.Errorf(`no stack specified
+
+Create an encrypted stack first:
+  sloth-kubernetes stacks create <name> --password-stdin
+
+Or with AWS KMS:
+  sloth-kubernetes stacks create <name> --kms-key <arn-or-alias>
+
+List existing stacks:
+  sloth-kubernetes stacks list`)
+	}
+
+	ctx := context.Background()
+	workspace, err := createWorkspaceWithS3Support(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to access Pulumi backend: %w", err)
+	}
+
+	// Check if stack exists
+	fullyQualifiedName := fmt.Sprintf("organization/sloth-kubernetes/%s", targetStack)
+	_, err = auto.SelectStack(ctx, fullyQualifiedName, workspace)
+	if err != nil {
+		// Check if there are any stacks available
+		stacks, listErr := workspace.ListStacks(ctx)
+		if listErr == nil && len(stacks) > 0 {
+			return fmt.Errorf(`stack '%s' not found
+
+Available stacks: %v
+
+Create a new encrypted stack:
+  sloth-kubernetes stacks create %s --password-stdin`, targetStack, getStackNames(stacks), targetStack)
+		}
+
+		return fmt.Errorf(`stack '%s' not found
+
+Create an encrypted stack first:
+  sloth-kubernetes stacks create %s --password-stdin
+
+Or with AWS KMS:
+  sloth-kubernetes stacks create %s --kms-key <arn-or-alias>`, targetStack, targetStack, targetStack)
+	}
+
+	return nil
+}
+
+// RequireStack validates that a stack exists and returns the stack name.
+// This is the main guard function that should be called at the start of commands.
+// It accepts either a positional argument or the --stack flag value.
+func RequireStack(args []string) (string, error) {
+	targetStack := stackName // from global flag
+	if len(args) > 0 {
+		targetStack = args[0]
+	}
+
+	// If no stack specified, check if there's exactly one stack available
+	if targetStack == "" {
+		ctx := context.Background()
+		workspace, err := createWorkspaceWithS3Support(ctx)
+		if err != nil {
+			return "", EnsureStackExists("") // Will return helpful error
+		}
+
+		stacks, err := workspace.ListStacks(ctx)
+		if err != nil || len(stacks) == 0 {
+			return "", EnsureStackExists("") // Will return helpful error
+		}
+
+		// If exactly one stack exists, use it automatically
+		if len(stacks) == 1 {
+			targetStack = stacks[0].Name
+			fmt.Printf("Using stack: %s\n", targetStack)
+		} else {
+			return "", fmt.Errorf(`stack name required
+
+Available stacks: %v
+
+Specify a stack:
+  command <stack-name>
+  command --stack <name>`, getStackNames(stacks))
+		}
+	}
+
+	// Verify the stack exists
+	if err := EnsureStackExists(targetStack); err != nil {
+		return "", err
+	}
+
+	return targetStack, nil
 }

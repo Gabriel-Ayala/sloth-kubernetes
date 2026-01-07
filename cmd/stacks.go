@@ -1241,11 +1241,25 @@ func runCancel(cmd *cobra.Command, args []string) error {
 
 func runCreateStack(cmd *cobra.Command, args []string) error {
 	if len(args) < 1 {
-		return fmt.Errorf("usage: sloth-kubernetes stacks create <stack-name> [--password-stdin | --kms-key <key>]")
+		return fmt.Errorf("usage: sloth-kubernetes stacks create <stack-name> --password-stdin\n       sloth-kubernetes stacks create <stack-name> --kms-key <arn-or-alias>")
 	}
 
 	ctx := context.Background()
 	stackName := args[0]
+
+	// Enforce encryption: require either --password-stdin or --kms-key
+	if !passwordStdin && kmsKey == "" {
+		return fmt.Errorf(`encryption is required for all stacks
+
+Use one of the following options:
+
+  Passphrase encryption (AES-256-GCM):
+    echo "your-password" | sloth-kubernetes stacks create %s --password-stdin
+
+  AWS KMS encryption (recommended for production):
+    sloth-kubernetes stacks create %s --kms-key alias/your-key
+    sloth-kubernetes stacks create %s --kms-key arn:aws:kms:region:account:key/key-id`, stackName, stackName, stackName)
+	}
 
 	printHeader(fmt.Sprintf("🔐 Creating Stack: %s", stackName))
 

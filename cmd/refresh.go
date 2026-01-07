@@ -62,15 +62,10 @@ func init() {
 func runRefresh(cmd *cobra.Command, args []string) error {
 	ctx := context.Background()
 
-	// Determine target stack
-	targetStack := stackName
-	if len(args) > 0 {
-		targetStack = args[0]
-	}
-
-	// Validate stack name
-	if targetStack == "" {
-		return fmt.Errorf("stack name is required. Use: sloth-kubernetes refresh <stack-name> or --stack <name>")
+	// Require a valid stack
+	targetStack, err := RequireStack(args)
+	if err != nil {
+		return err
 	}
 
 	// Print header

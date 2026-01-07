@@ -152,7 +152,12 @@ func init() {
 
 func runVPNStatus(cmd *cobra.Command, args []string) error {
 	ctx := context.Background()
-	stack := getStackFromArgs(args, 0)
+
+	// Require a valid stack
+	stack, err := RequireStack(args)
+	if err != nil {
+		return err
+	}
 
 	printHeader(fmt.Sprintf("🔐 VPN Status - Stack: %s", stack))
 
@@ -182,12 +187,13 @@ func runVPNStatus(cmd *cobra.Command, args []string) error {
 }
 
 func runVPNPeers(cmd *cobra.Command, args []string) error {
-	if len(args) < 1 {
-		return fmt.Errorf("usage: sloth-kubernetes vpn peers <stack-name>")
-	}
-
 	ctx := context.Background()
-	stack := args[0]
+
+	// Require a valid stack
+	stack, err := RequireStack(args)
+	if err != nil {
+		return err
+	}
 
 	printHeader(fmt.Sprintf("👥 VPN Peers - Stack: %s", stack))
 
@@ -489,6 +495,12 @@ func runVPNConfig(cmd *cobra.Command, args []string) error {
 	}
 
 	ctx := context.Background()
+
+	// Validate stack exists
+	if err := EnsureStackExists(args[0]); err != nil {
+		return err
+	}
+
 	stack := args[0]
 	nodeName := args[1]
 
@@ -609,7 +621,12 @@ func runVPNConfig(cmd *cobra.Command, args []string) error {
 
 func runVPNTest(cmd *cobra.Command, args []string) error {
 	ctx := context.Background()
-	stack := getStackFromArgs(args, 0)
+
+	// Require a valid stack
+	stack, err := RequireStack(args)
+	if err != nil {
+		return err
+	}
 
 	printHeader(fmt.Sprintf("🧪 Testing VPN Connectivity - Stack: %s", stack))
 
@@ -851,12 +868,13 @@ func printVPNPeersTable(outputs auto.OutputMap) {
 func runVPNJoin(cmd *cobra.Command, args []string) error {
 	startTime := time.Now()
 
-	if len(args) < 1 {
-		return fmt.Errorf("usage: sloth-kubernetes vpn join <stack-name>")
-	}
-
 	ctx := context.Background()
-	stack := args[0]
+
+	// Require a valid stack
+	stack, err := RequireStack(args)
+	if err != nil {
+		return err
+	}
 
 	printHeader(fmt.Sprintf("🔗 Joining VPN - Stack: %s", stack))
 
@@ -1535,12 +1553,13 @@ echo "✓ WireGuard installed and started"
 func runVPNLeave(cmd *cobra.Command, args []string) error {
 	startTime := time.Now()
 
-	if len(args) < 1 {
-		return fmt.Errorf("usage: sloth-kubernetes vpn leave <stack-name>")
-	}
-
 	ctx := context.Background()
-	stack := args[0]
+
+	// Require a valid stack
+	stack, err := RequireStack(args)
+	if err != nil {
+		return err
+	}
 
 	printHeader(fmt.Sprintf("👋 Leaving VPN - Stack: %s", stack))
 
@@ -1794,12 +1813,13 @@ func runVPNLeave(cmd *cobra.Command, args []string) error {
 }
 
 func runVPNClientConfig(cmd *cobra.Command, args []string) error {
-	if len(args) < 1 {
-		return fmt.Errorf("usage: sloth-kubernetes vpn client-config <stack-name>")
-	}
-
 	ctx := context.Background()
-	stack := args[0]
+
+	// Require a valid stack
+	stack, err := RequireStack(args)
+	if err != nil {
+		return err
+	}
 
 	printHeader(fmt.Sprintf("📱 Generate Client Config - Stack: %s", stack))
 
