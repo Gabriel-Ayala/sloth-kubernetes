@@ -17,10 +17,13 @@ id_ed25519*
 # Secrets and credentials
 .env
 .env.*
-secrets/
+/secrets/
 credentials/
 *.secret
 *.creds
+
+# But allow the pkg/secrets package
+!pkg/secrets/
 
 # Kubeconfig
 kubeconfig
