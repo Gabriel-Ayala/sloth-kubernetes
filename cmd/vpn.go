@@ -11,7 +11,6 @@ import (
 	"os/signal"
 	"strconv"
 	"strings"
-	"syscall"
 	"text/tabwriter"
 	"time"
 
@@ -2687,10 +2686,8 @@ func runVPNConnect(cmd *cobra.Command, args []string) error {
 		daemonCmd.Stderr = nil
 		daemonCmd.Stdin = nil
 
-		// Detach the process
-		daemonCmd.SysProcAttr = &syscall.SysProcAttr{
-			Setsid: true,
-		}
+		// Detach the process (platform-specific)
+		setupDaemonProcess(daemonCmd)
 
 		printInfo("Starting VPN daemon in background...")
 
@@ -2705,8 +2702,8 @@ func runVPNConnect(cmd *cobra.Command, args []string) error {
 		connected := false
 		for i := 0; i < 10; i++ {
 			time.Sleep(1 * time.Second)
-			// Check if process is still running
-			if err := syscall.Kill(daemonPid, 0); err != nil {
+			// Check if process is still running (platform-specific)
+			if !isProcessRunning(daemonPid) {
 				// Process died
 				printWarning("VPN daemon process exited unexpectedly")
 				return fmt.Errorf("daemon process exited")
@@ -2887,7 +2884,7 @@ func runVPNConnect(cmd *cobra.Command, args []string) error {
 
 		// Wait for SIGTERM (from disconnect command) or SIGINT
 		sigChan := make(chan os.Signal, 1)
-		signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
+		signal.Notify(sigChan, signalInterrupt, signalTerminate)
 		<-sigChan
 
 		// Clean disconnect
@@ -2903,7 +2900,7 @@ func runVPNConnect(cmd *cobra.Command, args []string) error {
 
 	// Wait for interrupt
 	sigChan := make(chan os.Signal, 1)
-	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
+	signal.Notify(sigChan, signalInterrupt, signalTerminate)
 	<-sigChan
 
 	fmt.Println()
@@ -2939,7 +2936,7 @@ func runVPNDisconnect(cmd *cobra.Command, args []string) error {
 		if err != nil {
 			printWarning(fmt.Sprintf("Failed to find daemon process: %v", err))
 		} else {
-			if err := process.Signal(syscall.SIGTERM); err != nil {
+			if err := terminateProcess(process); err != nil {
 				printWarning(fmt.Sprintf("Failed to stop daemon: %v", err))
 			} else {
 				// Wait a moment for clean shutdown
@@ -3065,7 +3062,7 @@ func runVPNConnectDaemon(ctx context.Context, stack string) error {
 
 	// Wait for SIGTERM
 	sigChan := make(chan os.Signal, 1)
-	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
+	signal.Notify(sigChan, signalInterrupt, signalTerminate)
 	<-sigChan
 
 	// Clean disconnect
