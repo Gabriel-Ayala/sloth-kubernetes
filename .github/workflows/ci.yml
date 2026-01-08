@@ -24,7 +24,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.24'
+          go-version-file: 'go.mod'
           cache: true
 
       - name: Download dependencies
@@ -39,8 +39,7 @@ jobs:
       - name: Run tests
         # Note: -race flag removed due to false positives in Pulumi SDK
         # See: https://github.com/pulumi/pulumi/issues for known race conditions
-        run: |
-          go test -v -coverprofile=coverage.txt -covermode=atomic ./cmd/... ./internal/... ./pkg/...
+        run: go test -v -coverprofile=coverage.txt -covermode=atomic ./internal/... ./pkg/... github.com/chalkan3/sloth-kubernetes/cmd
 
       - name: Generate coverage report
         run: go tool cover -func=coverage.txt
@@ -76,7 +75,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.24'
+          go-version-file: 'go.mod'
           cache: true
 
       - name: Check formatting
@@ -107,7 +106,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.24'
+          go-version-file: 'go.mod'
           cache: true
 
       - name: Build binary
