@@ -11,7 +11,6 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
-	"syscall"
 	"time"
 
 	"tailscale.com/tsnet"
@@ -385,15 +384,8 @@ func IsDaemonRunning(clusterName string) bool {
 		return false
 	}
 
-	// Check if process exists
-	process, err := os.FindProcess(pid)
-	if err != nil {
-		return false
-	}
-
-	// On Unix, FindProcess always succeeds, so we need to send signal 0 to check
-	err = process.Signal(syscall.Signal(0))
-	return err == nil
+	// Check if process is running using platform-specific implementation
+	return isProcessRunning(pid)
 }
 
 // StartSOCKS5Proxy starts a SOCKS5 proxy server that routes through the tailnet
