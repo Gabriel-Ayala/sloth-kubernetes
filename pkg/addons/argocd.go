@@ -10,15 +10,11 @@ import (
 	"github.com/chalkan3/sloth-kubernetes/pkg/config"
 )
 
-// InstallArgoCD installs ArgoCD and applies GitOps applications
-func InstallArgoCD(cfg *config.ClusterConfig, masterNodeIP string, sshPrivateKey string) error {
-	if cfg.Addons.ArgoCD == nil || !cfg.Addons.ArgoCD.Enabled {
-		return nil // ArgoCD not enabled, skip
+// ApplyArgoCDDefaults applies default values to ArgoCD configuration
+func ApplyArgoCDDefaults(argocdConfig *config.ArgoCDConfig) {
+	if argocdConfig == nil {
+		return
 	}
-
-	argocdConfig := cfg.Addons.ArgoCD
-
-	// Set defaults
 	if argocdConfig.Namespace == "" {
 		argocdConfig.Namespace = "argocd"
 	}
@@ -29,8 +25,20 @@ func InstallArgoCD(cfg *config.ClusterConfig, masterNodeIP string, sshPrivateKey
 		argocdConfig.AppsPath = "argocd/apps"
 	}
 	if argocdConfig.Version == "" {
-		argocdConfig.Version = "stable" // or "v2.9.3" for specific version
+		argocdConfig.Version = "stable"
 	}
+}
+
+// InstallArgoCD installs ArgoCD and applies GitOps applications
+func InstallArgoCD(cfg *config.ClusterConfig, masterNodeIP string, sshPrivateKey string) error {
+	if cfg.Addons.ArgoCD == nil || !cfg.Addons.ArgoCD.Enabled {
+		return nil // ArgoCD not enabled, skip
+	}
+
+	argocdConfig := cfg.Addons.ArgoCD
+
+	// Set defaults
+	ApplyArgoCDDefaults(argocdConfig)
 
 	fmt.Println()
 	fmt.Println("════════════════════════════════════════════════════════════")
